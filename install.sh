@@ -1074,18 +1074,27 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    # Try main first, fall back to feature branch if main doesn't have the files
     BRANCH="claude/plan-rollout-strategy-eoaxF"
     TEMP_DIR=$(mktemp -d)
 
-    log_info "Downloading application files..."
+    log_info "Downloading application files from $BRANCH branch..."
 
     # Clone the repository
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR/cari-iptv" 2>&1 | grep -v "^Cloning" || {
+    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR/cari-iptv" >/dev/null 2>&1; then
         log_error "Failed to download application files"
+        log_error "Please check your internet connection and try again"
         rm -rf "$TEMP_DIR"
         exit 1
-    }
+    fi
+
+    # Verify clone succeeded
+    if [ ! -f "$TEMP_DIR/cari-iptv/public/index.php" ]; then
+        log_error "Download succeeded but files are missing"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+
+    log_info "Download complete"
 
     # Copy application files to install directory
     log_info "Installing files to $INSTALL_DIR..."
