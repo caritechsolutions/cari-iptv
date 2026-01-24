@@ -241,15 +241,40 @@ download_update() {
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
 
-    # Clone the repository
+    # Download the repository as a tarball (no git needed, avoids caching)
+    local TARBALL_URL="${REPO_URL}/archive/refs/heads/${BRANCH}.tar.gz"
     log_info "Fetching latest code from $BRANCH branch..."
-    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" cari-iptv >/dev/null 2>&1; then
+
+    local DOWNLOAD_OK=false
+    if command -v wget &> /dev/null; then
+        if wget --no-check-certificate --timeout=60 --tries=2 -q -O repo.tar.gz "$TARBALL_URL" 2>&1; then
+            DOWNLOAD_OK=true
+        fi
+    else
+        if curl -k -L -f --connect-timeout 30 --max-time 120 -s -o repo.tar.gz "$TARBALL_URL"; then
+            DOWNLOAD_OK=true
+        fi
+    fi
+
+    if [[ "$DOWNLOAD_OK" = false ]] || [[ ! -f repo.tar.gz ]] || [[ ! -s repo.tar.gz ]]; then
         log_error "Failed to download update from repository"
         rm -rf "$TEMP_DIR"
         exit 1
     fi
 
-    # Verify clone succeeded
+    # Extract
+    tar -xzf repo.tar.gz
+    EXTRACTED_DIR=$(ls -d cari-iptv-* 2>/dev/null | head -1)
+
+    if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
+        log_error "Failed to extract repository"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+
+    mv "$EXTRACTED_DIR" cari-iptv
+
+    # Verify extraction succeeded
     if [ ! -f "cari-iptv/public/index.php" ]; then
         log_error "Download succeeded but files are missing"
         rm -rf "$TEMP_DIR"
