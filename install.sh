@@ -227,6 +227,7 @@ install_dependencies_debian() {
         libnginx-mod-http-geoip2 || apt-get install -y -qq nginx
 
     # Install PHP and extensions
+    # Note: php-json is built into PHP 8.x core, no separate package needed
     log_info "Installing PHP ${PHP_VERSION}..."
     apt-get install -y -qq \
         php${PHP_VERSION}-fpm \
@@ -238,7 +239,6 @@ install_dependencies_debian() {
         php${PHP_VERSION}-gd \
         php${PHP_VERSION}-intl \
         php${PHP_VERSION}-bcmath \
-        php${PHP_VERSION}-json \
         php${PHP_VERSION}-opcache \
         php${PHP_VERSION}-readline
 
