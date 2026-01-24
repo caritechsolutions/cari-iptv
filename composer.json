@@ -1,0 +1,29 @@
+{
+    "name": "cari/iptv",
+    "description": "CARI-IPTV - Carrier-grade IPTV/OTT Platform for the Caribbean",
+    "type": "project",
+    "license": "proprietary",
+    "authors": [
+        {
+            "name": "CARI Tech Solutions",
+            "email": "dev@cari.tech"
+        }
+    ],
+    "require": {
+        "php": ">=8.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "CariIPTV\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@php -r \"file_exists('storage/logs') || mkdir('storage/logs', 0775, true);\""
+        ]
+    }
+}
