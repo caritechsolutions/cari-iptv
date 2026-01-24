@@ -51,6 +51,7 @@ use CariIPTV\Core\Session;
 use CariIPTV\Middleware\AdminAuthMiddleware;
 use CariIPTV\Controllers\Admin\AuthController;
 use CariIPTV\Controllers\Admin\DashboardController;
+use CariIPTV\Controllers\Admin\ProfileController;
 
 // Initialize session
 Session::start();
@@ -76,6 +77,13 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
 
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
+
+    // Profile
+    $router->get('/profile', [ProfileController::class, 'index']);
+    $router->post('/profile/update', [ProfileController::class, 'update']);
+    $router->post('/profile/password', [ProfileController::class, 'changePassword']);
+    $router->post('/profile/avatar', [ProfileController::class, 'uploadAvatar']);
+    $router->get('/profile/avatar/remove', [ProfileController::class, 'removeAvatar']);
 
     // TODO: Add more routes as we build out the admin panel
     // $router->get('/channels', [ChannelController::class, 'index']);

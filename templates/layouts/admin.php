@@ -284,6 +284,13 @@
             font-size: 0.875rem;
         }
 
+        .user-avatar-img {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            object-fit: cover;
+        }
+
         .user-info {
             text-align: right;
         }
@@ -488,6 +495,24 @@
 
         .btn-secondary:hover {
             background: var(--border-color);
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: #000;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
         }
 
         .btn-sm {
@@ -725,14 +750,18 @@
                                 <div class="user-name"><?= htmlspecialchars($user['first_name'] ?? 'Admin') ?></div>
                                 <div class="user-role"><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $user['role'] ?? 'admin'))) ?></div>
                             </div>
-                            <div class="user-avatar">
-                                <?= strtoupper(substr($user['first_name'] ?? 'A', 0, 1)) ?>
-                            </div>
+                            <?php if (!empty($user['avatar'])): ?>
+                                <img src="<?= htmlspecialchars($user['avatar']) ?>" class="user-avatar-img" alt="Avatar">
+                            <?php else: ?>
+                                <div class="user-avatar">
+                                    <?= strtoupper(substr($user['first_name'] ?? 'A', 0, 1)) ?>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         <div class="dropdown-menu">
-                            <a href="/admin/profile" class="dropdown-item">
+                            <a href="/admin/profile" class="dropdown-item <?= ($pageTitle ?? '') === 'My Profile' ? 'active' : '' ?>">
                                 <i class="lucide-user"></i>
-                                <span>Profile</span>
+                                <span>My Profile</span>
                             </a>
                             <a href="/admin/settings" class="dropdown-item">
                                 <i class="lucide-settings"></i>
