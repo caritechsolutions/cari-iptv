@@ -52,16 +52,92 @@ class SettingsController
             return;
         }
 
+        // Handle logo upload
+        $siteLogo = $this->settings->get('site_logo', '', 'general');
+
+        // Check if removing logo
+        if (!empty($_POST['remove_logo'])) {
+            // Delete old logo file if exists
+            if (!empty($siteLogo)) {
+                $oldPath = dirname(__DIR__, 3) . '/public' . $siteLogo;
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+            }
+            $siteLogo = '';
+        }
+
+        // Handle new logo upload
+        if (!empty($_FILES['site_logo']['tmp_name']) && $_FILES['site_logo']['error'] === UPLOAD_ERR_OK) {
+            $uploadResult = $this->handleLogoUpload($_FILES['site_logo']);
+            if ($uploadResult['success']) {
+                // Delete old logo if exists
+                if (!empty($siteLogo)) {
+                    $oldPath = dirname(__DIR__, 3) . '/public' . $siteLogo;
+                    if (file_exists($oldPath)) {
+                        @unlink($oldPath);
+                    }
+                }
+                $siteLogo = $uploadResult['path'];
+            } else {
+                Session::flash('error', $uploadResult['error']);
+                Response::redirect('/admin/settings');
+                return;
+            }
+        }
+
         $this->settings->setMany([
             'site_name' => trim($_POST['site_name'] ?? 'CARI-IPTV'),
             'site_url' => trim($_POST['site_url'] ?? ''),
             'admin_email' => trim($_POST['admin_email'] ?? ''),
+            'site_logo' => $siteLogo,
         ], 'general');
 
         $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'general']);
 
         Session::flash('success', 'General settings updated successfully.');
         Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Handle logo file upload
+     */
+    private function handleLogoUpload(array $file): array
+    {
+        $allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/svg+xml', 'image/webp'];
+        $maxSize = 1024 * 1024; // 1MB
+
+        // Validate file type
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+
+        if (!in_array($mimeType, $allowedTypes)) {
+            return ['success' => false, 'error' => 'Invalid file type. Allowed: PNG, JPG, GIF, SVG, WebP'];
+        }
+
+        // Validate file size
+        if ($file['size'] > $maxSize) {
+            return ['success' => false, 'error' => 'File too large. Maximum size is 1MB'];
+        }
+
+        // Generate unique filename
+        $extension = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'png';
+        $filename = 'logo_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $extension;
+
+        // Ensure uploads directory exists
+        $uploadDir = dirname(__DIR__, 3) . '/public/uploads';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $destination = $uploadDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destination)) {
+            return ['success' => false, 'error' => 'Failed to save uploaded file'];
+        }
+
+        return ['success' => true, 'path' => '/uploads/' . $filename];
     }
 
     /**

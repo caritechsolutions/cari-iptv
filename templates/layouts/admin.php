@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title><?= htmlspecialchars($pageTitle ?? 'Admin') ?> - CARI-IPTV Admin</title>
+    <title><?= htmlspecialchars($pageTitle ?? 'Admin') ?> - <?= htmlspecialchars($siteName ?? 'CARI-IPTV') ?> Admin</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -105,6 +105,13 @@
             justify-content: center;
             font-weight: 700;
             font-size: 1.25rem;
+        }
+
+        .sidebar-logo-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            object-fit: contain;
         }
 
         .sidebar-brand {
@@ -649,8 +656,12 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div class="sidebar-logo">C</div>
-                <div class="sidebar-brand">CARI<span>-IPTV</span></div>
+                <?php if (!empty($siteLogo)): ?>
+                    <img src="<?= htmlspecialchars($siteLogo) ?>" alt="<?= htmlspecialchars($siteName ?? 'Logo') ?>" class="sidebar-logo-img">
+                <?php else: ?>
+                    <div class="sidebar-logo"><?= strtoupper(substr($siteName ?? 'C', 0, 1)) ?></div>
+                <?php endif; ?>
+                <div class="sidebar-brand"><?= htmlspecialchars($siteName ?? 'CARI-IPTV') ?></div>
             </div>
 
             <nav class="sidebar-nav">

@@ -53,6 +53,11 @@ class Response
 
     public static function view(string $template, array $data = [], string $layout = null): void
     {
+        // For admin layout, inject site settings
+        if ($layout === 'admin') {
+            $data = self::injectSiteSettings($data);
+        }
+
         extract($data);
 
         $templatePath = dirname(__DIR__, 2) . '/templates/' . $template . '.php';
@@ -75,6 +80,23 @@ class Response
         } else {
             include $templatePath;
         }
+    }
+
+    /**
+     * Inject site settings into view data for admin layout
+     */
+    private static function injectSiteSettings(array $data): array
+    {
+        try {
+            $settings = new \CariIPTV\Services\SettingsService();
+            $data['siteName'] = $settings->get('site_name', 'CARI-IPTV', 'general');
+            $data['siteLogo'] = $settings->get('site_logo', '', 'general');
+        } catch (\Exception $e) {
+            // Use defaults if settings can't be loaded
+            $data['siteName'] = $data['siteName'] ?? 'CARI-IPTV';
+            $data['siteLogo'] = $data['siteLogo'] ?? '';
+        }
+        return $data;
     }
 
     public static function download(string $filePath, string $fileName = null): void

@@ -13,7 +13,7 @@
             </h3>
         </div>
         <div class="card-body">
-            <form action="/admin/settings/general" method="POST">
+            <form action="/admin/settings/general" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="_token" value="<?= $csrf ?>">
 
                 <div class="form-group">
@@ -21,6 +21,25 @@
                     <input type="text" id="site_name" name="site_name" class="form-input"
                            value="<?= htmlspecialchars($settings['general']['site_name'] ?? 'CARI-IPTV') ?>">
                     <small class="form-help">Name displayed in emails and UI</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Site Logo</label>
+                    <div class="logo-upload-area">
+                        <?php if (!empty($settings['general']['site_logo'])): ?>
+                            <div class="current-logo">
+                                <img src="<?= htmlspecialchars($settings['general']['site_logo']) ?>" alt="Current Logo" class="logo-preview">
+                                <label class="checkbox-label remove-logo-label">
+                                    <input type="checkbox" name="remove_logo" value="1">
+                                    <span>Remove current logo</span>
+                                </label>
+                            </div>
+                        <?php endif; ?>
+                        <div class="logo-input">
+                            <input type="file" id="site_logo" name="site_logo" class="form-input" accept="image/*">
+                            <small class="form-help">Recommended: PNG or SVG, max 200x60px, max 1MB</small>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -361,5 +380,42 @@
 
 .preset strong {
     color: var(--text-muted);
+}
+
+.logo-upload-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.current-logo {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-hover);
+    border-radius: 8px;
+}
+
+.logo-preview {
+    max-width: 120px;
+    max-height: 60px;
+    object-fit: contain;
+    background: var(--bg-dark);
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+
+.remove-logo-label {
+    padding: 0.5rem !important;
+    background: transparent !important;
+}
+
+.remove-logo-label:hover {
+    background: var(--bg-hover) !important;
+}
+
+.logo-input input[type="file"] {
+    padding: 0.5rem;
 }
 </style>
