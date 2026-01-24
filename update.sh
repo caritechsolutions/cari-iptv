@@ -429,6 +429,11 @@ fix_permissions() {
     chmod -R 755 "$INSTALL_DIR"
     chmod -R 775 "$INSTALL_DIR/storage"
 
+    # Create and set permissions for uploads directory
+    mkdir -p "$INSTALL_DIR/public/uploads"
+    chown -R "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/public/uploads"
+    chmod -R 775 "$INSTALL_DIR/public/uploads"
+
     # Make scripts executable
     chmod +x "$INSTALL_DIR/install.sh" 2>/dev/null || true
     chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
