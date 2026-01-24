@@ -1143,6 +1143,11 @@ install_application_files() {
     chmod -R 755 "$INSTALL_DIR"
     chmod -R 775 "$INSTALL_DIR/storage"
 
+    # Create uploads directory for logo and other uploads
+    mkdir -p "$INSTALL_DIR/public/uploads"
+    chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR/public/uploads"
+    chmod -R 775 "$INSTALL_DIR/public/uploads"
+
     log_info "Application files installed successfully"
 }
 

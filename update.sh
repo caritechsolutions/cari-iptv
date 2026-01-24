@@ -134,6 +134,13 @@ detect_web_user() {
         WEB_USER=$(stat -c '%U' "$INSTALL_DIR/public/index.php" 2>/dev/null || echo "www-data")
         WEB_GROUP=$(stat -c '%G' "$INSTALL_DIR/public/index.php" 2>/dev/null || echo "www-data")
     fi
+
+    # If detected as root, use www-data instead (PHP-FPM runs as www-data)
+    if [ "$WEB_USER" = "root" ]; then
+        WEB_USER="www-data"
+        WEB_GROUP="www-data"
+    fi
+
     log_info "Web user: $WEB_USER:$WEB_GROUP"
 }
 
