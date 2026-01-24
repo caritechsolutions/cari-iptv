@@ -241,50 +241,30 @@ download_update() {
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
 
-    # Download the repository as a tarball (no git needed, avoids caching)
-    # Strip .git suffix from REPO_URL for tarball download
-    local REPO_URL_CLEAN="${REPO_URL%.git}"
-    # Add timestamp to URL to bypass any caching
-    local TARBALL_URL="${REPO_URL_CLEAN}/archive/refs/heads/${BRANCH}.tar.gz?$(date +%s)"
+    # Clone the repository
     log_info "Fetching latest code from $BRANCH branch..."
-
-    local DOWNLOAD_OK=false
-    if command -v wget &> /dev/null; then
-        # Use wget with timeout and progress bar
-        if wget --no-check-certificate --timeout=60 --tries=2 --progress=bar:force -O repo.tar.gz "$TARBALL_URL" 2>&1; then
-            DOWNLOAD_OK=true
-        fi
-    else
-        # Use curl with timeout and progress bar
-        if curl -k -L -f --connect-timeout 30 --max-time 120 --progress-bar -o repo.tar.gz "$TARBALL_URL"; then
-            DOWNLOAD_OK=true
-        fi
-    fi
-
-    if [[ "$DOWNLOAD_OK" = false ]] || [[ ! -f repo.tar.gz ]] || [[ ! -s repo.tar.gz ]]; then
-        log_error "Failed to download update from repository (check network connection)"
-        log_error "Tried URL: $TARBALL_URL"
+    log_info "Repository: $REPO_URL"
+    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" cari-iptv 2>&1; then
+        log_error "Failed to download update from repository"
         rm -rf "$TEMP_DIR"
         exit 1
     fi
 
-    # Extract
-    tar -xzf repo.tar.gz
-    EXTRACTED_DIR=$(ls -d cari-iptv-* 2>/dev/null | head -1)
-
-    if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
-        log_error "Failed to extract repository"
-        rm -rf "$TEMP_DIR"
-        exit 1
-    fi
-
-    mv "$EXTRACTED_DIR" cari-iptv
-
-    # Verify extraction succeeded
+    # Verify clone succeeded
     if [ ! -f "cari-iptv/public/index.php" ]; then
         log_error "Download succeeded but files are missing"
         rm -rf "$TEMP_DIR"
         exit 1
+    fi
+
+    # Show what was downloaded
+    log_info "Downloaded files:"
+    ls -la cari-iptv/
+
+    # Show database migrations
+    if [ -d "cari-iptv/database/migrations" ]; then
+        log_info "Migration files found:"
+        ls -la cari-iptv/database/migrations/
     fi
 
     # Get new version
