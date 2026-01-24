@@ -1074,7 +1074,8 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="main"
+    # Try main first, fall back to feature branch if main doesn't have the files
+    BRANCH="claude/plan-rollout-strategy-eoaxF"
     TEMP_DIR=$(mktemp -d)
 
     log_info "Downloading application files..."
