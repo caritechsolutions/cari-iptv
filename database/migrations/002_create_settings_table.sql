@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS `settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert default SMTP settings
-INSERT IGNORE INTO `settings` (`group`, `key`, value, type, description) VALUES
+INSERT IGNORE INTO `settings` (`group`, `key`, `value`, `type`, `description`) VALUES
 ('smtp', 'enabled', '0', 'boolean', 'Enable SMTP email sending'),
 ('smtp', 'host', '', 'string', 'SMTP server hostname'),
 ('smtp', 'port', '587', 'integer', 'SMTP server port'),

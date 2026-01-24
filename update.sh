@@ -361,11 +361,12 @@ EOF
         if [ "$EXECUTED" = "0" ]; then
             log_info "Running migration: $FILENAME"
 
-            # Run migration and capture output
-            MIGRATION_OUTPUT=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1)
-            MIGRATION_RESULT=$?
+            # Run migration and capture output (|| true prevents set -e from exiting)
+            MIGRATION_OUTPUT=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1) || true
+            MIGRATION_RESULT=${PIPESTATUS[0]}
 
-            if [ $MIGRATION_RESULT -ne 0 ]; then
+            # Check if output contains error indicators
+            if echo "$MIGRATION_OUTPUT" | grep -qi "error"; then
                 log_error "Migration failed: $FILENAME"
                 log_error "$MIGRATION_OUTPUT"
                 # Don't record failed migrations - they'll be retried next time
@@ -374,7 +375,7 @@ EOF
 
             # Record migration only after successful execution
             mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
-                "INSERT IGNORE INTO _migrations (filename) VALUES ('$FILENAME')" 2>/dev/null
+                "INSERT IGNORE INTO _migrations (filename) VALUES ('$FILENAME')" 2>/dev/null || true
 
             MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
             log_info "Migration completed: $FILENAME"
