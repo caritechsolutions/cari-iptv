@@ -314,9 +314,16 @@ apply_update() {
 
     # Copy new database migrations (if any) - delete old ones first to ensure clean copy
     if [ -d "database/migrations" ]; then
+        log_info "Found migrations in download, copying to $INSTALL_DIR/database/migrations/"
         rm -rf "$INSTALL_DIR/database/migrations"
         mkdir -p "$INSTALL_DIR/database/migrations"
-        cp -r database/migrations/* "$INSTALL_DIR/database/migrations/"
+        cp -rv database/migrations/* "$INSTALL_DIR/database/migrations/"
+        log_info "Migration file content check (line 19):"
+        sed -n '19p' "$INSTALL_DIR/database/migrations/002_create_settings_table.sql" 2>/dev/null || echo "File not found"
+    else
+        log_warn "No database/migrations directory found in download"
+        log_info "Current directory: $(pwd)"
+        log_info "Contents: $(ls -la)"
     fi
 
     # Update schema file
