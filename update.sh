@@ -16,7 +16,7 @@ set -e
 # ============================================
 INSTALL_DIR="/var/www/cari-iptv"
 REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-BRANCH="main"
+BRANCH="claude/plan-rollout-strategy-eoaxF"
 BACKUP_ENABLED=false
 BACKUP_DIR="/var/backups/cari-iptv"
 WEB_USER="www-data"
@@ -243,11 +243,18 @@ download_update() {
 
     # Clone the repository
     log_info "Fetching latest code from $BRANCH branch..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" cari-iptv 2>&1 | grep -v "^Cloning" || {
+    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" cari-iptv >/dev/null 2>&1; then
         log_error "Failed to download update from repository"
         rm -rf "$TEMP_DIR"
         exit 1
-    }
+    fi
+
+    # Verify clone succeeded
+    if [ ! -f "cari-iptv/public/index.php" ]; then
+        log_error "Download succeeded but files are missing"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
 
     # Get new version
     if [ -f "cari-iptv/version.txt" ]; then
@@ -256,7 +263,7 @@ download_update() {
         NEW_VERSION="$(date +%Y.%m.%d)"
     fi
 
-    log_info "New version: $NEW_VERSION"
+    log_info "Download complete - Version: $NEW_VERSION"
 }
 
 apply_update() {
@@ -264,26 +271,21 @@ apply_update() {
 
     cd "$TEMP_DIR/cari-iptv"
 
-    # Files/directories to preserve (not overwrite)
-    PRESERVE=(
-        ".env"
-        "storage/logs"
-        "storage/cache"
-        "storage/sessions"
-        "INSTALL_CREDENTIALS.txt"
-    )
-
     # Update application files
     log_info "Updating application files..."
 
-    # Copy new public files
-    rsync -a --exclude='.htaccess' public/ "$INSTALL_DIR/public/"
-
-    # Copy new source files
-    rsync -a src/ "$INSTALL_DIR/src/"
-
-    # Copy new templates
-    rsync -a templates/ "$INSTALL_DIR/templates/"
+    # Use rsync if available, otherwise fall back to cp
+    if command -v rsync &> /dev/null; then
+        # Copy new public files (preserve .htaccess if exists)
+        rsync -a --exclude='.htaccess' public/ "$INSTALL_DIR/public/"
+        rsync -a src/ "$INSTALL_DIR/src/"
+        rsync -a templates/ "$INSTALL_DIR/templates/"
+    else
+        # Fallback to cp
+        cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
+        cp -r src/* "$INSTALL_DIR/src/" 2>/dev/null || true
+        cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
+    fi
 
     # Copy new database migrations (if any)
     if [ -d "database/migrations" ]; then
