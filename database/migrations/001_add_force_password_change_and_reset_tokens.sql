@@ -1,9 +1,19 @@
 -- Migration: Add force_password_change to admin_users and create password_resets table
 -- Date: 2026-01-24
 
--- Add force_password_change column to admin_users
-ALTER TABLE `admin_users`
-ADD COLUMN IF NOT EXISTS `force_password_change` TINYINT(1) NOT NULL DEFAULT 0 AFTER `password_changed_at`;
+-- Add force_password_change column to admin_users (ignore error if exists)
+SET @dbname = DATABASE();
+SET @tablename = 'admin_users';
+SET @columnname = 'force_password_change';
+SET @preparedStatement = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = @columnname) > 0,
+    'SELECT 1',
+    'ALTER TABLE admin_users ADD COLUMN force_password_change TINYINT(1) NOT NULL DEFAULT 0 AFTER password_changed_at'
+));
+PREPARE stmt FROM @preparedStatement;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- Create password reset tokens table
 CREATE TABLE IF NOT EXISTS `admin_password_resets` (
