@@ -708,17 +708,9 @@
 
                 <div class="nav-section">
                     <div class="nav-section-title">System</div>
-                    <a href="/admin/admins" class="nav-item">
-                        <i class="lucide-shield"></i>
-                        <span>Admin Users</span>
-                    </a>
                     <a href="/admin/activity" class="nav-item">
                         <i class="lucide-history"></i>
                         <span>Activity Log</span>
-                    </a>
-                    <a href="/admin/settings" class="nav-item">
-                        <i class="lucide-settings"></i>
-                        <span>Settings</span>
                     </a>
                 </div>
             </nav>
@@ -763,7 +755,11 @@
                                 <i class="lucide-user"></i>
                                 <span>My Profile</span>
                             </a>
-                            <a href="/admin/settings" class="dropdown-item">
+                            <a href="/admin/admins" class="dropdown-item <?= ($pageTitle ?? '') === 'Admin Users' ? 'active' : '' ?>">
+                                <i class="lucide-shield"></i>
+                                <span>Admin Users</span>
+                            </a>
+                            <a href="/admin/settings" class="dropdown-item <?= ($pageTitle ?? '') === 'Settings' ? 'active' : '' ?>">
                                 <i class="lucide-settings"></i>
                                 <span>Settings</span>
                             </a>
@@ -783,6 +779,7 @@
                 // Flash messages
                 $success = \CariIPTV\Core\Session::getFlash('success');
                 $error = \CariIPTV\Core\Session::getFlash('error');
+                $warning = \CariIPTV\Core\Session::getFlash('warning');
 
                 if ($success): ?>
                     <div class="alert alert-success">
@@ -795,6 +792,13 @@
                     <div class="alert alert-error">
                         <i class="lucide-alert-circle"></i>
                         <?= htmlspecialchars($error) ?>
+                    </div>
+                <?php endif;
+
+                if ($warning): ?>
+                    <div class="alert alert-warning">
+                        <i class="lucide-alert-triangle"></i>
+                        <?= htmlspecialchars($warning) ?>
                     </div>
                 <?php endif; ?>
 

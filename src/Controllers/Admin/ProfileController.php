@@ -156,6 +156,11 @@ class ProfileController
         if (!$result['success']) {
             Session::flash('error', $result['message']);
         } else {
+            // Clear force password change flag
+            $this->db->update('admin_users', [
+                'force_password_change' => 0,
+            ], 'id = ?', [$userId]);
+            Session::remove('force_password_change');
             Session::flash('success', $result['message']);
         }
 
