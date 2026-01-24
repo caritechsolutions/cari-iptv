@@ -1,0 +1,87 @@
+<?php
+/**
+ * CARI-IPTV Admin Portal Entry Point
+ */
+
+// Error reporting (disable in production)
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', dirname(__DIR__, 2) . '/storage/logs/php-error.log');
+
+// Define base path
+define('BASE_PATH', dirname(__DIR__, 2));
+
+// Load environment variables from .env file
+$envFile = BASE_PATH . '/.env';
+if (file_exists($envFile)) {
+    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos($line, '#') === 0) continue;
+        if (strpos($line, '=') === false) continue;
+        list($key, $value) = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value, " \t\n\r\0\x0B\"'");
+        putenv("$key=$value");
+        $_ENV[$key] = $value;
+    }
+}
+
+// Autoloader
+spl_autoload_register(function ($class) {
+    $prefix = 'CariIPTV\\';
+    $baseDir = BASE_PATH . '/src/';
+
+    $len = strlen($prefix);
+    if (strncmp($prefix, $class, $len) !== 0) {
+        return;
+    }
+
+    $relativeClass = substr($class, $len);
+    $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
+
+    if (file_exists($file)) {
+        require $file;
+    }
+});
+
+// Use statements
+use CariIPTV\Core\Router;
+use CariIPTV\Core\Session;
+use CariIPTV\Middleware\AdminAuthMiddleware;
+use CariIPTV\Controllers\Admin\AuthController;
+use CariIPTV\Controllers\Admin\DashboardController;
+
+// Initialize session
+Session::start();
+
+// Create router
+$router = new Router();
+
+// Register middleware
+$router->addMiddleware('auth', [AdminAuthMiddleware::class, 'handle']);
+$router->addMiddleware('guest', [AdminAuthMiddleware::class, 'guest']);
+
+// Guest routes (login)
+$router->group(['prefix' => 'admin', 'middleware' => ['guest']], function ($router) {
+    $router->get('/login', [AuthController::class, 'showLogin']);
+    $router->post('/login', [AuthController::class, 'login']);
+});
+
+// Authenticated admin routes
+$router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($router) {
+    // Dashboard
+    $router->get('/', [DashboardController::class, 'index']);
+    $router->get('/dashboard', [DashboardController::class, 'index']);
+
+    // Logout (no CSRF for GET logout is intentional for simplicity)
+    $router->get('/logout', [AuthController::class, 'logout']);
+
+    // TODO: Add more routes as we build out the admin panel
+    // $router->get('/channels', [ChannelController::class, 'index']);
+    // $router->get('/channels/create', [ChannelController::class, 'create']);
+    // etc.
+});
+
+// Dispatch the request
+$router->dispatch();

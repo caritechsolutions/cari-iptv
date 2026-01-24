@@ -1,0 +1,40 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Installation credentials (sensitive!)
+INSTALL_CREDENTIALS.txt
+
+# Composer
+/vendor/
+composer.lock
+
+# Storage
+/storage/logs/*
+/storage/cache/*
+/storage/sessions/*
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/sessions/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug/test
+*.log
+.phpunit.result.cache
+phpunit.xml
+
+# Node (if we add any frontend build tools)
+node_modules/
+npm-debug.log
+yarn-error.log
