@@ -287,9 +287,11 @@ apply_update() {
         cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
     fi
 
-    # Copy new database migrations (if any)
+    # Copy new database migrations (if any) - delete old ones first to ensure clean copy
     if [ -d "database/migrations" ]; then
-        rsync -a database/migrations/ "$INSTALL_DIR/database/migrations/"
+        rm -rf "$INSTALL_DIR/database/migrations"
+        mkdir -p "$INSTALL_DIR/database/migrations"
+        cp -r database/migrations/* "$INSTALL_DIR/database/migrations/"
     fi
 
     # Update schema file
