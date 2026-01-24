@@ -242,8 +242,10 @@ download_update() {
     cd "$TEMP_DIR"
 
     # Download the repository as a tarball (no git needed, avoids caching)
+    # Strip .git suffix from REPO_URL for tarball download
+    local REPO_URL_CLEAN="${REPO_URL%.git}"
     # Add timestamp to URL to bypass any caching
-    local TARBALL_URL="${REPO_URL}/archive/refs/heads/${BRANCH}.tar.gz?$(date +%s)"
+    local TARBALL_URL="${REPO_URL_CLEAN}/archive/refs/heads/${BRANCH}.tar.gz?$(date +%s)"
     log_info "Fetching latest code from $BRANCH branch..."
 
     local DOWNLOAD_OK=false
