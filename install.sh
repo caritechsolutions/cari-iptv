@@ -911,11 +911,16 @@ CREATE TABLE IF NOT EXISTS `stream_sessions` (
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS `settings` (
-    `key` VARCHAR(100) PRIMARY KEY,
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `group` VARCHAR(50) NOT NULL DEFAULT 'general',
+    `key` VARCHAR(100) NOT NULL,
     `value` TEXT,
-    `type` ENUM('string', 'number', 'boolean', 'json') NOT NULL DEFAULT 'string',
-    `description` TEXT,
-    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    `type` ENUM('string', 'integer', 'boolean', 'json') NOT NULL DEFAULT 'string',
+    `description` VARCHAR(255) DEFAULT NULL,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `idx_group_key` (`group`, `key`),
+    INDEX `idx_group` (`group`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1041,15 +1046,26 @@ WHERE u.email = 'demo@example.com' AND p.slug = 'premium'
 ON DUPLICATE KEY UPDATE status = 'active';
 
 -- Insert system settings
-INSERT INTO settings (\`key\`, value, type, description) VALUES
-('platform_name', 'CARI-IPTV', 'string', 'Platform display name'),
-('platform_logo', '/assets/images/logo.png', 'string', 'Platform logo URL'),
-('support_email', 'support@example.com', 'string', 'Support email address'),
-('max_login_attempts', '5', 'number', 'Maximum failed login attempts before lockout'),
-('session_timeout', '3600', 'number', 'Session timeout in seconds'),
-('enable_registration', 'true', 'boolean', 'Allow new user registration'),
-('default_language', 'en', 'string', 'Default platform language'),
-('timezone', 'America/Jamaica', 'string', 'Platform timezone')
+INSERT INTO settings (\`group\`, \`key\`, value, type, description) VALUES
+('general', 'site_name', 'CARI-IPTV', 'string', 'Site name displayed in emails and UI'),
+('general', 'site_url', '', 'string', 'Base URL of the site'),
+('general', 'admin_email', 'admin@example.com', 'string', 'Administrator email for notifications'),
+('general', 'timezone', 'America/Jamaica', 'string', 'Platform timezone'),
+('general', 'default_language', 'en', 'string', 'Default platform language'),
+('smtp', 'enabled', '0', 'boolean', 'Enable SMTP email sending'),
+('smtp', 'host', '', 'string', 'SMTP server hostname'),
+('smtp', 'port', '587', 'integer', 'SMTP server port'),
+('smtp', 'encryption', 'tls', 'string', 'Encryption type: tls, ssl, or none'),
+('smtp', 'username', '', 'string', 'SMTP authentication username'),
+('smtp', 'password', '', 'string', 'SMTP authentication password'),
+('smtp', 'from_email', '', 'string', 'Default sender email address'),
+('smtp', 'from_name', 'CARI-IPTV', 'string', 'Default sender name'),
+('platform', 'platform_name', 'CARI-IPTV', 'string', 'Platform display name'),
+('platform', 'platform_logo', '/assets/images/logo.png', 'string', 'Platform logo URL'),
+('platform', 'support_email', 'support@example.com', 'string', 'Support email address'),
+('security', 'max_login_attempts', '5', 'integer', 'Maximum failed login attempts before lockout'),
+('security', 'session_timeout', '3600', 'integer', 'Session timeout in seconds'),
+('security', 'enable_registration', '1', 'boolean', 'Allow new user registration')
 ON DUPLICATE KEY UPDATE value = VALUES(value);
 
 -- Insert some analytics demo data
