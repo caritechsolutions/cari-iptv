@@ -54,6 +54,7 @@ use CariIPTV\Controllers\Admin\DashboardController;
 use CariIPTV\Controllers\Admin\ProfileController;
 use CariIPTV\Controllers\Admin\AdminUserController;
 use CariIPTV\Controllers\Admin\SettingsController;
+use CariIPTV\Controllers\Admin\ChannelController;
 
 // Initialize session
 Session::start();
@@ -107,9 +108,19 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/smtp', [SettingsController::class, 'updateSmtp']);
     $router->post('/settings/test-email', [SettingsController::class, 'testEmail']);
 
+    // Channel Management
+    $router->get('/channels', [ChannelController::class, 'index']);
+    $router->get('/channels/create', [ChannelController::class, 'create']);
+    $router->post('/channels/store', [ChannelController::class, 'store']);
+    $router->get('/channels/{id}/edit', [ChannelController::class, 'edit']);
+    $router->post('/channels/{id}/update', [ChannelController::class, 'update']);
+    $router->post('/channels/{id}/delete', [ChannelController::class, 'delete']);
+    $router->post('/channels/{id}/toggle-status', [ChannelController::class, 'toggleStatus']);
+    $router->get('/channels/{id}/remove-logo', [ChannelController::class, 'removeLogo']);
+    $router->post('/channels/bulk', [ChannelController::class, 'bulkAction']);
+
     // TODO: Add more routes as we build out the admin panel
-    // $router->get('/channels', [ChannelController::class, 'index']);
-    // $router->get('/channels/create', [ChannelController::class, 'create']);
+    // $router->get('/vod', [VodController::class, 'index']);
     // etc.
 });
 

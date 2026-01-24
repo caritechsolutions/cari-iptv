@@ -16,7 +16,7 @@ set -e
 # ============================================
 INSTALL_DIR="/var/www/cari-iptv"
 REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-BRANCH="claude/plan-rollout-strategy-eoaxF"
+BRANCH="claude/add-channels-page-I5a8f"
 BACKUP_ENABLED=false
 BACKUP_DIR="/var/backups/cari-iptv"
 WEB_USER="www-data"
@@ -438,6 +438,9 @@ fix_permissions() {
 
     # Create and set permissions for uploads directory
     mkdir -p "$INSTALL_DIR/public/uploads"
+    mkdir -p "$INSTALL_DIR/public/uploads/channels"
+    mkdir -p "$INSTALL_DIR/public/uploads/avatars"
+    mkdir -p "$INSTALL_DIR/public/uploads/logos"
     chown -R "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/public/uploads"
     chmod -R 775 "$INSTALL_DIR/public/uploads"
 

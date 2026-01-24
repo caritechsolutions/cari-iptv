@@ -1090,7 +1090,7 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="claude/plan-rollout-strategy-eoaxF"
+    BRANCH="claude/add-channels-page-I5a8f"
     TEMP_DIR=$(mktemp -d)
 
     log_info "Downloading application files from $BRANCH branch..."
@@ -1145,6 +1145,9 @@ install_application_files() {
 
     # Create uploads directory for logo and other uploads
     mkdir -p "$INSTALL_DIR/public/uploads"
+    mkdir -p "$INSTALL_DIR/public/uploads/channels"
+    mkdir -p "$INSTALL_DIR/public/uploads/avatars"
+    mkdir -p "$INSTALL_DIR/public/uploads/logos"
     chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR/public/uploads"
     chmod -R 775 "$INSTALL_DIR/public/uploads"
 
