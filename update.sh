@@ -355,17 +355,29 @@ CREATE TABLE IF NOT EXISTS _migrations (
 EOF
 
     # Clean up incomplete migrations before running
-    # Check for settings table migration - if table exists but empty, remove record to retry
+    # Check for settings table - if it exists but has wrong structure (missing group column), drop it
     SETTINGS_EXISTS=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='settings'" "$DB_NAME" 2>/dev/null || echo "0")
 
     if [ "$SETTINGS_EXISTS" = "1" ]; then
-        SETTINGS_COUNT=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
-            "SELECT COUNT(*) FROM settings" "$DB_NAME" 2>/dev/null || echo "0")
-        if [ "$SETTINGS_COUNT" = "0" ]; then
-            log_info "Detected incomplete settings migration - will retry"
+        # Check if the table has the 'group' column (our expected structure)
+        GROUP_COL_EXISTS=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='$DB_NAME' AND table_name='settings' AND column_name='group'" "$DB_NAME" 2>/dev/null || echo "0")
+
+        if [ "$GROUP_COL_EXISTS" = "0" ]; then
+            log_info "Settings table has old structure - dropping and recreating"
+            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "DROP TABLE settings" 2>/dev/null || true
             mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
                 "DELETE FROM _migrations WHERE filename LIKE '%settings%'" 2>/dev/null || true
+        else
+            # Table has correct structure - check if empty
+            SETTINGS_COUNT=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+                "SELECT COUNT(*) FROM settings" "$DB_NAME" 2>/dev/null || echo "0")
+            if [ "$SETTINGS_COUNT" = "0" ]; then
+                log_info "Detected incomplete settings migration - will retry"
+                mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
+                    "DELETE FROM _migrations WHERE filename LIKE '%settings%'" 2>/dev/null || true
+            fi
         fi
     fi
 
