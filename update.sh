@@ -334,6 +334,21 @@ CREATE TABLE IF NOT EXISTS _migrations (
 );
 EOF
 
+    # Clean up incomplete migrations before running
+    # Check for settings table migration - if table exists but empty, remove record to retry
+    SETTINGS_EXISTS=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='settings'" "$DB_NAME" 2>/dev/null || echo "0")
+
+    if [ "$SETTINGS_EXISTS" = "1" ]; then
+        SETTINGS_COUNT=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+            "SELECT COUNT(*) FROM settings" "$DB_NAME" 2>/dev/null || echo "0")
+        if [ "$SETTINGS_COUNT" = "0" ]; then
+            log_info "Detected incomplete settings migration - will retry"
+            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
+                "DELETE FROM _migrations WHERE filename LIKE '%settings%'" 2>/dev/null || true
+        fi
+    fi
+
     # Run pending migrations
     MIGRATION_COUNT=0
     for migration in $(ls -1 "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort); do
@@ -345,17 +360,24 @@ EOF
 
         if [ "$EXECUTED" = "0" ]; then
             log_info "Running migration: $FILENAME"
-            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1 || {
-                log_error "Migration failed: $FILENAME"
-                log_error "You may need to resolve this manually"
-                continue
-            }
 
-            # Record migration
+            # Run migration and capture output
+            MIGRATION_OUTPUT=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1)
+            MIGRATION_RESULT=$?
+
+            if [ $MIGRATION_RESULT -ne 0 ]; then
+                log_error "Migration failed: $FILENAME"
+                log_error "$MIGRATION_OUTPUT"
+                # Don't record failed migrations - they'll be retried next time
+                continue
+            fi
+
+            # Record migration only after successful execution
             mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
-                "INSERT INTO _migrations (filename) VALUES ('$FILENAME')" 2>/dev/null
+                "INSERT IGNORE INTO _migrations (filename) VALUES ('$FILENAME')" 2>/dev/null
 
             MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
+            log_info "Migration completed: $FILENAME"
         fi
     done
 
