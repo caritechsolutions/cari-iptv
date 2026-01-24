@@ -6,6 +6,8 @@
 namespace CariIPTV\Controllers\Admin;
 
 use CariIPTV\Services\AdminAuthService;
+use CariIPTV\Services\EmailService;
+use CariIPTV\Services\SettingsService;
 use CariIPTV\Core\Database;
 use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
@@ -166,12 +168,31 @@ class AuthController
         // Log activity
         $this->auth->logActivity(null, 'password_reset_requested', 'auth', 'admin_user', $user['id']);
 
-        // In production, you would send an email here
-        // For now, we'll display the reset link (remove in production!)
-        $resetUrl = "http://{$_SERVER['HTTP_HOST']}/admin/reset-password/{$resetToken}";
+        // Build reset URL
+        $settings = new SettingsService();
+        $siteUrl = $settings->get('site_url', '', 'general');
+        if (empty($siteUrl)) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $siteUrl = "{$protocol}://{$_SERVER['HTTP_HOST']}";
+        }
+        $resetUrl = rtrim($siteUrl, '/') . "/admin/reset-password/{$resetToken}";
 
-        // Store reset URL in session for display (DEVELOPMENT ONLY)
-        Session::flash('success', "Password reset link generated. In production, this would be emailed. Reset URL: {$resetUrl}");
+        // Try to send email via SMTP
+        $emailService = new EmailService();
+        $userName = $user['first_name'] ?: $user['username'];
+
+        if ($emailService->isConfigured()) {
+            if ($emailService->sendPasswordReset($user['email'], $userName, $resetUrl)) {
+                Session::flash('success', 'Password reset instructions have been sent to your email address.');
+            } else {
+                // Email failed, show the link directly (for debugging)
+                Session::flash('warning', 'Could not send email. Reset link: ' . $resetUrl);
+            }
+        } else {
+            // SMTP not configured, show the link directly (development mode)
+            Session::flash('success', "SMTP not configured. Reset link: {$resetUrl}");
+        }
+
         Response::redirect('/admin/forgot-password');
     }
 

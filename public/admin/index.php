@@ -53,6 +53,7 @@ use CariIPTV\Controllers\Admin\AuthController;
 use CariIPTV\Controllers\Admin\DashboardController;
 use CariIPTV\Controllers\Admin\ProfileController;
 use CariIPTV\Controllers\Admin\AdminUserController;
+use CariIPTV\Controllers\Admin\SettingsController;
 
 // Initialize session
 Session::start();
@@ -99,6 +100,12 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/admins/{id}/delete', [AdminUserController::class, 'delete']);
     $router->post('/admins/{id}/toggle-status', [AdminUserController::class, 'toggleStatus']);
     $router->post('/admins/{id}/reset-password', [AdminUserController::class, 'resetPassword']);
+
+    // Settings
+    $router->get('/settings', [SettingsController::class, 'index']);
+    $router->post('/settings/general', [SettingsController::class, 'updateGeneral']);
+    $router->post('/settings/smtp', [SettingsController::class, 'updateSmtp']);
+    $router->post('/settings/test-email', [SettingsController::class, 'testEmail']);
 
     // TODO: Add more routes as we build out the admin panel
     // $router->get('/channels', [ChannelController::class, 'index']);
