@@ -361,12 +361,13 @@ EOF
         if [ "$EXECUTED" = "0" ]; then
             log_info "Running migration: $FILENAME"
 
-            # Run migration and capture output (|| true prevents set -e from exiting)
-            MIGRATION_OUTPUT=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1) || true
-            MIGRATION_RESULT=${PIPESTATUS[0]}
+            # Temporarily disable exit on error for migration
+            set +e
+            MIGRATION_OUTPUT=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1)
+            MIGRATION_RESULT=$?
+            set -e
 
-            # Check if output contains error indicators
-            if echo "$MIGRATION_OUTPUT" | grep -qi "error"; then
+            if [ $MIGRATION_RESULT -ne 0 ]; then
                 log_error "Migration failed: $FILENAME"
                 log_error "$MIGRATION_OUTPUT"
                 # Don't record failed migrations - they'll be retried next time
