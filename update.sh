@@ -16,7 +16,7 @@ set -e
 # ============================================
 INSTALL_DIR="/var/www/cari-iptv"
 REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-BRANCH="main"
+BRANCH="claude/plan-rollout-strategy-eoaxF"
 BACKUP_ENABLED=false
 BACKUP_DIR="/var/backups/cari-iptv"
 WEB_USER="www-data"
@@ -134,6 +134,13 @@ detect_web_user() {
         WEB_USER=$(stat -c '%U' "$INSTALL_DIR/public/index.php" 2>/dev/null || echo "www-data")
         WEB_GROUP=$(stat -c '%G' "$INSTALL_DIR/public/index.php" 2>/dev/null || echo "www-data")
     fi
+
+    # If detected as root, use www-data instead (PHP-FPM runs as www-data)
+    if [ "$WEB_USER" = "root" ]; then
+        WEB_USER="www-data"
+        WEB_GROUP="www-data"
+    fi
+
     log_info "Web user: $WEB_USER:$WEB_GROUP"
 }
 
@@ -243,11 +250,29 @@ download_update() {
 
     # Clone the repository
     log_info "Fetching latest code from $BRANCH branch..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" cari-iptv 2>&1 | grep -v "^Cloning" || {
+    log_info "Repository: $REPO_URL"
+    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" cari-iptv 2>&1; then
         log_error "Failed to download update from repository"
         rm -rf "$TEMP_DIR"
         exit 1
-    }
+    fi
+
+    # Verify clone succeeded
+    if [ ! -f "cari-iptv/public/index.php" ]; then
+        log_error "Download succeeded but files are missing"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+
+    # Show what was downloaded
+    log_info "Downloaded files:"
+    ls -la cari-iptv/
+
+    # Show database migrations
+    if [ -d "cari-iptv/database/migrations" ]; then
+        log_info "Migration files found:"
+        ls -la cari-iptv/database/migrations/
+    fi
 
     # Get new version
     if [ -f "cari-iptv/version.txt" ]; then
@@ -256,7 +281,7 @@ download_update() {
         NEW_VERSION="$(date +%Y.%m.%d)"
     fi
 
-    log_info "New version: $NEW_VERSION"
+    log_info "Download complete - Version: $NEW_VERSION"
 }
 
 apply_update() {
@@ -264,30 +289,34 @@ apply_update() {
 
     cd "$TEMP_DIR/cari-iptv"
 
-    # Files/directories to preserve (not overwrite)
-    PRESERVE=(
-        ".env"
-        "storage/logs"
-        "storage/cache"
-        "storage/sessions"
-        "INSTALL_CREDENTIALS.txt"
-    )
-
     # Update application files
     log_info "Updating application files..."
 
-    # Copy new public files
-    rsync -a --exclude='.htaccess' public/ "$INSTALL_DIR/public/"
+    # Use rsync if available, otherwise fall back to cp
+    if command -v rsync &> /dev/null; then
+        # Copy new public files (preserve .htaccess if exists)
+        rsync -a --exclude='.htaccess' public/ "$INSTALL_DIR/public/"
+        rsync -a src/ "$INSTALL_DIR/src/"
+        rsync -a templates/ "$INSTALL_DIR/templates/"
+    else
+        # Fallback to cp
+        cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
+        cp -r src/* "$INSTALL_DIR/src/" 2>/dev/null || true
+        cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
+    fi
 
-    # Copy new source files
-    rsync -a src/ "$INSTALL_DIR/src/"
-
-    # Copy new templates
-    rsync -a templates/ "$INSTALL_DIR/templates/"
-
-    # Copy new database migrations (if any)
+    # Copy new database migrations (if any) - delete old ones first to ensure clean copy
     if [ -d "database/migrations" ]; then
-        rsync -a database/migrations/ "$INSTALL_DIR/database/migrations/"
+        log_info "Found migrations in download, copying to $INSTALL_DIR/database/migrations/"
+        rm -rf "$INSTALL_DIR/database/migrations"
+        mkdir -p "$INSTALL_DIR/database/migrations"
+        cp -rv database/migrations/* "$INSTALL_DIR/database/migrations/"
+        log_info "Migration file content check (line 19):"
+        sed -n '19p' "$INSTALL_DIR/database/migrations/002_create_settings_table.sql" 2>/dev/null || echo "File not found"
+    else
+        log_warn "No database/migrations directory found in download"
+        log_info "Current directory: $(pwd)"
+        log_info "Contents: $(ls -la)"
     fi
 
     # Update schema file
@@ -332,6 +361,33 @@ CREATE TABLE IF NOT EXISTS _migrations (
 );
 EOF
 
+    # Clean up incomplete migrations before running
+    # Check for settings table - if it exists but has wrong structure (missing group column), drop it
+    SETTINGS_EXISTS=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='settings'" "$DB_NAME" 2>/dev/null || echo "0")
+
+    if [ "$SETTINGS_EXISTS" = "1" ]; then
+        # Check if the table has the 'group' column (our expected structure)
+        GROUP_COL_EXISTS=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='$DB_NAME' AND table_name='settings' AND column_name='group'" "$DB_NAME" 2>/dev/null || echo "0")
+
+        if [ "$GROUP_COL_EXISTS" = "0" ]; then
+            log_info "Settings table has old structure - dropping and recreating"
+            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "DROP TABLE settings" 2>/dev/null || true
+            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
+                "DELETE FROM _migrations WHERE filename LIKE '%settings%'" 2>/dev/null || true
+        else
+            # Table has correct structure - check if empty
+            SETTINGS_COUNT=$(mysql -u "$DB_USER" -p"$DB_PASS" -N -e \
+                "SELECT COUNT(*) FROM settings" "$DB_NAME" 2>/dev/null || echo "0")
+            if [ "$SETTINGS_COUNT" = "0" ]; then
+                log_info "Detected incomplete settings migration - will retry"
+                mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
+                    "DELETE FROM _migrations WHERE filename LIKE '%settings%'" 2>/dev/null || true
+            fi
+        fi
+    fi
+
     # Run pending migrations
     MIGRATION_COUNT=0
     for migration in $(ls -1 "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort); do
@@ -343,17 +399,26 @@ EOF
 
         if [ "$EXECUTED" = "0" ]; then
             log_info "Running migration: $FILENAME"
-            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1 || {
-                log_error "Migration failed: $FILENAME"
-                log_error "You may need to resolve this manually"
-                continue
-            }
 
-            # Record migration
+            # Temporarily disable exit on error for migration
+            set +e
+            MIGRATION_OUTPUT=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$migration" 2>&1)
+            MIGRATION_RESULT=$?
+            set -e
+
+            if [ $MIGRATION_RESULT -ne 0 ]; then
+                log_error "Migration failed: $FILENAME"
+                log_error "$MIGRATION_OUTPUT"
+                # Don't record failed migrations - they'll be retried next time
+                continue
+            fi
+
+            # Record migration only after successful execution
             mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
-                "INSERT INTO _migrations (filename) VALUES ('$FILENAME')" 2>/dev/null
+                "INSERT IGNORE INTO _migrations (filename) VALUES ('$FILENAME')" 2>/dev/null || true
 
             MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
+            log_info "Migration completed: $FILENAME"
         fi
     done
 
@@ -370,6 +435,11 @@ fix_permissions() {
     chown -R "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR"
     chmod -R 755 "$INSTALL_DIR"
     chmod -R 775 "$INSTALL_DIR/storage"
+
+    # Create and set permissions for uploads directory
+    mkdir -p "$INSTALL_DIR/public/uploads"
+    chown -R "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/public/uploads"
+    chmod -R 775 "$INSTALL_DIR/public/uploads"
 
     # Make scripts executable
     chmod +x "$INSTALL_DIR/install.sh" 2>/dev/null || true

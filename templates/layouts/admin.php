@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title><?= htmlspecialchars($pageTitle ?? 'Admin') ?> - CARI-IPTV Admin</title>
+    <title><?= htmlspecialchars($pageTitle ?? 'Admin') ?> - <?= htmlspecialchars($siteName ?? 'CARI-IPTV') ?> Admin</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -105,6 +105,13 @@
             justify-content: center;
             font-weight: 700;
             font-size: 1.25rem;
+        }
+
+        .sidebar-logo-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            object-fit: contain;
         }
 
         .sidebar-brand {
@@ -282,6 +289,13 @@
             justify-content: center;
             font-weight: 600;
             font-size: 0.875rem;
+        }
+
+        .user-avatar-img {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            object-fit: cover;
         }
 
         .user-info {
@@ -490,6 +504,24 @@
             background: var(--border-color);
         }
 
+        .btn-warning {
+            background: var(--warning);
+            color: #000;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
         .btn-sm {
             padding: 0.375rem 0.75rem;
             font-size: 0.8rem;
@@ -624,8 +656,12 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div class="sidebar-logo">C</div>
-                <div class="sidebar-brand">CARI<span>-IPTV</span></div>
+                <?php if (!empty($siteLogo)): ?>
+                    <img src="<?= htmlspecialchars($siteLogo) ?>" alt="<?= htmlspecialchars($siteName ?? 'Logo') ?>" class="sidebar-logo-img">
+                <?php else: ?>
+                    <div class="sidebar-logo"><?= strtoupper(substr($siteName ?? 'C', 0, 1)) ?></div>
+                <?php endif; ?>
+                <div class="sidebar-brand"><?= htmlspecialchars($siteName ?? 'CARI-IPTV') ?></div>
             </div>
 
             <nav class="sidebar-nav">
@@ -683,17 +719,9 @@
 
                 <div class="nav-section">
                     <div class="nav-section-title">System</div>
-                    <a href="/admin/admins" class="nav-item">
-                        <i class="lucide-shield"></i>
-                        <span>Admin Users</span>
-                    </a>
                     <a href="/admin/activity" class="nav-item">
                         <i class="lucide-history"></i>
                         <span>Activity Log</span>
-                    </a>
-                    <a href="/admin/settings" class="nav-item">
-                        <i class="lucide-settings"></i>
-                        <span>Settings</span>
                     </a>
                 </div>
             </nav>
@@ -725,16 +753,24 @@
                                 <div class="user-name"><?= htmlspecialchars($user['first_name'] ?? 'Admin') ?></div>
                                 <div class="user-role"><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $user['role'] ?? 'admin'))) ?></div>
                             </div>
-                            <div class="user-avatar">
-                                <?= strtoupper(substr($user['first_name'] ?? 'A', 0, 1)) ?>
-                            </div>
+                            <?php if (!empty($user['avatar'])): ?>
+                                <img src="<?= htmlspecialchars($user['avatar']) ?>" class="user-avatar-img" alt="Avatar">
+                            <?php else: ?>
+                                <div class="user-avatar">
+                                    <?= strtoupper(substr($user['first_name'] ?? 'A', 0, 1)) ?>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         <div class="dropdown-menu">
-                            <a href="/admin/profile" class="dropdown-item">
+                            <a href="/admin/profile" class="dropdown-item <?= ($pageTitle ?? '') === 'My Profile' ? 'active' : '' ?>">
                                 <i class="lucide-user"></i>
-                                <span>Profile</span>
+                                <span>My Profile</span>
                             </a>
-                            <a href="/admin/settings" class="dropdown-item">
+                            <a href="/admin/admins" class="dropdown-item <?= ($pageTitle ?? '') === 'Admin Users' ? 'active' : '' ?>">
+                                <i class="lucide-shield"></i>
+                                <span>Admin Users</span>
+                            </a>
+                            <a href="/admin/settings" class="dropdown-item <?= ($pageTitle ?? '') === 'Settings' ? 'active' : '' ?>">
                                 <i class="lucide-settings"></i>
                                 <span>Settings</span>
                             </a>
@@ -754,6 +790,7 @@
                 // Flash messages
                 $success = \CariIPTV\Core\Session::getFlash('success');
                 $error = \CariIPTV\Core\Session::getFlash('error');
+                $warning = \CariIPTV\Core\Session::getFlash('warning');
 
                 if ($success): ?>
                     <div class="alert alert-success">
@@ -766,6 +803,13 @@
                     <div class="alert alert-error">
                         <i class="lucide-alert-circle"></i>
                         <?= htmlspecialchars($error) ?>
+                    </div>
+                <?php endif;
+
+                if ($warning): ?>
+                    <div class="alert alert-warning">
+                        <i class="lucide-alert-triangle"></i>
+                        <?= htmlspecialchars($warning) ?>
                     </div>
                 <?php endif; ?>
 

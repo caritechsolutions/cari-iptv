@@ -1,6 +1,6 @@
 <div class="page-header">
     <h1 class="page-title">Dashboard</h1>
-    <p class="page-subtitle">Welcome back! Here's what's happening with your platform.</p>
+    <p class="page-subtitle">Welcome back, <?= htmlspecialchars($user['first_name'] ?? 'Admin') ?>! Here's what's happening with your platform.</p>
 </div>
 
 <!-- Stats Grid -->
@@ -201,18 +201,18 @@
                                 </td>
                             </tr>
                         <?php else: ?>
-                            <?php foreach ($recentUsers as $user): ?>
+                            <?php foreach ($recentUsers as $recentUser): ?>
                                 <tr>
                                     <td>
-                                        <div class="text-sm"><?= htmlspecialchars($user['first_name'] . ' ' . $user['last_name']) ?></div>
-                                        <div class="text-xs text-muted"><?= htmlspecialchars($user['email']) ?></div>
+                                        <div class="text-sm"><?= htmlspecialchars($recentUser['first_name'] . ' ' . $recentUser['last_name']) ?></div>
+                                        <div class="text-xs text-muted"><?= htmlspecialchars($recentUser['email']) ?></div>
                                     </td>
                                     <td class="text-sm">
-                                        <?= htmlspecialchars($user['package_name'] ?? 'None') ?>
+                                        <?= htmlspecialchars($recentUser['package_name'] ?? 'None') ?>
                                     </td>
                                     <td>
-                                        <span class="badge badge-<?= $user['status'] === 'active' ? 'success' : ($user['status'] === 'pending' ? 'warning' : 'danger') ?>">
-                                            <?= ucfirst($user['status']) ?>
+                                        <span class="badge badge-<?= $recentUser['status'] === 'active' ? 'success' : ($recentUser['status'] === 'pending' ? 'warning' : 'danger') ?>">
+                                            <?= ucfirst($recentUser['status']) ?>
                                         </span>
                                     </td>
                                 </tr>

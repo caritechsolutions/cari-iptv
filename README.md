@@ -1,6 +1,62 @@
-# cari-iptv
-Full IPTV and OTT Platform with enhanced features
+# CARI-IPTV Platform
 
+Full IPTV and OTT Platform with enhanced features for the Caribbean market.
+
+## Quick Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/caritechsolutions/cari-iptv/main/install.sh | sudo bash
+```
+
+## Quick Update
+
+```bash
+curl -sSL https://raw.githubusercontent.com/caritechsolutions/cari-iptv/main/update.sh | sudo bash
+```
+
+---
+
+## Current Status
+
+### Completed Features
+
+#### Admin Panel Foundation
+- **Dashboard** - Statistics overview with charts, recent activity, active streams
+- **Admin Authentication** - Secure login with session management
+- **Forgot Password** - Token-based password reset with email
+- **Force Password Change** - Require password change on first login
+
+#### Admin User Management
+- **CRUD Operations** - Create, edit, delete admin users
+- **Role-Based Access** - Super Admin, Admin, Manager, Support, Viewer roles
+- **Per-User Permissions** - Granular permission overrides
+- **Password Reset** - Admin can reset user passwords
+- **Account Status** - Enable/disable admin accounts
+
+#### Settings System
+- **General Settings** - Site name, URL, admin email
+- **Site Logo** - Upload custom logo for branding
+- **SMTP Configuration** - Email settings with test functionality
+- **Settings stored in database** - Key-value store with groups
+
+#### Email Service
+- **Pure PHP SMTP** - No external dependencies
+- **TLS/SSL Support** - Secure email transmission
+- **HTML Templates** - Styled password reset and test emails
+- **RFC 822 Compliant** - Proper CRLF line endings
+
+#### Admin Profiles
+- **Profile Page** - View and edit admin profile
+- **Avatar Upload** - Custom profile pictures
+- **Password Change** - Self-service password updates
+
+#### Infrastructure
+- **Curl-Based Installation** - Single command install
+- **Automatic Updates** - Pull latest code via update script
+- **Database Migrations** - Versioned schema changes
+- **Nginx Configuration** - Optimized for PHP-FPM
+
+---
 
 # CARI-IPTV Platform Development Guide
 
@@ -455,33 +511,90 @@ POST   /api/analytics/event     # Log playback event
 
 ## Development Phases
 
-### PHASE 0: Project Setup
+### PHASE 0: Project Setup ✅ COMPLETE
 **Goal: Foundation ready for development**
 
-- [ ] **0.1** Initialize project folder structure
-- [ ] **0.2** Create database schema (schema.sql)
-- [ ] **0.3** Set up Database.php connection class
-- [ ] **0.4** Create simple Router.php
-- [ ] **0.5** Create Request.php and Response.php helpers
-- [ ] **0.6** Set up basic config files
-- [ ] **0.7** Create main layout template
-- [ ] **0.8** Test: PHP serves a basic page
+- [x] **0.1** Initialize project folder structure
+- [x] **0.2** Create database schema (schema.sql)
+- [x] **0.3** Set up Database.php connection class
+- [x] **0.4** Create simple Router.php
+- [x] **0.5** Create Request.php and Response.php helpers
+- [x] **0.6** Set up basic config files
+- [x] **0.7** Create main layout template
+- [x] **0.8** Test: PHP serves a basic page
 
 ---
 
-### PHASE 1: Authentication System
-**Goal: Users can register, login, and manage sessions**
+### PHASE 1: Admin Authentication ✅ COMPLETE
+**Goal: Admin users can login, logout, and manage sessions**
 
-- [ ] **1.1** Create users table migration
-- [ ] **1.2** Create User model
-- [ ] **1.3** Build AuthService (register, login, logout, password hashing)
-- [ ] **1.4** Create session management (Session.php)
-- [ ] **1.5** Build AuthController (API endpoints)
-- [ ] **1.6** Build AuthMiddleware (protect routes)
-- [ ] **1.7** Create login page template
-- [ ] **1.8** Create registration page template
-- [ ] **1.9** JavaScript: API client helper (api.js)
-- [ ] **1.10** Test: Full auth flow works
+- [x] **1.1** Create admin_users table
+- [x] **1.2** Create AdminUser model
+- [x] **1.3** Build AdminAuthService (login, logout, password hashing)
+- [x] **1.4** Create session management (Session.php)
+- [x] **1.5** Build AuthController for admin
+- [x] **1.6** Build admin authentication middleware
+- [x] **1.7** Create admin login page template
+- [x] **1.8** Create forgot password flow with email
+- [x] **1.9** Create password reset flow
+- [x] **1.10** Force password change on first login
+- [x] **1.11** Test: Full admin auth flow works
+
+---
+
+### PHASE 1.5: Admin User Management ✅ COMPLETE
+**Goal: Super admins can manage admin users and permissions**
+
+- [x] **1.5.1** Create admin_permissions table
+- [x] **1.5.2** Create admin_user_permissions table
+- [x] **1.5.3** Build AdminUserController (CRUD)
+- [x] **1.5.4** Create admin user list page
+- [x] **1.5.5** Create admin user form (create/edit)
+- [x] **1.5.6** Role-based access (super_admin, admin, manager, support, viewer)
+- [x] **1.5.7** Per-user permission overrides
+- [x] **1.5.8** Password reset by admin
+- [x] **1.5.9** Test: Admin user management works
+
+---
+
+### PHASE 1.6: Settings System ✅ COMPLETE
+**Goal: Configurable platform settings via admin UI**
+
+- [x] **1.6.1** Create settings table with group/key structure
+- [x] **1.6.2** Build SettingsService
+- [x] **1.6.3** Build SettingsController
+- [x] **1.6.4** General settings (site name, URL, admin email)
+- [x] **1.6.5** Site logo upload
+- [x] **1.6.6** SMTP configuration
+- [x] **1.6.7** Test email functionality
+- [x] **1.6.8** Settings displayed in admin header
+- [x] **1.6.9** Test: Settings system works
+
+---
+
+### PHASE 1.7: Admin Profiles ✅ COMPLETE
+**Goal: Admin users can manage their own profile**
+
+- [x] **1.7.1** Create profile page
+- [x] **1.7.2** Avatar upload functionality
+- [x] **1.7.3** Password change (self-service)
+- [x] **1.7.4** Profile displayed in header dropdown
+- [x] **1.7.5** Test: Profile management works
+
+---
+
+### PHASE 2: User Profiles
+**Goal: Multiple profiles per account with parental controls**
+
+- [ ] **2.1** Create profiles table
+- [ ] **2.2** Create Profile model
+- [ ] **2.3** Build ProfileService
+- [ ] **2.4** Build ProfileController (API)
+- [ ] **2.5** Create profile selection page
+- [ ] **2.6** Create profile management page
+- [ ] **2.7** Add parental PIN verification
+- [ ] **2.8** Store active profile in session
+- [ ] **2.9** Test: Multi-profile flow works
 
 ---
 

@@ -911,11 +911,16 @@ CREATE TABLE IF NOT EXISTS `stream_sessions` (
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS `settings` (
-    `key` VARCHAR(100) PRIMARY KEY,
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `group` VARCHAR(50) NOT NULL DEFAULT 'general',
+    `key` VARCHAR(100) NOT NULL,
     `value` TEXT,
-    `type` ENUM('string', 'number', 'boolean', 'json') NOT NULL DEFAULT 'string',
-    `description` TEXT,
-    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    `type` ENUM('string', 'integer', 'boolean', 'json') NOT NULL DEFAULT 'string',
+    `description` VARCHAR(255) DEFAULT NULL,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `idx_group_key` (`group`, `key`),
+    INDEX `idx_group` (`group`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1041,15 +1046,26 @@ WHERE u.email = 'demo@example.com' AND p.slug = 'premium'
 ON DUPLICATE KEY UPDATE status = 'active';
 
 -- Insert system settings
-INSERT INTO settings (\`key\`, value, type, description) VALUES
-('platform_name', 'CARI-IPTV', 'string', 'Platform display name'),
-('platform_logo', '/assets/images/logo.png', 'string', 'Platform logo URL'),
-('support_email', 'support@example.com', 'string', 'Support email address'),
-('max_login_attempts', '5', 'number', 'Maximum failed login attempts before lockout'),
-('session_timeout', '3600', 'number', 'Session timeout in seconds'),
-('enable_registration', 'true', 'boolean', 'Allow new user registration'),
-('default_language', 'en', 'string', 'Default platform language'),
-('timezone', 'America/Jamaica', 'string', 'Platform timezone')
+INSERT INTO settings (\`group\`, \`key\`, value, type, description) VALUES
+('general', 'site_name', 'CARI-IPTV', 'string', 'Site name displayed in emails and UI'),
+('general', 'site_url', '', 'string', 'Base URL of the site'),
+('general', 'admin_email', 'admin@example.com', 'string', 'Administrator email for notifications'),
+('general', 'timezone', 'America/Jamaica', 'string', 'Platform timezone'),
+('general', 'default_language', 'en', 'string', 'Default platform language'),
+('smtp', 'enabled', '0', 'boolean', 'Enable SMTP email sending'),
+('smtp', 'host', '', 'string', 'SMTP server hostname'),
+('smtp', 'port', '587', 'integer', 'SMTP server port'),
+('smtp', 'encryption', 'tls', 'string', 'Encryption type: tls, ssl, or none'),
+('smtp', 'username', '', 'string', 'SMTP authentication username'),
+('smtp', 'password', '', 'string', 'SMTP authentication password'),
+('smtp', 'from_email', '', 'string', 'Default sender email address'),
+('smtp', 'from_name', 'CARI-IPTV', 'string', 'Default sender name'),
+('platform', 'platform_name', 'CARI-IPTV', 'string', 'Platform display name'),
+('platform', 'platform_logo', '/assets/images/logo.png', 'string', 'Platform logo URL'),
+('platform', 'support_email', 'support@example.com', 'string', 'Support email address'),
+('security', 'max_login_attempts', '5', 'integer', 'Maximum failed login attempts before lockout'),
+('security', 'session_timeout', '3600', 'integer', 'Session timeout in seconds'),
+('security', 'enable_registration', '1', 'boolean', 'Allow new user registration')
 ON DUPLICATE KEY UPDATE value = VALUES(value);
 
 -- Insert some analytics demo data
@@ -1074,17 +1090,27 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="main"
+    BRANCH="claude/plan-rollout-strategy-eoaxF"
     TEMP_DIR=$(mktemp -d)
 
-    log_info "Downloading application files..."
+    log_info "Downloading application files from $BRANCH branch..."
 
     # Clone the repository
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR/cari-iptv" 2>&1 | grep -v "^Cloning" || {
+    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR/cari-iptv" >/dev/null 2>&1; then
         log_error "Failed to download application files"
+        log_error "Please check your internet connection and try again"
         rm -rf "$TEMP_DIR"
         exit 1
-    }
+    fi
+
+    # Verify clone succeeded
+    if [ ! -f "$TEMP_DIR/cari-iptv/public/index.php" ]; then
+        log_error "Download succeeded but files are missing"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+
+    log_info "Download complete"
 
     # Copy application files to install directory
     log_info "Installing files to $INSTALL_DIR..."
@@ -1116,6 +1142,11 @@ install_application_files() {
     chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR"
     chmod -R 755 "$INSTALL_DIR"
     chmod -R 775 "$INSTALL_DIR/storage"
+
+    # Create uploads directory for logo and other uploads
+    mkdir -p "$INSTALL_DIR/public/uploads"
+    chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR/public/uploads"
+    chmod -R 775 "$INSTALL_DIR/public/uploads"
 
     log_info "Application files installed successfully"
 }

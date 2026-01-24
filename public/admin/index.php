@@ -51,6 +51,9 @@ use CariIPTV\Core\Session;
 use CariIPTV\Middleware\AdminAuthMiddleware;
 use CariIPTV\Controllers\Admin\AuthController;
 use CariIPTV\Controllers\Admin\DashboardController;
+use CariIPTV\Controllers\Admin\ProfileController;
+use CariIPTV\Controllers\Admin\AdminUserController;
+use CariIPTV\Controllers\Admin\SettingsController;
 
 // Initialize session
 Session::start();
@@ -62,10 +65,14 @@ $router = new Router();
 $router->addMiddleware('auth', [AdminAuthMiddleware::class, 'handle']);
 $router->addMiddleware('guest', [AdminAuthMiddleware::class, 'guest']);
 
-// Guest routes (login)
+// Guest routes (login, forgot password)
 $router->group(['prefix' => 'admin', 'middleware' => ['guest']], function ($router) {
     $router->get('/login', [AuthController::class, 'showLogin']);
     $router->post('/login', [AuthController::class, 'login']);
+    $router->get('/forgot-password', [AuthController::class, 'showForgotPassword']);
+    $router->post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    $router->get('/reset-password/{token}', [AuthController::class, 'showResetPassword']);
+    $router->post('/reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // Authenticated admin routes
@@ -76,6 +83,29 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
 
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
+
+    // Profile
+    $router->get('/profile', [ProfileController::class, 'index']);
+    $router->post('/profile/update', [ProfileController::class, 'update']);
+    $router->post('/profile/password', [ProfileController::class, 'changePassword']);
+    $router->post('/profile/avatar', [ProfileController::class, 'uploadAvatar']);
+    $router->get('/profile/avatar/remove', [ProfileController::class, 'removeAvatar']);
+
+    // Admin Users Management
+    $router->get('/admins', [AdminUserController::class, 'index']);
+    $router->get('/admins/create', [AdminUserController::class, 'create']);
+    $router->post('/admins/store', [AdminUserController::class, 'store']);
+    $router->get('/admins/{id}/edit', [AdminUserController::class, 'edit']);
+    $router->post('/admins/{id}/update', [AdminUserController::class, 'update']);
+    $router->post('/admins/{id}/delete', [AdminUserController::class, 'delete']);
+    $router->post('/admins/{id}/toggle-status', [AdminUserController::class, 'toggleStatus']);
+    $router->post('/admins/{id}/reset-password', [AdminUserController::class, 'resetPassword']);
+
+    // Settings
+    $router->get('/settings', [SettingsController::class, 'index']);
+    $router->post('/settings/general', [SettingsController::class, 'updateGeneral']);
+    $router->post('/settings/smtp', [SettingsController::class, 'updateSmtp']);
+    $router->post('/settings/test-email', [SettingsController::class, 'testEmail']);
 
     // TODO: Add more routes as we build out the admin panel
     // $router->get('/channels', [ChannelController::class, 'index']);
