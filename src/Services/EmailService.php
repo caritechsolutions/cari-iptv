@@ -220,6 +220,10 @@ class EmailService
 
         // Build email headers and body
         $contentType = $isHtml ? 'text/html' : 'text/plain';
+
+        // Normalize line endings in body to CRLF (required by SMTP RFC 822)
+        $body = str_replace(["\r\n", "\r", "\n"], "\r\n", $body);
+
         $message = "From: {$fromName} <{$fromEmail}>\r\n";
         $message .= "To: {$to}\r\n";
         $message .= "Subject: {$subject}\r\n";
