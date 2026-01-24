@@ -246,9 +246,10 @@ install_dependencies_debian() {
     log_info "Installing MySQL Server..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mysql-server
 
-    # Install GeoIP databases
+    # Install GeoIP databases (optional, don't fail if unavailable)
     log_info "Installing GeoIP databases..."
-    apt-get install -y -qq geoip-database geoip-database-extra || true
+    apt-get install -y -qq geoip-database || true
+    apt-get install -y -qq geoip-database-extra 2>/dev/null || true
 }
 
 install_dependencies_rhel() {
@@ -321,8 +322,9 @@ configure_mysql() {
 -- Create database
 CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Create user and grant privileges
+-- Create user if not exists, then set/update password (idempotent)
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
+ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
