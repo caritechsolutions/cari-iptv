@@ -227,6 +227,7 @@ install_dependencies_debian() {
         libnginx-mod-http-geoip2 || apt-get install -y -qq nginx
 
     # Install PHP and extensions
+    # Note: php-json is built into PHP 8.x core, no separate package needed
     log_info "Installing PHP ${PHP_VERSION}..."
     apt-get install -y -qq \
         php${PHP_VERSION}-fpm \
@@ -238,7 +239,6 @@ install_dependencies_debian() {
         php${PHP_VERSION}-gd \
         php${PHP_VERSION}-intl \
         php${PHP_VERSION}-bcmath \
-        php${PHP_VERSION}-json \
         php${PHP_VERSION}-opcache \
         php${PHP_VERSION}-readline
 
@@ -246,9 +246,10 @@ install_dependencies_debian() {
     log_info "Installing MySQL Server..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mysql-server
 
-    # Install GeoIP databases
+    # Install GeoIP databases (optional, don't fail if unavailable)
     log_info "Installing GeoIP databases..."
-    apt-get install -y -qq geoip-database geoip-database-extra || true
+    apt-get install -y -qq geoip-database || true
+    apt-get install -y -qq geoip-database-extra 2>/dev/null || true
 }
 
 install_dependencies_rhel() {
@@ -321,8 +322,9 @@ configure_mysql() {
 -- Create database
 CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Create user and grant privileges
+-- Create user if not exists, then set/update password (idempotent)
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
+ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
@@ -1071,9 +1073,51 @@ EOF
 install_application_files() {
     log_step "Installing Application Files"
 
-    # This will be called from the main script
-    # Application files are created separately for clarity
-    log_info "Creating application files..."
+    REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
+    BRANCH="main"
+    TEMP_DIR=$(mktemp -d)
+
+    log_info "Downloading application files..."
+
+    # Clone the repository
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR/cari-iptv" 2>&1 | grep -v "^Cloning" || {
+        log_error "Failed to download application files"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    }
+
+    # Copy application files to install directory
+    log_info "Installing files to $INSTALL_DIR..."
+
+    # Copy PHP source files
+    cp -r "$TEMP_DIR/cari-iptv/src/"* "$INSTALL_DIR/src/" 2>/dev/null || true
+    cp -r "$TEMP_DIR/cari-iptv/public/"* "$INSTALL_DIR/public/" 2>/dev/null || true
+    cp -r "$TEMP_DIR/cari-iptv/templates/"* "$INSTALL_DIR/templates/" 2>/dev/null || true
+
+    # Copy config files (don't overwrite .env if exists)
+    if [ -d "$TEMP_DIR/cari-iptv/src/Config" ]; then
+        cp -r "$TEMP_DIR/cari-iptv/src/Config/"* "$INSTALL_DIR/src/Config/" 2>/dev/null || true
+    fi
+
+    # Copy version file
+    cp "$TEMP_DIR/cari-iptv/version.txt" "$INSTALL_DIR/" 2>/dev/null || echo "1.0.0" > "$INSTALL_DIR/version.txt"
+
+    # Copy composer.json if exists
+    cp "$TEMP_DIR/cari-iptv/composer.json" "$INSTALL_DIR/" 2>/dev/null || true
+
+    # Copy update script
+    cp "$TEMP_DIR/cari-iptv/update.sh" "$INSTALL_DIR/" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
+
+    # Clean up
+    rm -rf "$TEMP_DIR"
+
+    # Fix permissions
+    chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR"
+    chmod -R 755 "$INSTALL_DIR"
+    chmod -R 775 "$INSTALL_DIR/storage"
+
+    log_info "Application files installed successfully"
 }
 
 save_credentials() {
@@ -1190,12 +1234,9 @@ main() {
     configure_php
     create_directory_structure
     configure_nginx
+    install_application_files
     create_database_schema
     create_seed_data
-
-    # Create application files (called from external script or embedded)
-    # The PHP files will be created by a companion script
-
     save_credentials
     print_completion
 }
