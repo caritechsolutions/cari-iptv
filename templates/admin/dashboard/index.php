@@ -1,6 +1,6 @@
 <div class="page-header">
     <h1 class="page-title">Dashboard</h1>
-    <p class="page-subtitle">Welcome back! Here's what's happening with your platform.</p>
+    <p class="page-subtitle">Welcome back, <?= htmlspecialchars($user['first_name'] ?? 'Admin') ?>! Here's what's happening with your platform.</p>
 </div>
 
 <!-- Stats Grid -->
