@@ -125,16 +125,26 @@ class SettingsController
         $extension = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'png';
         $filename = 'logo_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $extension;
 
-        // Ensure uploads directory exists
+        // Use same path structure as avatars which works
         $uploadDir = dirname(__DIR__, 3) . '/public/uploads';
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+            if (!@mkdir($uploadDir, 0775, true)) {
+                // Log the actual error
+                $error = error_get_last();
+                return ['success' => false, 'error' => 'Failed to create upload directory: ' . ($error['message'] ?? 'Unknown error')];
+            }
+        }
+
+        // Check if directory is writable
+        if (!is_writable($uploadDir)) {
+            return ['success' => false, 'error' => 'Upload directory is not writable: ' . $uploadDir];
         }
 
         $destination = $uploadDir . '/' . $filename;
 
         if (!move_uploaded_file($file['tmp_name'], $destination)) {
-            return ['success' => false, 'error' => 'Failed to save uploaded file'];
+            $error = error_get_last();
+            return ['success' => false, 'error' => 'Failed to save file: ' . ($error['message'] ?? 'Unknown error') . ' (dest: ' . $destination . ')'];
         }
 
         return ['success' => true, 'path' => '/uploads/' . $filename];
