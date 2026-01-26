@@ -107,6 +107,13 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/general', [SettingsController::class, 'updateGeneral']);
     $router->post('/settings/smtp', [SettingsController::class, 'updateSmtp']);
     $router->post('/settings/test-email', [SettingsController::class, 'testEmail']);
+    $router->post('/settings/ai', [SettingsController::class, 'updateAI']);
+    $router->post('/settings/metadata', [SettingsController::class, 'updateMetadata']);
+    $router->post('/settings/image', [SettingsController::class, 'updateImage']);
+    $router->post('/settings/test-ai', [SettingsController::class, 'testAI']);
+    $router->post('/settings/test-ollama', [SettingsController::class, 'testOllama']);
+    $router->post('/settings/test-fanart', [SettingsController::class, 'testFanart']);
+    $router->post('/settings/test-tmdb', [SettingsController::class, 'testTmdb']);
 
     // Channel Management
     $router->get('/channels', [ChannelController::class, 'index']);
