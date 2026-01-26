@@ -10,6 +10,9 @@ use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\ChannelService;
+use CariIPTV\Services\MetadataService;
+use CariIPTV\Services\AIService;
+use CariIPTV\Services\ImageService;
 
 class ChannelController
 {
@@ -115,6 +118,12 @@ class ChannelController
             if ($logoUrl) {
                 $data['logo_url'] = $logoUrl;
             }
+        } elseif (!empty($_POST['logo_url_external'])) {
+            // Handle external logo URL (from Fanart.tv search)
+            $externalLogo = $this->processExternalLogo($_POST['logo_url_external']);
+            if ($externalLogo) {
+                $data['logo_url'] = $externalLogo;
+            }
         }
 
         // Handle landscape logo upload
@@ -123,6 +132,11 @@ class ChannelController
             if ($landscapeUrl) {
                 $data['logo_landscape_url'] = $landscapeUrl;
             }
+        }
+
+        // Handle description
+        if (isset($_POST['description'])) {
+            $data['description'] = trim($_POST['description']);
         }
 
         try {
@@ -213,6 +227,16 @@ class ChannelController
                 }
                 $data['logo_url'] = $logoUrl;
             }
+        } elseif (!empty($_POST['logo_url_external'])) {
+            // Handle external logo URL (from Fanart.tv search)
+            $externalLogo = $this->processExternalLogo($_POST['logo_url_external']);
+            if ($externalLogo) {
+                // Delete old logo
+                if (!empty($channel['logo_url'])) {
+                    $this->channelService->deleteLogo($channel['logo_url']);
+                }
+                $data['logo_url'] = $externalLogo;
+            }
         }
 
         // Handle landscape logo upload
@@ -225,6 +249,11 @@ class ChannelController
                 }
                 $data['logo_landscape_url'] = $landscapeUrl;
             }
+        }
+
+        // Handle description
+        if (isset($_POST['description'])) {
+            $data['description'] = trim($_POST['description']);
         }
 
         try {
@@ -503,5 +532,98 @@ class ChannelController
 
         $validated['errors'] = $errors;
         return $validated;
+    }
+
+    /**
+     * Search for channel logos from Fanart.tv
+     */
+    public function searchLogos(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $query = trim($input['query'] ?? '');
+
+        if (empty($query)) {
+            Response::json(['success' => false, 'error' => 'Search query is required']);
+            return;
+        }
+
+        try {
+            $metadataService = new MetadataService();
+            $logos = $metadataService->searchNetworkLogos($query);
+
+            Response::json([
+                'success' => true,
+                'logos' => $logos
+            ]);
+        } catch (\Exception $e) {
+            Response::json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Generate channel description using AI
+     */
+    public function generateDescription(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        $name = trim($input['name'] ?? '');
+        $category = trim($input['category'] ?? '');
+        $country = trim($input['country'] ?? '');
+        $language = trim($input['language'] ?? '');
+
+        if (empty($name)) {
+            Response::json(['success' => false, 'error' => 'Channel name is required']);
+            return;
+        }
+
+        try {
+            $aiService = new AIService();
+            $description = $aiService->generateChannelDescription($name, $category, $country, $language);
+
+            if ($description) {
+                Response::json([
+                    'success' => true,
+                    'description' => $description
+                ]);
+            } else {
+                Response::json([
+                    'success' => false,
+                    'error' => 'Failed to generate description. Please check AI settings.'
+                ]);
+            }
+        } catch (\Exception $e) {
+            Response::json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Process external logo URL (download and save)
+     */
+    public function processExternalLogo(string $url): ?string
+    {
+        if (empty($url)) {
+            return null;
+        }
+
+        try {
+            $imageService = new ImageService();
+            $result = $imageService->processFromUrl($url, 'channel');
+
+            if ($result && isset($result['medium'])) {
+                return $result['medium'];
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail
+            error_log('Failed to process external logo: ' . $e->getMessage());
+        }
+
+        return null;
     }
 }

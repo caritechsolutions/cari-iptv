@@ -29,6 +29,9 @@
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Channel Logos</h3>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openLogoSearch()">
+                        <i class="lucide-search"></i> Fetch from Fanart.tv
+                    </button>
                 </div>
                 <div class="card-body">
                     <div class="logo-uploads">
@@ -162,6 +165,18 @@
                             <input type="number" id="sort_order" name="sort_order" class="form-input"
                                    value="<?= htmlspecialchars($channel['sort_order'] ?? 0) ?>" min="0">
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="description">Description</label>
+                        <div class="input-with-action">
+                            <textarea id="description" name="description" class="form-input" rows="3"
+                                      placeholder="Channel description..."><?= htmlspecialchars($channel['description'] ?? '') ?></textarea>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="generateDescription()">
+                                <i class="lucide-sparkles"></i> Generate with AI
+                            </button>
+                        </div>
+                        <small class="form-help">Brief description of the channel content</small>
                     </div>
 
                     <div class="form-group">
@@ -502,6 +517,58 @@
     </div>
 </form>
 
+<!-- Logo Search Modal -->
+<div id="logoSearchModal" class="modal" style="display: none;">
+    <div class="modal-backdrop" onclick="closeLogoSearch()"></div>
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <h3>Search Channel Logos</h3>
+            <button type="button" class="modal-close" onclick="closeLogoSearch()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="search-form mb-3">
+                <div class="input-group">
+                    <input type="text" id="logoSearchQuery" class="form-input"
+                           placeholder="Enter TV network name (e.g., BBC, CNN, ESPN)..."
+                           onkeypress="if(event.key==='Enter'){event.preventDefault();searchLogos();}">
+                    <button type="button" class="btn btn-primary" onclick="searchLogos()">
+                        <i class="lucide-search"></i> Search
+                    </button>
+                </div>
+                <small class="form-help">Search Fanart.tv for TV network logos</small>
+            </div>
+            <div id="logoSearchResults" class="logo-results">
+                <p class="text-muted text-center">Enter a network name to search for logos</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI Generation Modal -->
+<div id="aiModal" class="modal" style="display: none;">
+    <div class="modal-backdrop" onclick="closeAiModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>AI Generated Content</h3>
+            <button type="button" class="modal-close" onclick="closeAiModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="aiModalContent">
+                <div class="loading-spinner">
+                    <i class="lucide-loader-2 spin"></i>
+                    <p>Generating content...</p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" id="aiModalFooter" style="display: none;">
+            <button type="button" class="btn btn-secondary" onclick="closeAiModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="applyAiContent()">
+                <i class="lucide-check"></i> Apply
+            </button>
+        </div>
+    </div>
+</div>
+
 <style>
 .form-tabs {
     display: flex;
@@ -837,6 +904,203 @@
     padding-top: 1rem;
 }
 
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.input-with-action {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.input-with-action textarea {
+    resize: vertical;
+}
+
+.input-with-action .btn {
+    align-self: flex-end;
+}
+
+.input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-group .form-input {
+    flex: 1;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-content.modal-lg {
+    max-width: 700px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.125rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Logo Search Results */
+.logo-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.logo-result-item {
+    background: var(--bg-hover);
+    border-radius: 8px;
+    padding: 0.75rem;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.logo-result-item:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.logo-result-item.selected {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.2);
+}
+
+.logo-result-item img {
+    width: 100%;
+    height: 80px;
+    object-fit: contain;
+    background: #1a1a2e;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.logo-result-item .logo-type {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Loading */
+.loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+
+.loading-spinner i {
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* AI Content Preview */
+.ai-content-preview {
+    background: var(--bg-hover);
+    border-radius: 8px;
+    padding: 1rem;
+    white-space: pre-wrap;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+}
+
+.ai-error {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 8px;
+    color: var(--error);
+}
+
 @media (max-width: 768px) {
     .form-row,
     .grid-2,
@@ -851,6 +1115,10 @@
     .tab-btn {
         flex: 1 1 auto;
         justify-content: center;
+    }
+
+    .logo-results {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 </style>
@@ -927,4 +1195,191 @@ function updatePrimaryOptions() {
 
 // Run on page load
 updatePrimaryOptions();
+
+// Logo Search Modal
+function openLogoSearch() {
+    const channelName = document.getElementById('name').value;
+    document.getElementById('logoSearchQuery').value = channelName;
+    document.getElementById('logoSearchModal').style.display = 'flex';
+
+    if (channelName) {
+        searchLogos();
+    }
+}
+
+function closeLogoSearch() {
+    document.getElementById('logoSearchModal').style.display = 'none';
+}
+
+let selectedLogo = null;
+
+function searchLogos() {
+    const query = document.getElementById('logoSearchQuery').value.trim();
+    if (!query) {
+        alert('Please enter a search term');
+        return;
+    }
+
+    const resultsContainer = document.getElementById('logoSearchResults');
+    resultsContainer.innerHTML = '<div class="loading-spinner"><i class="lucide-loader-2 spin"></i><p>Searching...</p></div>';
+
+    fetch('/admin/channels/search-logos', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ query: query })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.logos && data.logos.length > 0) {
+            resultsContainer.innerHTML = data.logos.map((logo, idx) => `
+                <div class="logo-result-item" onclick="selectLogo(${idx}, '${logo.url}')" data-index="${idx}">
+                    <img src="${logo.url}" alt="${logo.type}" onerror="this.src='/assets/images/placeholder.png'">
+                    <div class="logo-type">${logo.type}</div>
+                </div>
+            `).join('') + `
+                <div style="grid-column: 1/-1; text-align: center; padding-top: 1rem; border-top: 1px solid var(--border-color); margin-top: 1rem;">
+                    <button type="button" class="btn btn-primary" onclick="applySelectedLogo()" ${!selectedLogo ? 'disabled' : ''} id="applyLogoBtn">
+                        <i class="lucide-check"></i> Apply Selected Logo
+                    </button>
+                </div>
+            `;
+            selectedLogo = null;
+        } else {
+            resultsContainer.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
+                    <i class="lucide-image-off" style="font-size: 2rem; color: var(--text-muted); margin-bottom: 0.5rem;"></i>
+                    <p class="text-muted">No logos found for "${query}"</p>
+                    <small class="text-muted">Try a different network name or check your Fanart.tv API key in Settings</small>
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        resultsContainer.innerHTML = `
+            <div class="ai-error" style="grid-column: 1/-1;">
+                <i class="lucide-alert-circle"></i>
+                <span>Error searching logos: ${err.message}</span>
+            </div>
+        `;
+    });
+}
+
+function selectLogo(index, url) {
+    document.querySelectorAll('.logo-result-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    document.querySelector(`.logo-result-item[data-index="${index}"]`).classList.add('selected');
+    selectedLogo = url;
+    document.getElementById('applyLogoBtn').disabled = false;
+}
+
+function applySelectedLogo() {
+    if (!selectedLogo) return;
+
+    // Set the logo URL in a hidden field or fetch and preview
+    const logoPreview = document.getElementById('logoPreview');
+    logoPreview.innerHTML = `<img src="${selectedLogo}" alt="Logo">`;
+
+    // Create a hidden input to store the URL for server-side processing
+    let hiddenInput = document.querySelector('input[name="logo_url_external"]');
+    if (!hiddenInput) {
+        hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'logo_url_external';
+        document.querySelector('.channel-form').appendChild(hiddenInput);
+    }
+    hiddenInput.value = selectedLogo;
+
+    closeLogoSearch();
+}
+
+// AI Description Generation
+let generatedContent = '';
+
+function generateDescription() {
+    const channelName = document.getElementById('name').value.trim();
+    if (!channelName) {
+        alert('Please enter a channel name first');
+        return;
+    }
+
+    // Open modal with loading state
+    document.getElementById('aiModal').style.display = 'flex';
+    document.getElementById('aiModalContent').innerHTML = `
+        <div class="loading-spinner">
+            <i class="lucide-loader-2 spin"></i>
+            <p>Generating description...</p>
+        </div>
+    `;
+    document.getElementById('aiModalFooter').style.display = 'none';
+
+    // Get additional context
+    const categorySelect = document.getElementById('primary_category');
+    const category = categorySelect.options[categorySelect.selectedIndex]?.text || '';
+    const country = document.getElementById('country').value || '';
+    const language = document.getElementById('language').value || '';
+
+    fetch('/admin/channels/generate-description', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            name: channelName,
+            category: category,
+            country: country,
+            language: language
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.description) {
+            generatedContent = data.description;
+            document.getElementById('aiModalContent').innerHTML = `
+                <p style="margin-bottom: 0.75rem; color: var(--text-muted);">Generated description:</p>
+                <div class="ai-content-preview">${data.description}</div>
+            `;
+            document.getElementById('aiModalFooter').style.display = 'flex';
+        } else {
+            document.getElementById('aiModalContent').innerHTML = `
+                <div class="ai-error">
+                    <i class="lucide-alert-circle"></i>
+                    <span>${data.error || 'Failed to generate description'}</span>
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        document.getElementById('aiModalContent').innerHTML = `
+            <div class="ai-error">
+                <i class="lucide-alert-circle"></i>
+                <span>Error: ${err.message}</span>
+            </div>
+        `;
+    });
+}
+
+function closeAiModal() {
+    document.getElementById('aiModal').style.display = 'none';
+    generatedContent = '';
+}
+
+function applyAiContent() {
+    if (generatedContent) {
+        document.getElementById('description').value = generatedContent;
+    }
+    closeAiModal();
+}
+
+// Close modals on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeLogoSearch();
+        closeAiModal();
+    }
+});
 </script>

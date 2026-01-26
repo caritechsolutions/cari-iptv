@@ -125,6 +125,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/channels/{id}/toggle-status', [ChannelController::class, 'toggleStatus']);
     $router->get('/channels/{id}/remove-logo', [ChannelController::class, 'removeLogo']);
     $router->post('/channels/bulk', [ChannelController::class, 'bulkAction']);
+    $router->post('/channels/search-logos', [ChannelController::class, 'searchLogos']);
+    $router->post('/channels/generate-description', [ChannelController::class, 'generateDescription']);
 
     // TODO: Add more routes as we build out the admin panel
     // $router->get('/vod', [VodController::class, 'index']);
