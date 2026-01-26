@@ -495,6 +495,56 @@ cleanup() {
     rm -rf "$TEMP_DIR" 2>/dev/null || true
 }
 
+install_ollama() {
+    log_step "Checking Ollama (Local AI)"
+
+    # Check if Ollama is already installed
+    if command -v ollama &> /dev/null; then
+        log_info "Ollama is already installed"
+        OLLAMA_VERSION=$(ollama --version 2>/dev/null || echo "unknown")
+        log_info "Ollama version: $OLLAMA_VERSION"
+    else
+        log_info "Ollama not found - installing..."
+
+        # Install Ollama using official installer
+        curl -fsSL https://ollama.com/install.sh | sh
+
+        if command -v ollama &> /dev/null; then
+            log_info "Ollama installed successfully"
+        else
+            log_warn "Ollama installation failed - AI features will use cloud fallback"
+            return 0
+        fi
+    fi
+
+    # Ensure Ollama service is enabled and running
+    log_info "Ensuring Ollama service is running..."
+    systemctl enable ollama 2>/dev/null || true
+    systemctl start ollama 2>/dev/null || true
+
+    # Wait for Ollama to be ready
+    sleep 2
+
+    # Check if Ollama is running
+    if systemctl is-active --quiet ollama 2>/dev/null; then
+        log_info "Ollama service is running"
+
+        # Check if default model exists, pull if not
+        if ! ollama list 2>/dev/null | grep -q "llama3.2:1b"; then
+            log_info "Pulling default AI model (llama3.2:1b - this may take a few minutes)..."
+            ollama pull llama3.2:1b 2>/dev/null || {
+                log_warn "Could not pull default model - you can pull models later with: ollama pull llama3.2:1b"
+            }
+        else
+            log_info "Default model (llama3.2:1b) already available"
+        fi
+    else
+        log_warn "Ollama service not running - you may need to start it manually: sudo systemctl start ollama"
+    fi
+
+    log_info "Ollama setup complete"
+}
+
 print_completion() {
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
@@ -560,6 +610,7 @@ main() {
     apply_update
     run_migrations
     fix_permissions
+    install_ollama
     clear_cache
 
     disable_maintenance_mode
