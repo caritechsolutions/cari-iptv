@@ -582,7 +582,14 @@ class ChannelController
 
         try {
             $aiService = new AIService();
-            $description = $aiService->generateChannelDescription($name, $category, $country, $language);
+
+            $context = [
+                'category' => $category,
+                'country' => $country,
+                'language' => $language,
+            ];
+
+            $description = $aiService->generateChannelDescription($name, $context);
 
             if ($description) {
                 Response::json([
