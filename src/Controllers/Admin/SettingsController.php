@@ -11,6 +11,9 @@ use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\SettingsService;
 use CariIPTV\Services\EmailService;
+use CariIPTV\Services\AIService;
+use CariIPTV\Services\MetadataService;
+use CariIPTV\Services\ImageService;
 
 class SettingsController
 {
@@ -32,9 +35,22 @@ class SettingsController
     {
         $allSettings = $this->settings->getAll();
 
+        // Get integration status
+        $aiService = new AIService();
+        $metadataService = new MetadataService();
+
+        $integrationStatus = [
+            'ai' => $aiService->getStatus(),
+            'metadata' => $metadataService->getStatus(),
+            'image' => [
+                'webp_supported' => ImageService::isWebPSupported(),
+            ],
+        ];
+
         Response::view('admin/settings/index', [
             'pageTitle' => 'Settings',
             'settings' => $allSettings,
+            'integrationStatus' => $integrationStatus,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -220,6 +236,224 @@ class SettingsController
             Session::flash('error', 'Failed to send test email: ' . $emailService->getLastError());
         }
 
+        Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Update AI settings
+     */
+    public function updateAI(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        // Get current API keys to preserve if not provided
+        $currentOpenAIKey = $this->settings->get('openai_api_key', '', 'ai');
+        $currentAnthropicKey = $this->settings->get('anthropic_api_key', '', 'ai');
+
+        $newOpenAIKey = trim($_POST['openai_api_key'] ?? '');
+        $newAnthropicKey = trim($_POST['anthropic_api_key'] ?? '');
+
+        $this->settings->setMany([
+            'provider' => $_POST['ai_provider'] ?? 'ollama',
+            'ollama_url' => trim($_POST['ollama_url'] ?? 'http://localhost:11434'),
+            'ollama_model' => trim($_POST['ollama_model'] ?? 'llama3.2:1b'),
+            'openai_api_key' => !empty($newOpenAIKey) ? $newOpenAIKey : $currentOpenAIKey,
+            'openai_model' => trim($_POST['openai_model'] ?? 'gpt-4o-mini'),
+            'anthropic_api_key' => !empty($newAnthropicKey) ? $newAnthropicKey : $currentAnthropicKey,
+            'anthropic_model' => trim($_POST['anthropic_model'] ?? 'claude-3-haiku-20240307'),
+            'ai_enabled' => isset($_POST['ai_enabled']) ? '1' : '0',
+        ], 'ai');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'ai']);
+
+        Session::flash('success', 'AI settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Update Metadata API settings
+     */
+    public function updateMetadata(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        // Get current API keys to preserve if not provided
+        $currentFanartKey = $this->settings->get('fanart_tv_api_key', '', 'metadata');
+        $currentTmdbKey = $this->settings->get('tmdb_api_key', '', 'metadata');
+
+        $newFanartKey = trim($_POST['fanart_tv_api_key'] ?? '');
+        $newTmdbKey = trim($_POST['tmdb_api_key'] ?? '');
+
+        $this->settings->setMany([
+            'fanart_tv_api_key' => !empty($newFanartKey) ? $newFanartKey : $currentFanartKey,
+            'tmdb_api_key' => !empty($newTmdbKey) ? $newTmdbKey : $currentTmdbKey,
+            'auto_fetch_metadata' => isset($_POST['auto_fetch_metadata']) ? '1' : '0',
+            'cache_metadata' => isset($_POST['cache_metadata']) ? '1' : '0',
+        ], 'metadata');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'metadata']);
+
+        Session::flash('success', 'Metadata API settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Test AI connection
+     */
+    public function testAI(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $aiService = new AIService();
+
+        if (!$aiService->isAvailable()) {
+            Response::json([
+                'success' => false,
+                'message' => 'AI service is not available. Check your configuration.',
+            ]);
+            return;
+        }
+
+        // Test with a simple prompt
+        $result = $aiService->complete('Say "Hello, I am working!" in exactly those words.');
+
+        if ($result) {
+            Response::json([
+                'success' => true,
+                'message' => 'AI connection successful!',
+                'provider' => $aiService->getProviderName(),
+                'response' => $result,
+            ]);
+        } else {
+            Response::json([
+                'success' => false,
+                'message' => 'AI service responded but failed to generate text.',
+            ]);
+        }
+    }
+
+    /**
+     * Test Ollama connection
+     */
+    public function testOllama(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $aiService = new AIService();
+        $connected = $aiService->testOllamaConnection();
+
+        if ($connected) {
+            $models = $aiService->getOllamaModels();
+            Response::json([
+                'success' => true,
+                'message' => 'Ollama connection successful!',
+                'models' => array_column($models, 'name'),
+            ]);
+        } else {
+            Response::json([
+                'success' => false,
+                'message' => 'Could not connect to Ollama. Make sure it is running.',
+            ]);
+        }
+    }
+
+    /**
+     * Test Fanart.tv connection
+     */
+    public function testFanart(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $metadataService = new MetadataService();
+
+        if (!$metadataService->isFanartConfigured()) {
+            Response::json([
+                'success' => false,
+                'message' => 'Fanart.tv API key not configured.',
+            ]);
+            return;
+        }
+
+        $connected = $metadataService->testFanartConnection();
+
+        Response::json([
+            'success' => $connected,
+            'message' => $connected ? 'Fanart.tv connection successful!' : 'Connection failed. Check your API key.',
+        ]);
+    }
+
+    /**
+     * Test TMDB connection
+     */
+    public function testTmdb(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $metadataService = new MetadataService();
+
+        if (!$metadataService->isTmdbConfigured()) {
+            Response::json([
+                'success' => false,
+                'message' => 'TMDB API key not configured.',
+            ]);
+            return;
+        }
+
+        $connected = $metadataService->testTmdbConnection();
+
+        Response::json([
+            'success' => $connected,
+            'message' => $connected ? 'TMDB connection successful!' : 'Connection failed. Check your API key.',
+        ]);
+    }
+
+    /**
+     * Update Image settings
+     */
+    public function updateImage(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        $this->settings->setMany([
+            'webp_quality' => max(1, min(100, (int) ($_POST['webp_quality'] ?? 85))),
+            'keep_originals' => isset($_POST['keep_originals']) ? '1' : '0',
+            'auto_optimize' => isset($_POST['auto_optimize']) ? '1' : '0',
+        ], 'image');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'image']);
+
+        Session::flash('success', 'Image settings updated successfully.');
         Response::redirect('/admin/settings');
     }
 }

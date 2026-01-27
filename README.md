@@ -50,6 +50,17 @@ curl -sSL https://raw.githubusercontent.com/caritechsolutions/cari-iptv/main/upd
 - **Avatar Upload** - Custom profile pictures
 - **Password Change** - Self-service password updates
 
+#### Channel Management (In Progress)
+- **Channel List** - Searchable, sortable list with filters
+- **Channel CRUD** - Create, edit, delete channels
+- **Multi-Category Support** - Assign channels to multiple categories
+- **Package Integration** - Assign channels to subscription packages
+- **Logo Upload** - Square and landscape logo support
+- **Stream Settings** - Primary and backup stream URLs
+- **Catchup/Time-Shift** - Configurable catchup duration
+- **EPG Integration** - EPG channel ID mapping
+- **Bulk Actions** - Activate, deactivate, delete multiple channels
+
 #### Infrastructure
 - **Curl-Based Installation** - Single command install
 - **Automatic Updates** - Pull latest code via update script
@@ -613,17 +624,17 @@ POST   /api/analytics/event     # Log playback event
 
 ---
 
-### PHASE 3: Channel Management (Admin)
+### PHASE 3: Channel Management (Admin) - IN PROGRESS
 **Goal: Admin can add/edit channels and categories**
 
-- [ ] **3.1** Create channels table
-- [ ] **3.2** Create categories table
-- [ ] **3.3** Create Channel and Category models
-- [ ] **3.4** Build ChannelService
-- [ ] **3.5** Build admin layout template
-- [ ] **3.6** Build admin authentication (AdminMiddleware)
-- [ ] **3.7** Create admin channel list page
-- [ ] **3.8** Create admin channel add/edit form
+- [x] **3.1** Create channels table (extended schema with migration)
+- [x] **3.2** Create categories table (already in base schema)
+- [x] **3.3** Create streaming_servers and content_owners tables
+- [x] **3.4** Build ChannelService with full CRUD operations
+- [x] **3.5** Build admin layout template (completed in Phase 1)
+- [x] **3.6** Build admin authentication (completed in Phase 1)
+- [x] **3.7** Create admin channel list page with search/sort/filter
+- [x] **3.8** Create admin channel add/edit form with tabs (Metadata, EPG, Availability)
 - [ ] **3.9** Create admin category management
 - [ ] **3.10** Test: Admin can manage channels
 

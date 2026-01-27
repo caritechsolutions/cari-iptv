@@ -54,6 +54,7 @@ use CariIPTV\Controllers\Admin\DashboardController;
 use CariIPTV\Controllers\Admin\ProfileController;
 use CariIPTV\Controllers\Admin\AdminUserController;
 use CariIPTV\Controllers\Admin\SettingsController;
+use CariIPTV\Controllers\Admin\ChannelController;
 
 // Initialize session
 Session::start();
@@ -106,10 +107,29 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/general', [SettingsController::class, 'updateGeneral']);
     $router->post('/settings/smtp', [SettingsController::class, 'updateSmtp']);
     $router->post('/settings/test-email', [SettingsController::class, 'testEmail']);
+    $router->post('/settings/ai', [SettingsController::class, 'updateAI']);
+    $router->post('/settings/metadata', [SettingsController::class, 'updateMetadata']);
+    $router->post('/settings/image', [SettingsController::class, 'updateImage']);
+    $router->post('/settings/test-ai', [SettingsController::class, 'testAI']);
+    $router->post('/settings/test-ollama', [SettingsController::class, 'testOllama']);
+    $router->post('/settings/test-fanart', [SettingsController::class, 'testFanart']);
+    $router->post('/settings/test-tmdb', [SettingsController::class, 'testTmdb']);
+
+    // Channel Management
+    $router->get('/channels', [ChannelController::class, 'index']);
+    $router->get('/channels/create', [ChannelController::class, 'create']);
+    $router->post('/channels/store', [ChannelController::class, 'store']);
+    $router->get('/channels/{id}/edit', [ChannelController::class, 'edit']);
+    $router->post('/channels/{id}/update', [ChannelController::class, 'update']);
+    $router->post('/channels/{id}/delete', [ChannelController::class, 'delete']);
+    $router->post('/channels/{id}/toggle-status', [ChannelController::class, 'toggleStatus']);
+    $router->get('/channels/{id}/remove-logo', [ChannelController::class, 'removeLogo']);
+    $router->post('/channels/bulk', [ChannelController::class, 'bulkAction']);
+    $router->post('/channels/search-logos', [ChannelController::class, 'searchLogos']);
+    $router->post('/channels/generate-description', [ChannelController::class, 'generateDescription']);
 
     // TODO: Add more routes as we build out the admin panel
-    // $router->get('/channels', [ChannelController::class, 'index']);
-    // $router->get('/channels/create', [ChannelController::class, 'create']);
+    // $router->get('/vod', [VodController::class, 'index']);
     // etc.
 });
 

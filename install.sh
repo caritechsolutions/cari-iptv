@@ -252,6 +252,53 @@ install_dependencies_debian() {
     apt-get install -y -qq geoip-database-extra 2>/dev/null || true
 }
 
+install_ollama() {
+    log_step "Installing Ollama (Local AI)"
+
+    # Check if Ollama is already installed
+    if command -v ollama &> /dev/null; then
+        log_info "Ollama is already installed"
+        OLLAMA_VERSION=$(ollama --version 2>/dev/null || echo "unknown")
+        log_info "Ollama version: $OLLAMA_VERSION"
+    else
+        log_info "Downloading and installing Ollama..."
+
+        # Install Ollama using official installer
+        curl -fsSL https://ollama.com/install.sh | sh
+
+        if command -v ollama &> /dev/null; then
+            log_info "Ollama installed successfully"
+        else
+            log_warn "Ollama installation failed - AI features will use cloud fallback"
+            return 0
+        fi
+    fi
+
+    # Enable and start Ollama service
+    log_info "Configuring Ollama service..."
+    systemctl enable ollama 2>/dev/null || true
+    systemctl start ollama 2>/dev/null || true
+
+    # Wait for Ollama to be ready
+    log_info "Waiting for Ollama to start..."
+    sleep 3
+
+    # Check if Ollama is running
+    if systemctl is-active --quiet ollama 2>/dev/null; then
+        log_info "Ollama service is running"
+
+        # Pull a default model (llama3.2:1b is small and fast)
+        log_info "Pulling default AI model (llama3.2:1b - this may take a few minutes)..."
+        ollama pull llama3.2:1b 2>/dev/null || {
+            log_warn "Could not pull default model - you can pull models later with: ollama pull llama3.2:1b"
+        }
+    else
+        log_warn "Ollama service not running - you may need to start it manually"
+    fi
+
+    log_info "Ollama setup complete"
+}
+
 install_dependencies_rhel() {
     log_step "Installing Dependencies (RHEL/CentOS)"
 
@@ -1090,7 +1137,7 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="claude/plan-rollout-strategy-eoaxF"
+    BRANCH="claude/add-channels-page-I5a8f"
     TEMP_DIR=$(mktemp -d)
 
     log_info "Downloading application files from $BRANCH branch..."
@@ -1145,6 +1192,9 @@ install_application_files() {
 
     # Create uploads directory for logo and other uploads
     mkdir -p "$INSTALL_DIR/public/uploads"
+    mkdir -p "$INSTALL_DIR/public/uploads/channels"
+    mkdir -p "$INSTALL_DIR/public/uploads/avatars"
+    mkdir -p "$INSTALL_DIR/public/uploads/logos"
     chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR/public/uploads"
     chmod -R 775 "$INSTALL_DIR/public/uploads"
 
@@ -1260,6 +1310,9 @@ main() {
             install_dependencies_rhel
             ;;
     esac
+
+    # Install Ollama for local AI capabilities
+    install_ollama
 
     configure_mysql
     configure_php

@@ -679,23 +679,23 @@
 
                 <div class="nav-section">
                     <div class="nav-section-title">Content</div>
-                    <a href="/admin/channels" class="nav-item">
+                    <a href="/admin/channels" class="nav-item <?= in_array($pageTitle ?? '', ['Channels', 'Add Channel', 'Edit Channel']) ? 'active' : '' ?>">
                         <i class="lucide-tv"></i>
                         <span>Channels</span>
                     </a>
-                    <a href="/admin/vod" class="nav-item">
+                    <a href="/admin/vod" class="nav-item <?= in_array($pageTitle ?? '', ['VOD Library', 'Add VOD', 'Edit VOD']) ? 'active' : '' ?>">
                         <i class="lucide-film"></i>
                         <span>VOD Library</span>
                     </a>
-                    <a href="/admin/series" class="nav-item">
+                    <a href="/admin/series" class="nav-item <?= in_array($pageTitle ?? '', ['Series', 'Add Series', 'Edit Series']) ? 'active' : '' ?>">
                         <i class="lucide-clapperboard"></i>
                         <span>Series</span>
                     </a>
-                    <a href="/admin/epg" class="nav-item">
+                    <a href="/admin/epg" class="nav-item <?= in_array($pageTitle ?? '', ['EPG', 'EPG Management']) ? 'active' : '' ?>">
                         <i class="lucide-calendar"></i>
                         <span>EPG</span>
                     </a>
-                    <a href="/admin/categories" class="nav-item">
+                    <a href="/admin/categories" class="nav-item <?= in_array($pageTitle ?? '', ['Categories', 'Add Category', 'Edit Category']) ? 'active' : '' ?>">
                         <i class="lucide-folder"></i>
                         <span>Categories</span>
                     </a>
