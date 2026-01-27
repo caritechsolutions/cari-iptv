@@ -10,11 +10,25 @@ class MetadataService
 {
     private SettingsService $settings;
     private array $config;
+    private ?array $channelLogosDb = null;
 
     // API endpoints
     private const FANART_TV_API = 'https://webservice.fanart.tv/v3';
     private const TMDB_API = 'https://api.themoviedb.org/3';
     private const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
+
+    // Channel logos API (jaruba/channel-logos)
+    private const CHANNEL_LOGOS_API = 'https://jaruba.github.io/channel-logos/logo_paths.json';
+    private const CHANNEL_LOGOS_BASE = 'https://jaruba.github.io/channel-logos/export';
+
+    // Logo variations available
+    private const LOGO_VARIATIONS = [
+        'transparent-white' => 'Transparent (White)',
+        'transparent-color' => 'Transparent (Color)',
+        '212c39-white' => 'Dark Background',
+        '282c34-white' => 'Dark Gray Background',
+        'fff-color' => 'White Background',
+    ];
 
     public function __construct()
     {
@@ -111,29 +125,157 @@ class MetadataService
     }
 
     /**
-     * Search for TV network logos on Fanart.tv
+     * Search for channel logos from jaruba/channel-logos repository
      */
     public function searchNetworkLogos(string $query): array
+    {
+        // Load the channel logos database
+        $logosDb = $this->loadChannelLogosDb();
+
+        if (empty($logosDb)) {
+            return [];
+        }
+
+        $query = strtolower(trim($query));
+        $results = [];
+
+        // Search through the database
+        foreach ($logosDb as $channelName => $logoPath) {
+            $normalizedName = strtolower($channelName);
+
+            // Check if query matches channel name
+            if (strpos($normalizedName, $query) !== false ||
+                strpos($query, $normalizedName) !== false ||
+                $this->fuzzyMatch($query, $normalizedName)) {
+
+                // Add multiple variations of the logo
+                $results[] = [
+                    'name' => $channelName,
+                    'url' => self::CHANNEL_LOGOS_BASE . '/transparent-white' . $logoPath,
+                    'type' => 'Transparent (White)',
+                ];
+
+                $results[] = [
+                    'name' => $channelName,
+                    'url' => self::CHANNEL_LOGOS_BASE . '/transparent-color' . $logoPath,
+                    'type' => 'Transparent (Color)',
+                ];
+
+                $results[] = [
+                    'name' => $channelName,
+                    'url' => self::CHANNEL_LOGOS_BASE . '/212c39-white' . $logoPath,
+                    'type' => 'Dark Background',
+                ];
+
+                // Limit results to prevent overwhelming the UI
+                if (count($results) >= 30) {
+                    break;
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Load the channel logos database from the API
+     */
+    private function loadChannelLogosDb(): array
+    {
+        // Return cached version if available
+        if ($this->channelLogosDb !== null) {
+            return $this->channelLogosDb;
+        }
+
+        // Check for local cache file
+        $cacheFile = BASE_PATH . '/storage/cache/channel_logos.json';
+        $cacheMaxAge = 86400; // 24 hours
+
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < $cacheMaxAge) {
+            $cached = file_get_contents($cacheFile);
+            $this->channelLogosDb = json_decode($cached, true) ?: [];
+            return $this->channelLogosDb;
+        }
+
+        // Fetch from API
+        try {
+            $ch = curl_init(self::CHANNEL_LOGOS_API);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_FOLLOWLOCATION => true,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200 && !empty($response)) {
+                $data = json_decode($response, true);
+
+                if (!empty($data)) {
+                    // Cache the response
+                    $cacheDir = dirname($cacheFile);
+                    if (!is_dir($cacheDir)) {
+                        mkdir($cacheDir, 0775, true);
+                    }
+                    file_put_contents($cacheFile, $response);
+
+                    $this->channelLogosDb = $data;
+                    return $this->channelLogosDb;
+                }
+            }
+        } catch (\Exception $e) {
+            error_log('Failed to load channel logos database: ' . $e->getMessage());
+        }
+
+        $this->channelLogosDb = [];
+        return $this->channelLogosDb;
+    }
+
+    /**
+     * Simple fuzzy matching for channel names
+     */
+    private function fuzzyMatch(string $query, string $channelName): bool
+    {
+        // Remove common suffixes/prefixes for better matching
+        $cleanQuery = preg_replace('/\s*(hd|tv|channel|network|uk|us|eu)$/i', '', $query);
+        $cleanName = preg_replace('/\s*(hd|tv|channel|network|uk|us|eu)$/i', '', $channelName);
+
+        // Check if cleaned versions match
+        if (!empty($cleanQuery) && strpos($cleanName, $cleanQuery) !== false) {
+            return true;
+        }
+
+        // Calculate similarity
+        similar_text($query, $channelName, $percent);
+        return $percent > 70;
+    }
+
+    /**
+     * Search for TV show logos on Fanart.tv (keeping for TV shows)
+     */
+    public function searchTVShowLogos(string $query): array
     {
         if (!$this->isFanartConfigured()) {
             return ['error' => 'Fanart.tv API key not configured'];
         }
 
-        // First search TMDB for network ID
-        $networks = $this->searchTmdbNetworks($query);
+        // First search TMDB for TV show
+        $shows = $this->searchTVShows($query);
 
-        if (empty($networks)) {
-            return ['results' => [], 'message' => 'No networks found'];
+        if (empty($shows['results'])) {
+            return ['results' => [], 'message' => 'No TV shows found'];
         }
 
         $results = [];
-        foreach ($networks as $network) {
-            $logos = $this->getNetworkLogos($network['id']);
+        foreach ($shows['results'] as $show) {
+            $logos = $this->getTVShowLogos($show['id']);
             if (!empty($logos)) {
                 $results[] = [
-                    'id' => $network['id'],
-                    'name' => $network['name'],
-                    'origin_country' => $network['origin_country'] ?? '',
+                    'id' => $show['id'],
+                    'name' => $show['name'],
+                    'year' => $show['year'] ?? '',
                     'logos' => $logos,
                 ];
             }
@@ -143,52 +285,16 @@ class MetadataService
     }
 
     /**
-     * Search TMDB for TV networks
+     * Get TV show logos from Fanart.tv
      */
-    private function searchTmdbNetworks(string $query): array
-    {
-        if (!$this->isTmdbConfigured()) {
-            return [];
-        }
-
-        try {
-            $url = self::TMDB_API . '/search/company?' . http_build_query([
-                'api_key' => $this->config['tmdb']['api_key'],
-                'query' => $query,
-            ]);
-
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 15,
-            ]);
-
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($httpCode === 200) {
-                $data = json_decode($response, true);
-                return array_slice($data['results'] ?? [], 0, 10);
-            }
-
-            return [];
-        } catch (\Exception $e) {
-            return [];
-        }
-    }
-
-    /**
-     * Get network logos from Fanart.tv
-     */
-    public function getNetworkLogos(int $networkId): array
+    public function getTVShowLogos(int $tmdbId): array
     {
         if (!$this->isFanartConfigured()) {
             return [];
         }
 
         try {
-            $url = self::FANART_TV_API . '/tv/' . $networkId . '?api_key=' . $this->config['fanart_tv']['api_key'];
+            $url = self::FANART_TV_API . '/tv/' . $tmdbId . '?api_key=' . $this->config['fanart_tv']['api_key'];
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -217,11 +323,11 @@ class MetadataService
                 }
 
                 // Clear logos
-                if (!empty($data['hdclearart'])) {
-                    foreach (array_slice($data['hdclearart'], 0, 3) as $logo) {
+                if (!empty($data['clearlogo'])) {
+                    foreach (array_slice($data['clearlogo'], 0, 3) as $logo) {
                         $logos[] = [
                             'url' => $logo['url'],
-                            'type' => 'clearart',
+                            'type' => 'clearlogo',
                             'lang' => $logo['lang'] ?? 'en',
                         ];
                     }
