@@ -64,7 +64,13 @@ class ImageService
             }
             $extension = pathinfo($uploadedFile['name'], PATHINFO_EXTENSION);
             $originalPath = $originalDir . '/' . $type . '.' . $extension;
-            move_uploaded_file($uploadedFile['tmp_name'], $originalPath);
+
+            // Use move_uploaded_file for actual uploads, copy for downloaded files
+            if (is_uploaded_file($uploadedFile['tmp_name'])) {
+                move_uploaded_file($uploadedFile['tmp_name'], $originalPath);
+            } else {
+                copy($uploadedFile['tmp_name'], $originalPath);
+            }
         } else {
             $originalPath = $uploadedFile['tmp_name'];
         }

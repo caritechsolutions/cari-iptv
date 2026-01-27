@@ -521,9 +521,29 @@ function buildPageUrl(int $page, array $filters): string {
 }
 
 .action-dropdown .dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
     right: 0;
     left: auto;
     min-width: 160px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    padding: 0.5rem 0;
+    margin-top: 0.25rem;
+}
+
+.action-dropdown.open .dropdown-menu {
+    display: block;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 0.5rem 0;
 }
 
 .action-dropdown .dropdown-item {
