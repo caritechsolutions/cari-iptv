@@ -516,6 +516,19 @@ function buildPageUrl(int $page, array $filters): string {
     align-items: center;
 }
 
+.action-buttons .btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-buttons .btn i {
+    font-size: 1rem;
+}
+
 .action-dropdown {
     position: relative;
 }
