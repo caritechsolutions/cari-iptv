@@ -1096,45 +1096,58 @@ class MetadataService
     public function searchInternetArchive(string $query, string $type = 'movie'): array
     {
         try {
-            // Build search query
-            $searchQuery = $query;
+            // Build search query - keep it simple for better results
+            // Just search for the term in movies mediatype
+            $searchQuery = trim($query);
+            if (empty($searchQuery)) {
+                return ['results' => []];
+            }
 
-            // Filter by media type and collection
-            $collections = match ($type) {
-                'documentary' => 'collection:(documentaries OR opensource_movies)',
-                'short' => 'collection:(short_films OR prelinger)',
-                default => 'collection:(feature_films OR classic_movies OR moviesandfilms OR sci-fi_horror)',
-            };
+            // Build URL manually because http_build_query doesn't handle repeated params well
+            $fields = ['identifier', 'title', 'description', 'year', 'runtime', 'creator', 'subject'];
+            $fieldParams = implode('&', array_map(fn($f) => 'fl[]=' . $f, $fields));
 
-            $params = [
-                'q' => "({$searchQuery}) AND mediatype:movies AND {$collections}",
-                'fl[]' => ['identifier', 'title', 'description', 'year', 'runtime', 'creator', 'subject'],
-                'sort[]' => 'downloads desc',
-                'rows' => 25,
-                'page' => 1,
-                'output' => 'json',
-            ];
+            // Simple query: search term + movies mediatype
+            $encodedQuery = rawurlencode("({$searchQuery}) AND mediatype:(movies)");
 
-            $url = 'https://archive.org/advancedsearch.php?' . http_build_query($params);
+            $url = "https://archive.org/advancedsearch.php?q={$encodedQuery}&{$fieldParams}&sort[]=downloads+desc&rows=25&page=1&output=json";
+
+            error_log("Internet Archive URL: " . $url);
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 15,
+                CURLOPT_TIMEOUT => 20,
                 CURLOPT_USERAGENT => 'CARI-IPTV/1.0',
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => true,
             ]);
 
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
             curl_close($ch);
+
+            if ($curlError) {
+                error_log("Internet Archive cURL error: " . $curlError);
+                return ['error' => 'Connection failed: ' . $curlError];
+            }
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
-                return $this->formatInternetArchiveResults($data['response']['docs'] ?? []);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    error_log("Internet Archive JSON error: " . json_last_error_msg());
+                    return ['error' => 'Invalid response format'];
+                }
+                $docs = $data['response']['docs'] ?? [];
+                error_log("Internet Archive found " . count($docs) . " results");
+                return $this->formatInternetArchiveResults($docs);
             }
 
-            return ['error' => 'API request failed'];
+            error_log("Internet Archive HTTP error: " . $httpCode);
+            return ['error' => 'API request failed with status ' . $httpCode];
         } catch (\Exception $e) {
+            error_log("Internet Archive exception: " . $e->getMessage());
             return ['error' => $e->getMessage()];
         }
     }
