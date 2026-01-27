@@ -613,7 +613,7 @@ class MovieController
     }
 
     /**
-     * Search YouTube Creative Commons content
+     * Search free content from multiple sources
      */
     public function searchFreeContent(): void
     {
@@ -625,24 +625,40 @@ class MovieController
 
         $query = trim($_POST['query'] ?? '');
         $type = $_POST['type'] ?? 'movie';
+        $source = $_POST['source'] ?? 'youtube';
 
         if (empty($query)) {
             Response::json(['success' => false, 'message' => 'Search query required']);
             return;
         }
 
-        $results = $this->metadataService->searchYoutubeCreativeCommons($query, $type);
+        // Search based on selected source
+        $results = match ($source) {
+            'internet_archive' => $this->metadataService->searchInternetArchive($query, $type),
+            'youtube' => $this->metadataService->searchYoutubeCreativeCommons($query, $type),
+            default => $this->metadataService->searchYoutubeCreativeCommons($query, $type),
+        };
 
         if (isset($results['error'])) {
             Response::json(['success' => false, 'message' => $results['error']]);
             return;
         }
 
-        Response::json(['success' => true, 'results' => $results['results'] ?? []]);
+        // Get list of already imported source URLs
+        $importedUrls = $this->movieService->getImportedSourceUrls();
+
+        // Mark videos that are already imported
+        $resultData = $results['results'] ?? [];
+        foreach ($resultData as &$video) {
+            $checkUrl = $video['url'] ?? '';
+            $video['already_imported'] = in_array($checkUrl, $importedUrls);
+        }
+
+        Response::json(['success' => true, 'results' => $resultData]);
     }
 
     /**
-     * Import free content from YouTube
+     * Import free content from various sources
      */
     public function importFreeContent(): void
     {
@@ -657,24 +673,60 @@ class MovieController
         $description = trim($_POST['description'] ?? '');
         $thumbnail = trim($_POST['thumbnail'] ?? '');
         $duration = (int) ($_POST['duration'] ?? 0);
+        $source = trim($_POST['source'] ?? 'youtube');
+        $streamUrl = trim($_POST['stream_url'] ?? '');
+        $sourceUrl = trim($_POST['source_url'] ?? '');
+        $year = trim($_POST['year'] ?? '');
 
         if (empty($videoId) || empty($title)) {
             Response::json(['success' => false, 'message' => 'Video ID and title required']);
             return;
         }
 
+        // Check if already imported
+        $existingUrl = $sourceUrl ?: ($source === 'internet_archive'
+            ? "https://archive.org/details/{$videoId}"
+            : "https://www.youtube.com/watch?v={$videoId}");
+
+        $existing = $this->movieService->findBySourceUrl($existingUrl);
+        if ($existing) {
+            Response::json([
+                'success' => false,
+                'message' => 'This content has already been imported',
+                'movie_id' => $existing['id'],
+            ]);
+            return;
+        }
+
         try {
-            $movieData = [
-                'title' => $title,
-                'synopsis' => $description,
-                'poster_url' => $thumbnail,
-                'stream_url' => 'https://www.youtube.com/watch?v=' . $videoId,
-                'runtime' => $duration > 0 ? round($duration / 60) : null,
-                'source' => 'youtube_cc',
-                'source_url' => 'https://www.youtube.com/watch?v=' . $videoId,
-                'is_free' => 1,
-                'status' => 'draft',
-            ];
+            // Build movie data based on source
+            if ($source === 'internet_archive') {
+                $movieData = [
+                    'title' => $title,
+                    'synopsis' => $description,
+                    'poster_url' => $thumbnail,
+                    'stream_url' => $streamUrl ?: "https://archive.org/download/{$videoId}/{$videoId}.mp4",
+                    'runtime' => $duration > 0 ? round($duration / 60) : null,
+                    'year' => !empty($year) ? (int) $year : null,
+                    'source' => 'internet_archive',
+                    'source_url' => "https://archive.org/details/{$videoId}",
+                    'is_free' => 1,
+                    'status' => 'draft',
+                ];
+            } else {
+                // YouTube Creative Commons
+                $movieData = [
+                    'title' => $title,
+                    'synopsis' => $description,
+                    'poster_url' => $thumbnail,
+                    'stream_url' => "https://www.youtube.com/watch?v={$videoId}",
+                    'runtime' => $duration > 0 ? round($duration / 60) : null,
+                    'source' => 'youtube_cc',
+                    'source_url' => "https://www.youtube.com/watch?v={$videoId}",
+                    'is_free' => 1,
+                    'status' => 'draft',
+                ];
+            }
 
             $movieId = $this->movieService->createMovie($movieData);
 
@@ -692,7 +744,7 @@ class MovieController
                 'movies',
                 'movie',
                 $movieId,
-                ['title' => $title, 'source' => 'youtube_cc']
+                ['title' => $title, 'source' => $source]
             );
 
             Response::json([

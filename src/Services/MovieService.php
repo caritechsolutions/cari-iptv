@@ -609,6 +609,28 @@ class MovieService
     }
 
     /**
+     * Find movie by source URL
+     */
+    public function findBySourceUrl(string $sourceUrl): ?array
+    {
+        return $this->db->fetch(
+            "SELECT * FROM movies WHERE source_url = ?",
+            [$sourceUrl]
+        );
+    }
+
+    /**
+     * Get all imported source URLs (for duplicate detection)
+     */
+    public function getImportedSourceUrls(): array
+    {
+        $results = $this->db->fetchAll(
+            "SELECT source_url FROM movies WHERE source_url IS NOT NULL AND source_url != ''"
+        );
+        return array_column($results, 'source_url');
+    }
+
+    /**
      * Import movie from TMDB metadata
      */
     public function importFromTmdb(array $tmdbData): int

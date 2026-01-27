@@ -1088,4 +1088,171 @@ class MetadataService
             return [];
         }
     }
+
+    /**
+     * Search Internet Archive for public domain movies
+     * https://archive.org/advancedsearch.php
+     */
+    public function searchInternetArchive(string $query, string $type = 'movie'): array
+    {
+        try {
+            // Build search query
+            $searchQuery = $query;
+
+            // Filter by media type and collection
+            $collections = match ($type) {
+                'documentary' => 'collection:(documentaries OR opensource_movies)',
+                'short' => 'collection:(short_films OR prelinger)',
+                default => 'collection:(feature_films OR classic_movies OR moviesandfilms OR sci-fi_horror)',
+            };
+
+            $params = [
+                'q' => "({$searchQuery}) AND mediatype:movies AND {$collections}",
+                'fl[]' => ['identifier', 'title', 'description', 'year', 'runtime', 'creator', 'subject'],
+                'sort[]' => 'downloads desc',
+                'rows' => 25,
+                'page' => 1,
+                'output' => 'json',
+            ];
+
+            $url = 'https://archive.org/advancedsearch.php?' . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_USERAGENT => 'CARI-IPTV/1.0',
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                return $this->formatInternetArchiveResults($data['response']['docs'] ?? []);
+            }
+
+            return ['error' => 'API request failed'];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Format Internet Archive search results
+     */
+    private function formatInternetArchiveResults(array $items): array
+    {
+        $formatted = [];
+        foreach ($items as $item) {
+            $identifier = $item['identifier'] ?? '';
+            if (empty($identifier)) continue;
+
+            // Parse runtime (can be like "1:30:00" or "90 min")
+            $runtime = $item['runtime'] ?? '';
+            $durationSeconds = $this->parseArchiveRuntime($runtime);
+
+            $formatted[] = [
+                'source' => 'internet_archive',
+                'video_id' => $identifier,
+                'title' => $item['title'] ?? $identifier,
+                'description' => is_array($item['description'] ?? null)
+                    ? ($item['description'][0] ?? '')
+                    : ($item['description'] ?? ''),
+                'thumbnail' => "https://archive.org/services/img/{$identifier}",
+                'channel' => is_array($item['creator'] ?? null)
+                    ? ($item['creator'][0] ?? 'Internet Archive')
+                    : ($item['creator'] ?? 'Internet Archive'),
+                'year' => $item['year'] ?? null,
+                'duration' => $durationSeconds,
+                'duration_formatted' => $durationSeconds > 0 ? $this->formatDuration($durationSeconds) : '',
+                'url' => "https://archive.org/details/{$identifier}",
+                'embed_url' => "https://archive.org/embed/{$identifier}",
+                'stream_url' => "https://archive.org/download/{$identifier}/{$identifier}.mp4",
+            ];
+        }
+        return ['results' => $formatted];
+    }
+
+    /**
+     * Parse Internet Archive runtime to seconds
+     */
+    private function parseArchiveRuntime(string $runtime): int
+    {
+        if (empty($runtime)) return 0;
+
+        // Format: "1:30:00" or "90:00" or "90 min"
+        if (preg_match('/(\d+):(\d+):(\d+)/', $runtime, $matches)) {
+            return (int)$matches[1] * 3600 + (int)$matches[2] * 60 + (int)$matches[3];
+        }
+        if (preg_match('/(\d+):(\d+)/', $runtime, $matches)) {
+            return (int)$matches[1] * 60 + (int)$matches[2];
+        }
+        if (preg_match('/(\d+)\s*min/i', $runtime, $matches)) {
+            return (int)$matches[1] * 60;
+        }
+        return 0;
+    }
+
+    /**
+     * Get details for a specific Internet Archive item
+     */
+    public function getInternetArchiveDetails(string $identifier): ?array
+    {
+        try {
+            $url = "https://archive.org/metadata/{$identifier}";
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_USERAGENT => 'CARI-IPTV/1.0',
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $metadata = $data['metadata'] ?? [];
+                $files = $data['files'] ?? [];
+
+                // Find the best video file
+                $videoFile = null;
+                $preferredFormats = ['mp4', 'mpeg4', 'h.264', 'ogv'];
+                foreach ($files as $file) {
+                    $format = strtolower($file['format'] ?? '');
+                    if (str_contains($format, 'mp4') || str_contains($format, 'mpeg4') || str_contains($format, 'h.264')) {
+                        $videoFile = $file;
+                        break;
+                    }
+                }
+
+                return [
+                    'identifier' => $identifier,
+                    'title' => $metadata['title'] ?? $identifier,
+                    'description' => is_array($metadata['description'] ?? null)
+                        ? implode("\n", $metadata['description'])
+                        : ($metadata['description'] ?? ''),
+                    'year' => $metadata['year'] ?? $metadata['date'] ?? null,
+                    'creator' => is_array($metadata['creator'] ?? null)
+                        ? implode(', ', $metadata['creator'])
+                        : ($metadata['creator'] ?? ''),
+                    'runtime' => $metadata['runtime'] ?? '',
+                    'thumbnail' => "https://archive.org/services/img/{$identifier}",
+                    'stream_url' => $videoFile
+                        ? "https://archive.org/download/{$identifier}/" . urlencode($videoFile['name'])
+                        : "https://archive.org/download/{$identifier}/{$identifier}.mp4",
+                    'embed_url' => "https://archive.org/embed/{$identifier}",
+                    'license' => $metadata['licenseurl'] ?? 'Public Domain',
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
 }

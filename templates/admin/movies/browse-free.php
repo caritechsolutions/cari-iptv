@@ -5,29 +5,40 @@
         <span>Browse Free Content</span>
     </div>
     <h1 class="page-title">Browse Free Content</h1>
-    <p class="page-subtitle">Discover royalty-free movies and videos from YouTube Creative Commons.</p>
+    <p class="page-subtitle">Discover royalty-free movies from multiple sources including Internet Archive and YouTube.</p>
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
         <div class="search-section">
+            <!-- Source Selection Tabs -->
+            <div class="source-tabs mb-3">
+                <button type="button" class="source-tab active" data-source="internet_archive" onclick="selectSource('internet_archive')">
+                    <i class="lucide-archive"></i> Internet Archive
+                    <small>Public Domain Films</small>
+                </button>
+                <button type="button" class="source-tab" data-source="youtube" onclick="selectSource('youtube')">
+                    <i class="lucide-youtube"></i> YouTube CC
+                    <small>Creative Commons</small>
+                </button>
+            </div>
+
             <div class="form-group mb-2">
-                <label class="form-label">Search YouTube Creative Commons</label>
+                <label class="form-label" id="searchLabel">Search Internet Archive</label>
                 <div class="search-row">
-                    <input type="text" id="searchQuery" class="form-input" placeholder="Search for free movies, documentaries, public domain films...">
+                    <input type="text" id="searchQuery" class="form-input" placeholder="Search for classic movies, documentaries, public domain films...">
                     <select id="searchType" class="form-input" style="width: auto;">
                         <option value="movie">Full Movies</option>
                         <option value="documentary">Documentaries</option>
                         <option value="short">Short Films</option>
-                        <option value="any">Any Length</option>
                     </select>
                     <button type="button" class="btn btn-primary" onclick="searchFreeContent()">
                         <i class="lucide-search"></i> Search
                     </button>
                 </div>
             </div>
-            <p class="text-sm text-muted">
-                <i class="lucide-info"></i> This searches for videos with Creative Commons licenses that can be freely used and distributed.
+            <p class="text-sm text-muted" id="sourceInfo">
+                <i class="lucide-info"></i> Internet Archive hosts thousands of public domain classic movies, documentaries, and short films.
             </p>
         </div>
     </div>
@@ -47,7 +58,7 @@
             </div>
         </div>
         <div id="loadingSpinner" class="loading-spinner" style="display: none;">
-            <i class="lucide-loader-2"></i> Searching YouTube...
+            <i class="lucide-loader-2"></i> <span id="loadingText">Searching...</span>
         </div>
     </div>
 </div>
@@ -105,6 +116,46 @@
 </div>
 
 <style>
+.source-tabs {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.source-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--bg-hover);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 160px;
+}
+
+.source-tab:hover {
+    background: var(--bg-dark);
+    border-color: var(--primary);
+}
+
+.source-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.source-tab i {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.source-tab small {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
 .search-row {
     display: flex;
     gap: 0.5rem;
@@ -112,6 +163,29 @@
 
 .search-row input {
     flex: 1;
+}
+
+.imported-badge {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    background: var(--success);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.content-card.imported {
+    opacity: 0.7;
+}
+
+.content-card.imported .content-thumbnail::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(34, 197, 94, 0.2);
 }
 
 .free-content-grid {
@@ -259,6 +333,42 @@
 <script>
 const csrfToken = '<?= $csrf ?>';
 let selectedVideo = null;
+let currentSource = 'internet_archive';
+
+// Source selection
+function selectSource(source) {
+    currentSource = source;
+
+    // Update tab UI
+    document.querySelectorAll('.source-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.source === source);
+    });
+
+    // Update labels and placeholders
+    const searchLabel = document.getElementById('searchLabel');
+    const sourceInfo = document.getElementById('sourceInfo');
+    const searchQuery = document.getElementById('searchQuery');
+
+    if (source === 'internet_archive') {
+        searchLabel.textContent = 'Search Internet Archive';
+        searchQuery.placeholder = 'Search for classic movies, documentaries, public domain films...';
+        sourceInfo.innerHTML = '<i class="lucide-info"></i> Internet Archive hosts thousands of public domain classic movies, documentaries, and short films.';
+    } else {
+        searchLabel.textContent = 'Search YouTube Creative Commons';
+        searchQuery.placeholder = 'Search for free movies, documentaries, public domain films...';
+        sourceInfo.innerHTML = '<i class="lucide-info"></i> This searches for videos with Creative Commons licenses that can be freely used and distributed.';
+    }
+
+    // Clear previous results
+    document.getElementById('searchResults').innerHTML = `
+        <div class="empty-state">
+            <i class="lucide-search"></i>
+            <h3>Search for Free Content</h3>
+            <p>Try searching for "public domain movies", "classic films", or specific genres like "documentary nature".</p>
+        </div>
+    `;
+    document.getElementById('resultCount').textContent = '';
+}
 
 function searchFreeContent() {
     const query = document.getElementById('searchQuery').value.trim();
@@ -271,40 +381,49 @@ function searchFreeContent() {
 
     const resultsDiv = document.getElementById('searchResults');
     const loadingSpinner = document.getElementById('loadingSpinner');
+    const loadingText = document.getElementById('loadingText');
     const resultCount = document.getElementById('resultCount');
 
     resultsDiv.innerHTML = '';
     loadingSpinner.style.display = 'block';
+    loadingText.textContent = currentSource === 'internet_archive' ? 'Searching Internet Archive...' : 'Searching YouTube...';
     resultCount.textContent = '';
 
     fetch('/admin/movies/search-free', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `_token=${csrfToken}&query=${encodeURIComponent(query)}&type=${type}`
+        body: `_token=${csrfToken}&query=${encodeURIComponent(query)}&type=${type}&source=${currentSource}`
     })
     .then(r => r.json())
     .then(data => {
         loadingSpinner.style.display = 'none';
 
         if (data.success && data.results && data.results.length > 0) {
-            resultCount.textContent = `${data.results.length} videos found`;
+            const importedCount = data.results.filter(v => v.already_imported).length;
+            resultCount.textContent = `${data.results.length} videos found` + (importedCount > 0 ? ` (${importedCount} already imported)` : '');
+
             resultsDiv.innerHTML = data.results.map(video => `
-                <div class="content-card">
+                <div class="content-card ${video.already_imported ? 'imported' : ''}">
                     <div class="content-thumbnail">
-                        <img src="${video.thumbnail}" alt="">
+                        <img src="${video.thumbnail}" alt="" onerror="this.src='/assets/images/no-poster.png'">
                         ${video.duration_formatted ? `<span class="content-duration">${video.duration_formatted}</span>` : ''}
+                        ${video.already_imported ? '<span class="imported-badge"><i class="lucide-check"></i> Imported</span>' : ''}
                     </div>
                     <div class="content-info">
                         <h4>${escapeHtml(video.title)}</h4>
+                        ${video.year ? `<span class="text-sm text-muted">${video.year}</span>` : ''}
                         <div class="content-meta">
-                            <span class="content-channel">${escapeHtml(video.channel)}</span>
+                            <span class="content-channel">${escapeHtml(video.channel || 'Unknown')}</span>
                             <div class="content-actions">
                                 <a href="${video.url}" target="_blank" class="btn btn-sm btn-secondary">
                                     <i class="lucide-external-link"></i> View
                                 </a>
-                                <button type="button" class="btn btn-sm btn-primary import-btn" data-video='${JSON.stringify(video).replace(/'/g, "&#39;")}'>
-                                    <i class="lucide-download"></i> Import
-                                </button>
+                                ${video.already_imported
+                                    ? '<span class="text-success text-sm"><i class="lucide-check"></i> Imported</span>'
+                                    : `<button type="button" class="btn btn-sm btn-primary import-btn" data-video='${JSON.stringify(video).replace(/'/g, "&#39;")}'>
+                                        <i class="lucide-download"></i> Import
+                                    </button>`
+                                }
                             </div>
                         </div>
                     </div>
@@ -322,11 +441,14 @@ function searchFreeContent() {
     })
     .catch(error => {
         loadingSpinner.style.display = 'none';
+        const errorMsg = currentSource === 'internet_archive'
+            ? 'Failed to search Internet Archive. Please try again.'
+            : 'Please check your YouTube API configuration in Settings.';
         resultsDiv.innerHTML = `
             <div class="empty-state">
                 <i class="lucide-alert-circle"></i>
                 <h3>Search Failed</h3>
-                <p>Please check your YouTube API configuration in Settings.</p>
+                <p>${errorMsg}</p>
             </div>
         `;
     });
@@ -337,7 +459,7 @@ function showImportModal(video) {
     document.getElementById('importThumbnail').src = video.thumbnail;
     document.getElementById('importTitle').textContent = video.title;
     document.getElementById('importDuration').textContent = video.duration_formatted ? `Duration: ${video.duration_formatted}` : '';
-    document.getElementById('importChannel').textContent = `Channel: ${video.channel}`;
+    document.getElementById('importChannel').textContent = `Source: ${video.channel || (video.source === 'internet_archive' ? 'Internet Archive' : 'YouTube')}`;
     document.getElementById('importModal').style.display = 'flex';
 }
 
@@ -353,10 +475,25 @@ function confirmImport() {
     btn.disabled = true;
     btn.innerHTML = '<i class="lucide-loader-2"></i> Importing...';
 
+    // Build request body with all necessary fields
+    const source = selectedVideo.source || currentSource;
+    const params = new URLSearchParams({
+        _token: csrfToken,
+        video_id: selectedVideo.video_id,
+        title: selectedVideo.title,
+        description: selectedVideo.description || '',
+        thumbnail: selectedVideo.thumbnail || '',
+        duration: selectedVideo.duration || 0,
+        source: source,
+        stream_url: selectedVideo.stream_url || '',
+        source_url: selectedVideo.url || '',
+        year: selectedVideo.year || ''
+    });
+
     fetch('/admin/movies/import-free', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `_token=${csrfToken}&video_id=${selectedVideo.video_id}&title=${encodeURIComponent(selectedVideo.title)}&description=${encodeURIComponent(selectedVideo.description || '')}&thumbnail=${encodeURIComponent(selectedVideo.thumbnail)}&duration=${selectedVideo.duration || 0}`
+        body: params.toString()
     })
     .then(r => r.json())
     .then(data => {
@@ -365,6 +502,9 @@ function confirmImport() {
             showSuccessModal(data.movie_id, selectedVideo.title);
             btn.disabled = false;
             btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
+
+            // Mark the card as imported
+            markVideoAsImported(selectedVideo.video_id);
         } else {
             alert('Import failed: ' + (data.message || 'Unknown error'));
             btn.disabled = false;
@@ -375,6 +515,28 @@ function confirmImport() {
         alert('Import failed. Please try again.');
         btn.disabled = false;
         btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
+    });
+}
+
+function markVideoAsImported(videoId) {
+    // Find and update the card in the results
+    document.querySelectorAll('.import-btn').forEach(btn => {
+        try {
+            const video = JSON.parse(btn.dataset.video);
+            if (video.video_id === videoId) {
+                const card = btn.closest('.content-card');
+                card.classList.add('imported');
+
+                // Add imported badge
+                const thumbnail = card.querySelector('.content-thumbnail');
+                if (!thumbnail.querySelector('.imported-badge')) {
+                    thumbnail.insertAdjacentHTML('beforeend', '<span class="imported-badge"><i class="lucide-check"></i> Imported</span>');
+                }
+
+                // Replace button with imported text
+                btn.replaceWith(document.createRange().createContextualFragment('<span class="text-success text-sm"><i class="lucide-check"></i> Imported</span>'));
+            }
+        } catch (e) {}
     });
 }
 
