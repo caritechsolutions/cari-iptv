@@ -201,9 +201,9 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                     </div>
                                 <?php endif; ?>
                             </div>
-                            <input type="url" name="poster_url" id="poster_url" class="form-input mt-1"
+                            <input type="text" name="poster_url" id="poster_url" class="form-input mt-1"
                                    value="<?= htmlspecialchars($movie['poster_url'] ?? '') ?>"
-                                   placeholder="Poster URL" onchange="updatePosterPreview()">
+                                   placeholder="Poster URL or path" onchange="updatePosterPreview()">
                         </div>
                         <div class="media-preview-item">
                             <label class="form-label">Backdrop</label>
@@ -217,15 +217,15 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                     </div>
                                 <?php endif; ?>
                             </div>
-                            <input type="url" name="backdrop_url" id="backdrop_url" class="form-input mt-1"
+                            <input type="text" name="backdrop_url" id="backdrop_url" class="form-input mt-1"
                                    value="<?= htmlspecialchars($movie['backdrop_url'] ?? '') ?>"
-                                   placeholder="Backdrop URL" onchange="updateBackdropPreview()">
+                                   placeholder="Backdrop URL or path" onchange="updateBackdropPreview()">
                         </div>
                     </div>
 
                     <div class="form-group mt-2">
                         <label class="form-label" for="logo_url">Clear Logo URL</label>
-                        <input type="url" name="logo_url" id="logo_url" class="form-input"
+                        <input type="text" name="logo_url" id="logo_url" class="form-input"
                                value="<?= htmlspecialchars($movie['logo_url'] ?? '') ?>"
                                placeholder="HD logo from Fanart.tv">
                     </div>

@@ -82,6 +82,28 @@
     </div>
 </div>
 
+<!-- Import Success Modal -->
+<div class="modal-overlay" id="successModal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="lucide-check-circle" style="color: var(--success);"></i> Import Successful</h3>
+            <button type="button" class="modal-close" onclick="closeSuccessModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p id="successMessage" class="mb-2">Movie has been imported successfully!</p>
+            <p class="text-muted text-sm">The video has been added to your library as a draft. You can edit the details and publish when ready.</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeSuccessModal()">
+                <i class="lucide-search"></i> Continue Browsing
+            </button>
+            <a href="#" id="editMovieBtn" class="btn btn-primary">
+                <i class="lucide-edit"></i> Edit Movie
+            </a>
+        </div>
+    </div>
+</div>
+
 <style>
 .search-row {
     display: flex;
@@ -340,7 +362,9 @@ function confirmImport() {
     .then(data => {
         if (data.success) {
             closeImportModal();
-            window.location.href = `/admin/movies/${data.movie_id}/edit`;
+            showSuccessModal(data.movie_id, selectedVideo.title);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
         } else {
             alert('Import failed: ' + (data.message || 'Unknown error'));
             btn.disabled = false;
@@ -352,6 +376,16 @@ function confirmImport() {
         btn.disabled = false;
         btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
     });
+}
+
+function showSuccessModal(movieId, title) {
+    document.getElementById('successMessage').textContent = `"${title}" has been imported successfully!`;
+    document.getElementById('editMovieBtn').href = `/admin/movies/${movieId}/edit`;
+    document.getElementById('successModal').style.display = 'flex';
+}
+
+function closeSuccessModal() {
+    document.getElementById('successModal').style.display = 'none';
 }
 
 function escapeHtml(text) {
@@ -376,8 +410,11 @@ document.getElementById('searchResults').addEventListener('click', function(e) {
     }
 });
 
-// Close modal on overlay click
+// Close modals on overlay click
 document.getElementById('importModal').addEventListener('click', function(e) {
     if (e.target === this) closeImportModal();
+});
+document.getElementById('successModal').addEventListener('click', function(e) {
+    if (e.target === this) closeSuccessModal();
 });
 </script>
