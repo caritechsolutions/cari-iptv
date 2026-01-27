@@ -278,21 +278,14 @@
                                     </td>
                                     <td>
                                         <div class="action-buttons">
-                                            <a href="/admin/channels/<?= $channel['id'] ?>/edit" class="btn btn-secondary btn-sm">
-                                                Edit
-                                            </a>
-                                            <form action="/admin/channels/<?= $channel['id'] ?>/toggle-status" method="POST" style="display:inline;">
+                                            <a href="/admin/channels/<?= $channel['id'] ?>/edit" class="btn btn-secondary btn-sm">Edit</a>
+                                            <form method="POST" action="/admin/channels/<?= $channel['id'] ?>/toggle-status" class="inline-form">
                                                 <input type="hidden" name="_token" value="<?= $csrf ?>">
-                                                <button type="submit" class="btn btn-<?= $channel['is_active'] ? 'warning' : 'success' ?> btn-sm">
-                                                    <?= $channel['is_active'] ? 'Disable' : 'Enable' ?>
-                                                </button>
+                                                <button type="submit" class="btn btn-<?= $channel['is_active'] ? 'warning' : 'success' ?> btn-sm"><?= $channel['is_active'] ? 'Disable' : 'Enable' ?></button>
                                             </form>
-                                            <form action="/admin/channels/<?= $channel['id'] ?>/delete" method="POST" style="display:inline;"
-                                                  onsubmit="return confirm('Are you sure you want to delete this channel?');">
+                                            <form method="POST" action="/admin/channels/<?= $channel['id'] ?>/delete" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this channel?');">
                                                 <input type="hidden" name="_token" value="<?= $csrf ?>">
-                                                <button type="submit" class="btn btn-danger btn-sm">
-                                                    Delete
-                                                </button>
+                                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                                             </form>
                                         </div>
                                     </td>
@@ -511,6 +504,12 @@ function buildPageUrl(int $page, array $filters): string {
     white-space: nowrap;
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
+}
+
+.inline-form {
+    display: inline-block;
+    margin: 0;
+    padding: 0;
 }
 
 .bulk-actions-bar {
