@@ -110,6 +110,9 @@ class MovieController
         try {
             $movieId = $this->movieService->createMovie($data);
 
+            // Process images (download and convert to WebP)
+            $this->movieService->processImages($movieId, $data);
+
             // Log activity
             $this->auth->logActivity(
                 $this->auth->id(),
@@ -181,8 +184,20 @@ class MovieController
 
         unset($data['errors']);
 
+        // Extract new trailers (they should be added, not replace existing)
+        $newTrailers = $data['trailers'] ?? [];
+        unset($data['trailers']);
+
         try {
             $this->movieService->updateMovie($id, $data);
+
+            // Process images if URLs changed (download and convert to WebP)
+            $this->movieService->processImages($id, $data);
+
+            // Add new trailers (don't replace existing ones)
+            foreach ($newTrailers as $trailer) {
+                $this->movieService->addTrailer($id, $trailer);
+            }
 
             // Log activity
             $this->auth->logActivity(
@@ -544,6 +559,12 @@ class MovieController
         try {
             $movieId = $this->movieService->importFromTmdb($details);
 
+            // Process images (download and convert to WebP)
+            $this->movieService->processImages($movieId, [
+                'poster_url' => $details['poster'] ?? null,
+                'backdrop_url' => $details['backdrop'] ?? null,
+            ]);
+
             // Also import trailers from TMDB
             $videos = $this->metadataService->getMovieVideos($tmdbId);
             foreach ($videos as $video) {
@@ -656,6 +677,13 @@ class MovieController
             ];
 
             $movieId = $this->movieService->createMovie($movieData);
+
+            // Process thumbnail (download and convert to WebP)
+            if (!empty($thumbnail)) {
+                $this->movieService->processImages($movieId, [
+                    'poster_url' => $thumbnail,
+                ]);
+            }
 
             // Log activity
             $this->auth->logActivity(
@@ -798,6 +826,20 @@ class MovieController
         // TMDB ID
         if (isset($post['tmdb_id']) && $post['tmdb_id'] !== '') {
             $data['tmdb_id'] = (int) $post['tmdb_id'];
+        }
+
+        // Process new trailers from form
+        if (!empty($post['trailers_new'])) {
+            $trailers = [];
+            foreach ($post['trailers_new'] as $trailerJson) {
+                $trailer = json_decode($trailerJson, true);
+                if ($trailer && !empty($trailer['url'])) {
+                    $trailers[] = $trailer;
+                }
+            }
+            if (!empty($trailers)) {
+                $data['trailers'] = $trailers;
+            }
         }
 
         $data['errors'] = $errors;

@@ -7,14 +7,17 @@
 namespace CariIPTV\Services;
 
 use CariIPTV\Core\Database;
+use CariIPTV\Services\ImageService;
 
 class MovieService
 {
     private Database $db;
+    private ImageService $imageService;
 
     public function __construct()
     {
         $this->db = Database::getInstance();
+        $this->imageService = new ImageService();
     }
 
     /**
@@ -519,6 +522,47 @@ class MovieService
                 'sort_order' => $sortOrder++,
             ]);
         }
+    }
+
+    /**
+     * Process movie images (poster, backdrop) and convert to WebP
+     */
+    public function processImages(int $movieId, array $data): array
+    {
+        $processed = [];
+
+        // Process poster
+        if (!empty($data['poster_url']) && str_starts_with($data['poster_url'], 'http')) {
+            $result = $this->imageService->processFromUrl(
+                $data['poster_url'],
+                'vod',
+                $movieId,
+                'poster'
+            );
+            if ($result['success']) {
+                $processed['poster_url'] = $result['variants']['poster'] ?? $result['base_path'] . '_poster.webp';
+            }
+        }
+
+        // Process backdrop
+        if (!empty($data['backdrop_url']) && str_starts_with($data['backdrop_url'], 'http')) {
+            $result = $this->imageService->processFromUrl(
+                $data['backdrop_url'],
+                'vod',
+                $movieId,
+                'backdrop'
+            );
+            if ($result['success']) {
+                $processed['backdrop_url'] = $result['variants']['backdrop'] ?? $result['base_path'] . '_backdrop.webp';
+            }
+        }
+
+        // Update movie with local paths
+        if (!empty($processed)) {
+            $this->db->update('movies', $processed, 'id = ?', [$movieId]);
+        }
+
+        return $processed;
     }
 
     /**

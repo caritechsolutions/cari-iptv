@@ -150,15 +150,16 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                         <?php if ($isEdit && !empty($movie['trailers'])): ?>
                             <?php foreach ($movie['trailers'] as $index => $trailer): ?>
                                 <div class="trailer-item" data-trailer-id="<?= $trailer['id'] ?>">
-                                    <div class="trailer-preview">
+                                    <div class="trailer-preview" onclick="previewTrailer('<?= $trailer['video_key'] ?>')" style="cursor: pointer;">
                                         <img src="https://img.youtube.com/vi/<?= $trailer['video_key'] ?>/mqdefault.jpg" alt="">
+                                        <div class="play-overlay"><i class="lucide-play"></i></div>
                                     </div>
                                     <div class="trailer-info">
                                         <strong><?= htmlspecialchars($trailer['name'] ?: 'Trailer') ?></strong>
                                         <small class="text-muted"><?= ucfirst($trailer['type']) ?></small>
-                                        <a href="<?= htmlspecialchars($trailer['url']) ?>" target="_blank" class="text-sm">
-                                            <i class="lucide-external-link"></i> View
-                                        </a>
+                                        <button type="button" class="btn btn-xs btn-secondary" onclick="previewTrailer('<?= $trailer['video_key'] ?>')">
+                                            <i class="lucide-play"></i> Preview
+                                        </button>
                                     </div>
                                     <button type="button" class="btn btn-sm btn-danger" onclick="removeTrailer(<?= $trailer['id'] ?>)">
                                         <i class="lucide-trash-2"></i>
@@ -363,6 +364,21 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
     </div>
 </div>
 
+<!-- Trailer Preview Modal -->
+<div class="modal-overlay" id="trailerPreviewModal" style="display: none;">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <h3>Trailer Preview</h3>
+            <button type="button" class="modal-close" onclick="closeTrailerPreview()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 0;">
+            <div class="video-container">
+                <iframe id="trailerPreviewFrame" src="" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
 .form-grid {
     display: grid;
@@ -560,6 +576,51 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+.trailer-preview {
+    position: relative;
+}
+
+.trailer-preview .play-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 36px;
+    height: 36px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.trailer-preview:hover .play-overlay {
+    opacity: 1;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%;
+    background: #000;
+}
+
+.video-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.btn-xs {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
 }
 
 .trailer-info {
@@ -866,28 +927,37 @@ function addTrailerToList(trailer) {
     const div = document.createElement('div');
     div.className = 'trailer-item';
     div.innerHTML = `
-        <div class="trailer-preview">
+        <div class="trailer-preview" onclick="previewTrailer('${trailer.key}')" style="cursor: pointer;">
             <img src="https://img.youtube.com/vi/${trailer.key}/mqdefault.jpg" alt="">
+            <div class="play-overlay"><i class="lucide-play"></i></div>
         </div>
         <div class="trailer-info">
             <strong>${escapeHtml(trailer.name)}</strong>
             <small class="text-muted">${trailer.type}</small>
-            <a href="${trailer.url}" target="_blank" class="text-sm">
-                <i class="lucide-external-link"></i> View
-            </a>
+            <button type="button" class="btn btn-xs btn-secondary" onclick="previewTrailer('${trailer.key}')">
+                <i class="lucide-play"></i> Preview
+            </button>
             <input type="hidden" name="trailers_new[]" value='${JSON.stringify({
                 name: trailer.name,
                 type: trailer.type.toLowerCase(),
                 url: trailer.url,
                 video_key: trailer.key,
-                source: 'tmdb'
+                source: 'youtube'
             })}'>
         </div>
-        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">
+        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove(); checkNoTrailers();">
             <i class="lucide-trash-2"></i>
         </button>
     `;
     list.appendChild(div);
+}
+
+function checkNoTrailers() {
+    const list = document.getElementById('trailersList');
+    const noTrailers = document.getElementById('noTrailers');
+    if (list.children.length === 0) {
+        noTrailers.style.display = 'block';
+    }
 }
 
 function removeTrailer(trailerId) {
@@ -908,6 +978,21 @@ function removeTrailer(trailerId) {
 
 function closeTrailersModal() {
     document.getElementById('trailersModal').style.display = 'none';
+}
+
+// Trailer Preview
+function previewTrailer(videoKey) {
+    const modal = document.getElementById('trailerPreviewModal');
+    const iframe = document.getElementById('trailerPreviewFrame');
+    iframe.src = `https://www.youtube.com/embed/${videoKey}?autoplay=1`;
+    modal.style.display = 'flex';
+}
+
+function closeTrailerPreview() {
+    const modal = document.getElementById('trailerPreviewModal');
+    const iframe = document.getElementById('trailerPreviewFrame');
+    iframe.src = '';
+    modal.style.display = 'none';
 }
 
 function closeTmdbModal() {
@@ -945,6 +1030,10 @@ function escapeHtml(text) {
 document.querySelectorAll('.modal-overlay').forEach(modal => {
     modal.addEventListener('click', function(e) {
         if (e.target === this) {
+            // Stop video if it's the trailer preview modal
+            if (this.id === 'trailerPreviewModal') {
+                document.getElementById('trailerPreviewFrame').src = '';
+            }
             this.style.display = 'none';
         }
     });

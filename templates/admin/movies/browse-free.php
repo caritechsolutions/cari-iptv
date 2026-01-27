@@ -277,11 +277,11 @@ function searchFreeContent() {
                         <div class="content-meta">
                             <span class="content-channel">${escapeHtml(video.channel)}</span>
                             <div class="content-actions">
-                                <a href="${video.url}" target="_blank" class="btn btn-sm btn-secondary" title="View on YouTube">
-                                    <i class="lucide-external-link"></i>
+                                <a href="${video.url}" target="_blank" class="btn btn-sm btn-secondary">
+                                    <i class="lucide-external-link"></i> View
                                 </a>
-                                <button type="button" class="btn btn-sm btn-primary" onclick='showImportModal(${JSON.stringify(video)})' title="Import">
-                                    <i class="lucide-download"></i>
+                                <button type="button" class="btn btn-sm btn-primary import-btn" data-video='${JSON.stringify(video).replace(/'/g, "&#39;")}'>
+                                    <i class="lucide-download"></i> Import
                                 </button>
                             </div>
                         </div>
@@ -364,6 +364,15 @@ function escapeHtml(text) {
 document.getElementById('searchQuery').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') {
         searchFreeContent();
+    }
+});
+
+// Event delegation for import buttons
+document.getElementById('searchResults').addEventListener('click', function(e) {
+    const importBtn = e.target.closest('.import-btn');
+    if (importBtn) {
+        const video = JSON.parse(importBtn.dataset.video);
+        showImportModal(video);
     }
 });
 

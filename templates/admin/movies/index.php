@@ -257,10 +257,10 @@
                                     <td>
                                         <div class="action-buttons">
                                             <a href="/admin/movies/<?= $movie['id'] ?>/edit" class="btn btn-sm btn-secondary" title="Edit">
-                                                <i class="lucide-pencil"></i>
+                                                Edit
                                             </a>
                                             <button type="button" class="btn btn-sm btn-danger" title="Delete" onclick="confirmDelete(<?= $movie['id'] ?>, '<?= htmlspecialchars(addslashes($movie['title'])) ?>')">
-                                                <i class="lucide-trash-2"></i>
+                                                Delete
                                             </button>
                                         </div>
                                     </td>

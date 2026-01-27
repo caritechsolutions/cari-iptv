@@ -67,7 +67,7 @@ cari-iptv/
 │   │   ├── MovieService.php       # Movie CRUD, TMDB import, trailers
 │   │   ├── SettingsService.php    # Database KV store for settings
 │   │   ├── EmailService.php       # Pure PHP SMTP (no PHPMailer)
-│   │   ├── ImageService.php       # Image processing (resize, WebP)
+│   │   ├── ImageService.php       # Image processing (resize, WebP conversion)
 │   │   ├── AIService.php          # AI integration (Ollama, OpenAI, Anthropic)
 │   │   └── MetadataService.php    # TMDB, Fanart.tv, YouTube API integration
 │   │
@@ -117,6 +117,34 @@ cari-iptv/
 2. **Service Layer** - Business logic in Services/
 3. **MVC** - Controllers orchestrate, Services contain logic
 4. **Middleware** - Auth checks before controller actions
+
+### Image Processing (WebP Conversion)
+
+All images should be processed through `ImageService` for WebP conversion and optimization:
+
+```php
+use CariIPTV\Services\ImageService;
+
+$imageService = new ImageService();
+
+// Process image from URL (downloads, resizes, converts to WebP)
+$result = $imageService->processFromUrl(
+    $url,        // Remote image URL
+    'vod',       // Context: 'vod', 'channel', 'avatar', 'logo'
+    $entityId,   // Movie/channel ID
+    'poster'     // Type: 'poster', 'backdrop', 'logo', etc.
+);
+
+// Returns: ['success' => true, 'variants' => ['poster' => '/uploads/vod/123/poster_poster.webp']]
+```
+
+**Predefined sizes by context:**
+- `channel`: thumb (64x64), medium (200x200), large (400x400), landscape (500x296)
+- `vod`: thumb (150x225), poster (342x513), backdrop (780x439)
+- `avatar`: thumb (64x64), medium (200x200)
+- `logo`: small (120x60), medium (200x100)
+
+**IMPORTANT:** When saving movies or channels with remote image URLs (from TMDB, Fanart.tv, etc.), always call `processImages()` to download and convert to local WebP files. This improves performance and reduces external dependencies.
 
 ### Security Patterns (ALWAYS FOLLOW)
 
