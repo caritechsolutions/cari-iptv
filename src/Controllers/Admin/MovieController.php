@@ -662,8 +662,12 @@ class MovieController
      */
     public function importFreeContent(): void
     {
+        // Start output buffering to catch any stray PHP warnings
+        ob_start();
+
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
+            ob_end_clean();
             Response::json(['success' => false, 'message' => 'Invalid request']);
             return;
         }
@@ -679,6 +683,7 @@ class MovieController
         $year = trim($_POST['year'] ?? '');
 
         if (empty($videoId) || empty($title)) {
+            ob_end_clean();
             Response::json(['success' => false, 'message' => 'Video ID and title required']);
             return;
         }
@@ -690,6 +695,7 @@ class MovieController
 
         $existing = $this->movieService->findBySourceUrl($existingUrl);
         if ($existing) {
+            ob_end_clean();
             Response::json([
                 'success' => false,
                 'message' => 'This content has already been imported',
@@ -734,10 +740,11 @@ class MovieController
             // Wrapped in try-catch so image processing failure doesn't fail the import
             if (!empty($thumbnail)) {
                 try {
-                    $this->movieService->processImages($movieId, [
+                    // Suppress warnings from GD functions
+                    @$this->movieService->processImages($movieId, [
                         'poster_url' => $thumbnail,
                     ]);
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     // Log but don't fail - image processing is optional
                     error_log("Image processing failed for movie {$movieId}: " . $e->getMessage());
                 }
@@ -753,12 +760,15 @@ class MovieController
                 ['title' => $title, 'source' => $source]
             );
 
+            // Clear any buffered output and send JSON response
+            ob_end_clean();
             Response::json([
                 'success' => true,
                 'message' => 'Free content imported successfully',
                 'movie_id' => $movieId,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            ob_end_clean();
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
