@@ -279,14 +279,8 @@
                                     <td>
                                         <div class="action-buttons">
                                             <a href="/admin/channels/<?= $channel['id'] ?>/edit" class="btn btn-secondary btn-sm">Edit</a>
-                                            <form method="POST" action="/admin/channels/<?= $channel['id'] ?>/toggle-status" class="inline-form">
-                                                <input type="hidden" name="_token" value="<?= $csrf ?>">
-                                                <button type="submit" class="btn btn-<?= $channel['is_active'] ? 'warning' : 'success' ?> btn-sm"><?= $channel['is_active'] ? 'Disable' : 'Enable' ?></button>
-                                            </form>
-                                            <form method="POST" action="/admin/channels/<?= $channel['id'] ?>/delete" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this channel?');">
-                                                <input type="hidden" name="_token" value="<?= $csrf ?>">
-                                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                            </form>
+                                            <button type="button" class="btn btn-<?= $channel['is_active'] ? 'warning' : 'success' ?> btn-sm" onclick="toggleChannelStatus(<?= $channel['id'] ?>)"><?= $channel['is_active'] ? 'Disable' : 'Enable' ?></button>
+                                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteChannel(<?= $channel['id'] ?>)">Delete</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -506,12 +500,6 @@ function buildPageUrl(int $page, array $filters): string {
     padding: 0.25rem 0.5rem;
 }
 
-.inline-form {
-    display: inline-block;
-    margin: 0;
-    padding: 0;
-}
-
 .bulk-actions-bar {
     display: flex;
     align-items: center;
@@ -686,4 +674,40 @@ document.addEventListener('click', function(e) {
         document.querySelectorAll('.action-dropdown').forEach(d => d.classList.remove('open'));
     }
 });
+
+// Toggle channel status
+function toggleChannelStatus(id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/admin/channels/' + id + '/toggle-status';
+
+    const token = document.createElement('input');
+    token.type = 'hidden';
+    token.name = '_token';
+    token.value = '<?= $csrf ?>';
+    form.appendChild(token);
+
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Delete channel
+function deleteChannel(id) {
+    if (!confirm('Are you sure you want to delete this channel?')) {
+        return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/admin/channels/' + id + '/delete';
+
+    const token = document.createElement('input');
+    token.type = 'hidden';
+    token.name = '_token';
+    token.value = '<?= $csrf ?>';
+    form.appendChild(token);
+
+    document.body.appendChild(form);
+    form.submit();
+}
 </script>
