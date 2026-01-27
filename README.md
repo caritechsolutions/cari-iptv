@@ -37,6 +37,9 @@ curl -sSL https://raw.githubusercontent.com/caritechsolutions/cari-iptv/main/upd
 - **General Settings** - Site name, URL, admin email
 - **Site Logo** - Upload custom logo for branding
 - **SMTP Configuration** - Email settings with test functionality
+- **AI Integration Settings** - Ollama (local), OpenAI, Anthropic configuration
+- **Metadata Integration Settings** - Fanart.tv and TMDB API keys
+- **Image Processing Settings** - WebP quality and size configuration
 - **Settings stored in database** - Key-value store with groups
 
 #### Email Service
@@ -50,20 +53,32 @@ curl -sSL https://raw.githubusercontent.com/caritechsolutions/cari-iptv/main/upd
 - **Avatar Upload** - Custom profile pictures
 - **Password Change** - Self-service password updates
 
-#### Channel Management (In Progress)
+#### Channel Management ✅ COMPLETE
 - **Channel List** - Searchable, sortable list with filters
 - **Channel CRUD** - Create, edit, delete channels
 - **Multi-Category Support** - Assign channels to multiple categories
 - **Package Integration** - Assign channels to subscription packages
 - **Logo Upload** - Square and landscape logo support
+- **Logo Search** - Search 1,200+ channel logos from jaruba/channel-logos repository
+- **WebP Conversion** - Automatic image optimization with multiple size variants
+- **AI Description Generation** - Ollama (local-first), OpenAI, Anthropic fallback
 - **Stream Settings** - Primary and backup stream URLs
 - **Catchup/Time-Shift** - Configurable catchup duration
 - **EPG Integration** - EPG channel ID mapping
 - **Bulk Actions** - Activate, deactivate, delete multiple channels
+- **Toggle Status** - Quick enable/disable channels from list
+
+#### Integrations & Services
+- **AIService** - Multi-provider AI support (Ollama local, OpenAI, Anthropic cloud)
+- **MetadataService** - Channel logo search from jaruba/channel-logos GitHub repo
+- **ImageService** - Image processing with WebP conversion, multiple size variants
+- **Fanart.tv Integration** - Ready for TV show/movie metadata (future VOD use)
+- **TMDB Integration** - Ready for movie/series metadata (future VOD use)
 
 #### Infrastructure
 - **Curl-Based Installation** - Single command install
 - **Automatic Updates** - Pull latest code via update script
+- **Ollama Installation** - Local AI model support in install/update scripts
 - **Database Migrations** - Versioned schema changes
 - **Nginx Configuration** - Optimized for PHP-FPM
 
@@ -624,7 +639,7 @@ POST   /api/analytics/event     # Log playback event
 
 ---
 
-### PHASE 3: Channel Management (Admin) - IN PROGRESS
+### PHASE 3: Channel Management (Admin) ✅ COMPLETE
 **Goal: Admin can add/edit channels and categories**
 
 - [x] **3.1** Create channels table (extended schema with migration)
@@ -635,8 +650,11 @@ POST   /api/analytics/event     # Log playback event
 - [x] **3.6** Build admin authentication (completed in Phase 1)
 - [x] **3.7** Create admin channel list page with search/sort/filter
 - [x] **3.8** Create admin channel add/edit form with tabs (Metadata, EPG, Availability)
-- [ ] **3.9** Create admin category management
-- [ ] **3.10** Test: Admin can manage channels
+- [x] **3.9** AI-powered description generation (Ollama/OpenAI/Anthropic)
+- [x] **3.10** Channel logo search from jaruba/channel-logos (1,200+ logos)
+- [x] **3.11** WebP image processing with multiple size variants
+- [x] **3.12** Toggle channel status and bulk actions
+- [ ] **3.13** Create admin category management (deferred to Phase 6)
 
 ---
 
@@ -672,21 +690,23 @@ POST   /api/analytics/event     # Log playback event
 
 ---
 
-### PHASE 6: VOD System
-**Goal: Users can browse and watch movies/series**
+### PHASE 6: VOD System - UP NEXT
+**Goal: Admin can manage VOD content (movies & series)**
 
-- [ ] **6.1** Create vod_assets table
-- [ ] **6.2** Create series table
-- [ ] **6.3** Create VodAsset and Series models
-- [ ] **6.4** Build VodService
-- [ ] **6.5** Build VodController (API)
-- [ ] **6.6** Admin VOD management pages
-- [ ] **6.7** Create VOD browse page template
-- [ ] **6.8** Create VOD detail page template
-- [ ] **6.9** Build VOD card component
-- [ ] **6.10** Series/season/episode navigation
-- [ ] **6.11** VOD playback integration
-- [ ] **6.12** Test: Full VOD experience works
+- [ ] **6.1** Create/verify vod_assets table schema
+- [ ] **6.2** Create/verify series table schema
+- [ ] **6.3** Build VodService with full CRUD operations
+- [ ] **6.4** Build VodController (Admin)
+- [ ] **6.5** Create admin VOD list page with search/sort/filter
+- [ ] **6.6** Create admin VOD add/edit form (movies)
+- [ ] **6.7** Poster/backdrop search from TMDB API
+- [ ] **6.8** AI-powered movie description generation
+- [ ] **6.9** WebP image processing for posters/backdrops
+- [ ] **6.10** Create admin Series management
+- [ ] **6.11** Create admin Season/Episode management
+- [ ] **6.12** Bulk import from external sources (optional)
+- [ ] **6.13** Category management for VOD
+- [ ] **6.14** Test: Admin can manage VOD content
 
 ---
 
