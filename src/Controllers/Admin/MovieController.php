@@ -731,10 +731,16 @@ class MovieController
             $movieId = $this->movieService->createMovie($movieData);
 
             // Process thumbnail (download and convert to WebP)
+            // Wrapped in try-catch so image processing failure doesn't fail the import
             if (!empty($thumbnail)) {
-                $this->movieService->processImages($movieId, [
-                    'poster_url' => $thumbnail,
-                ]);
+                try {
+                    $this->movieService->processImages($movieId, [
+                        'poster_url' => $thumbnail,
+                    ]);
+                } catch (\Exception $e) {
+                    // Log but don't fail - image processing is optional
+                    error_log("Image processing failed for movie {$movieId}: " . $e->getMessage());
+                }
             }
 
             // Log activity
