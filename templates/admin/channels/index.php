@@ -278,32 +278,22 @@
                                     </td>
                                     <td>
                                         <div class="action-buttons">
-                                            <a href="/admin/channels/<?= $channel['id'] ?>/edit" class="btn btn-secondary btn-sm" title="Edit">
-                                                <i class="lucide-edit"></i>
+                                            <a href="/admin/channels/<?= $channel['id'] ?>/edit" class="btn btn-secondary btn-sm">
+                                                Edit
                                             </a>
-                                            <div class="dropdown action-dropdown">
-                                                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleActionMenu(this)" title="More">
-                                                    <i class="lucide-more-vertical"></i>
+                                            <form action="/admin/channels/<?= $channel['id'] ?>/toggle-status" method="POST" style="display:inline;">
+                                                <input type="hidden" name="_token" value="<?= $csrf ?>">
+                                                <button type="submit" class="btn btn-<?= $channel['is_active'] ? 'warning' : 'success' ?> btn-sm">
+                                                    <?= $channel['is_active'] ? 'Disable' : 'Enable' ?>
                                                 </button>
-                                                <div class="dropdown-menu">
-                                                    <form action="/admin/channels/<?= $channel['id'] ?>/toggle-status" method="POST">
-                                                        <input type="hidden" name="_token" value="<?= $csrf ?>">
-                                                        <button type="submit" class="dropdown-item">
-                                                            <i class="lucide-<?= $channel['is_active'] ? 'eye-off' : 'eye' ?>"></i>
-                                                            <?= $channel['is_active'] ? 'Deactivate' : 'Activate' ?>
-                                                        </button>
-                                                    </form>
-                                                    <div class="dropdown-divider"></div>
-                                                    <form action="/admin/channels/<?= $channel['id'] ?>/delete" method="POST"
-                                                          onsubmit="return confirm('Are you sure you want to delete this channel?');">
-                                                        <input type="hidden" name="_token" value="<?= $csrf ?>">
-                                                        <button type="submit" class="dropdown-item text-danger">
-                                                            <i class="lucide-trash-2"></i>
-                                                            Delete
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            </div>
+                                            </form>
+                                            <form action="/admin/channels/<?= $channel['id'] ?>/delete" method="POST" style="display:inline;"
+                                                  onsubmit="return confirm('Are you sure you want to delete this channel?');">
+                                                <input type="hidden" name="_token" value="<?= $csrf ?>">
+                                                <button type="submit" class="btn btn-danger btn-sm">
+                                                    Delete
+                                                </button>
+                                            </form>
                                         </div>
                                     </td>
                                 </tr>
@@ -512,69 +502,15 @@ function buildPageUrl(int $page, array $filters): string {
 
 .action-buttons {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.5rem;
     align-items: center;
+    flex-wrap: nowrap;
 }
 
 .action-buttons .btn {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.action-buttons .btn i {
-    font-size: 1rem;
-}
-
-.action-dropdown {
-    position: relative;
-}
-
-.action-dropdown .dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    right: 0;
-    left: auto;
-    min-width: 160px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: var(--shadow-lg);
-    z-index: 100;
-    padding: 0.5rem 0;
-    margin-top: 0.25rem;
-}
-
-.action-dropdown.open .dropdown-menu {
-    display: block;
-}
-
-.dropdown-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 0.5rem 0;
-}
-
-.action-dropdown .dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: none;
-    background: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.875rem;
-}
-
-.action-dropdown .dropdown-item:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+    white-space: nowrap;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
 }
 
 .bulk-actions-bar {
