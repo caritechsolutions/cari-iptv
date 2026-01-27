@@ -132,13 +132,14 @@
 }
 
 .modal-content {
-    background: var(--card-bg);
+    background: #1e293b;
     border-radius: 12px;
     max-width: 500px;
     width: 100%;
     max-height: 90vh;
     overflow: hidden;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .modal-header {
