@@ -535,11 +535,20 @@
                         <i class="lucide-search"></i> Search
                     </button>
                 </div>
-                <small class="form-help">Search Fanart.tv for TV network logos</small>
+                <small class="form-help">Search for TV channel logos</small>
             </div>
             <div id="logoSearchResults" class="logo-results">
                 <p class="text-muted text-center">Enter a network name to search for logos</p>
             </div>
+        </div>
+        <div class="modal-footer" id="logoModalFooter" style="display: none;">
+            <button type="button" class="btn btn-secondary" onclick="closeLogoSearch()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="applySelectedLogo('logo')">
+                <i class="lucide-square"></i> Apply to Logo
+            </button>
+            <button type="button" class="btn btn-primary" onclick="applySelectedLogo('landscape')">
+                <i class="lucide-rectangle-horizontal"></i> Apply to Landscape
+            </button>
         </div>
     </div>
 </div>
@@ -1221,7 +1230,9 @@ function searchLogos() {
     }
 
     const resultsContainer = document.getElementById('logoSearchResults');
+    const modalFooter = document.getElementById('logoModalFooter');
     resultsContainer.innerHTML = '<div class="loading-spinner"><i class="lucide-loader-2 spin"></i><p>Searching...</p></div>';
+    modalFooter.style.display = 'none';
 
     fetch('/admin/channels/search-logos', {
         method: 'POST',
@@ -1235,24 +1246,18 @@ function searchLogos() {
     .then(data => {
         if (data.success && data.logos && data.logos.length > 0) {
             resultsContainer.innerHTML = data.logos.map((logo, idx) => `
-                <div class="logo-result-item" onclick="selectLogo(${idx}, '${logo.url}')" data-index="${idx}">
-                    <img src="${logo.url}" alt="${logo.type}" onerror="this.src='/assets/images/placeholder.png'">
-                    <div class="logo-type">${logo.type}</div>
+                <div class="logo-result-item" onclick="selectLogo(${idx}, '${logo.url.replace(/'/g, "\\'")}')" data-index="${idx}">
+                    <img src="${logo.url}" alt="${logo.type}" onerror="this.parentElement.style.display='none'">
+                    <div class="logo-type">${logo.name || logo.type}</div>
                 </div>
-            `).join('') + `
-                <div style="grid-column: 1/-1; text-align: center; padding-top: 1rem; border-top: 1px solid var(--border-color); margin-top: 1rem;">
-                    <button type="button" class="btn btn-primary" onclick="applySelectedLogo()" ${!selectedLogo ? 'disabled' : ''} id="applyLogoBtn">
-                        <i class="lucide-check"></i> Apply Selected Logo
-                    </button>
-                </div>
-            `;
+            `).join('');
             selectedLogo = null;
         } else {
             resultsContainer.innerHTML = `
                 <div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
                     <i class="lucide-image-off" style="font-size: 2rem; color: var(--text-muted); margin-bottom: 0.5rem;"></i>
                     <p class="text-muted">No logos found for "${query}"</p>
-                    <small class="text-muted">Try a different network name or check your Fanart.tv API key in Settings</small>
+                    <small class="text-muted">Try a different network name</small>
                 </div>
             `;
         }
@@ -1273,22 +1278,31 @@ function selectLogo(index, url) {
     });
     document.querySelector(`.logo-result-item[data-index="${index}"]`).classList.add('selected');
     selectedLogo = url;
-    document.getElementById('applyLogoBtn').disabled = false;
+    // Show the footer with apply buttons
+    document.getElementById('logoModalFooter').style.display = 'flex';
 }
 
-function applySelectedLogo() {
-    if (!selectedLogo) return;
+function applySelectedLogo(type) {
+    if (!selectedLogo) {
+        alert('Please select a logo first');
+        return;
+    }
 
-    // Set the logo URL in a hidden field or fetch and preview
-    const logoPreview = document.getElementById('logoPreview');
-    logoPreview.innerHTML = `<img src="${selectedLogo}" alt="Logo">`;
+    // Determine which preview and hidden input to use
+    const isLandscape = type === 'landscape';
+    const previewId = isLandscape ? 'landscapePreview' : 'logoPreview';
+    const inputName = isLandscape ? 'logo_landscape_url_external' : 'logo_url_external';
 
-    // Create a hidden input to store the URL for server-side processing
-    let hiddenInput = document.querySelector('input[name="logo_url_external"]');
+    // Update preview
+    const preview = document.getElementById(previewId);
+    preview.innerHTML = `<img src="${selectedLogo}" alt="Logo">`;
+
+    // Create or update hidden input to store the URL for server-side processing
+    let hiddenInput = document.querySelector(`input[name="${inputName}"]`);
     if (!hiddenInput) {
         hiddenInput = document.createElement('input');
         hiddenInput.type = 'hidden';
-        hiddenInput.name = 'logo_url_external';
+        hiddenInput.name = inputName;
         document.querySelector('.channel-form').appendChild(hiddenInput);
     }
     hiddenInput.value = selectedLogo;

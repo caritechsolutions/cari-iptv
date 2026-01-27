@@ -40,7 +40,7 @@ class ImageService
     public function processUpload(
         array $uploadedFile,
         string $context,
-        int $entityId,
+        string|int $entityId,
         string $type = 'logo'
     ): array {
         // Validate upload
@@ -107,9 +107,13 @@ class ImageService
     public function processFromUrl(
         string $url,
         string $context,
-        int $entityId,
+        string|int|null $entityId = null,
         string $type = 'logo'
     ): array {
+        // Generate a unique ID if none provided (for new entities)
+        if ($entityId === null) {
+            $entityId = time() . '_' . bin2hex(random_bytes(4));
+        }
         // Download image to temp file
         $tempFile = tempnam(sys_get_temp_dir(), 'img_');
 

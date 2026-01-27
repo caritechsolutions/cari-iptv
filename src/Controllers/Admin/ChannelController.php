@@ -132,6 +132,12 @@ class ChannelController
             if ($landscapeUrl) {
                 $data['logo_landscape_url'] = $landscapeUrl;
             }
+        } elseif (!empty($_POST['logo_landscape_url_external'])) {
+            // Handle external landscape logo URL
+            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape');
+            if ($externalLandscape) {
+                $data['logo_landscape_url'] = $externalLandscape;
+            }
         }
 
         // Handle description
@@ -248,6 +254,16 @@ class ChannelController
                     $this->channelService->deleteLogo($channel['logo_landscape_url']);
                 }
                 $data['logo_landscape_url'] = $landscapeUrl;
+            }
+        } elseif (!empty($_POST['logo_landscape_url_external'])) {
+            // Handle external landscape logo URL
+            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape');
+            if ($externalLandscape) {
+                // Delete old landscape logo
+                if (!empty($channel['logo_landscape_url'])) {
+                    $this->channelService->deleteLogo($channel['logo_landscape_url']);
+                }
+                $data['logo_landscape_url'] = $externalLandscape;
             }
         }
 
@@ -613,7 +629,7 @@ class ChannelController
     /**
      * Process external logo URL (download and save)
      */
-    public function processExternalLogo(string $url): ?string
+    private function processExternalLogo(string $url, string $type = 'logo'): ?string
     {
         if (empty($url)) {
             return null;
@@ -621,10 +637,14 @@ class ChannelController
 
         try {
             $imageService = new ImageService();
-            $result = $imageService->processFromUrl($url, 'channel');
+            $result = $imageService->processFromUrl($url, 'channel', null, $type);
 
-            if ($result && isset($result['medium'])) {
-                return $result['medium'];
+            if ($result && $result['success'] && !empty($result['variants'])) {
+                // Return the medium size variant, or landscape for landscape type
+                if ($type === 'landscape' && isset($result['variants']['landscape'])) {
+                    return $result['variants']['landscape'];
+                }
+                return $result['variants']['medium'] ?? $result['variants']['large'] ?? array_values($result['variants'])[0] ?? null;
             }
         } catch (\Exception $e) {
             // Log error but don't fail
