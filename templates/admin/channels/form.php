@@ -30,7 +30,7 @@
                 <div class="card-header">
                     <h3 class="card-title">Channel Logos</h3>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="openLogoSearch()">
-                        <i class="lucide-search"></i> Fetch from Fanart.tv
+                        <i class="lucide-search"></i> Search Logos
                     </button>
                 </div>
                 <div class="card-body">

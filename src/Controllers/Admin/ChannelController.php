@@ -112,6 +112,9 @@ class ChannelController
             return;
         }
 
+        // Remove validation errors key before database insert
+        unset($data['errors']);
+
         // Handle logo upload
         if (!empty($_FILES['logo']['name'])) {
             $logoUrl = $this->channelService->uploadLogo($_FILES['logo'], 'logo');
@@ -222,6 +225,9 @@ class ChannelController
             Response::redirect("/admin/channels/{$id}/edit");
             return;
         }
+
+        // Remove validation errors key before database update
+        unset($data['errors']);
 
         // Handle logo upload
         if (!empty($_FILES['logo']['name'])) {
