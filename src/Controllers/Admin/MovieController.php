@@ -662,7 +662,10 @@ class MovieController
      */
     public function importFreeContent(): void
     {
-        // Start output buffering to catch any stray PHP warnings
+        // Clean any existing output buffers
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         ob_start();
 
         $token = $_POST['_token'] ?? '';
@@ -706,6 +709,8 @@ class MovieController
 
         try {
             // Build movie data based on source
+            // Store remote thumbnail URL directly - no image processing during import
+            // Images will be processed when user edits the movie
             if ($source === 'internet_archive') {
                 $movieData = [
                     'title' => $title,
@@ -736,20 +741,6 @@ class MovieController
 
             $movieId = $this->movieService->createMovie($movieData);
 
-            // Process thumbnail (download and convert to WebP)
-            // Wrapped in try-catch so image processing failure doesn't fail the import
-            if (!empty($thumbnail)) {
-                try {
-                    // Suppress warnings from GD functions
-                    @$this->movieService->processImages($movieId, [
-                        'poster_url' => $thumbnail,
-                    ]);
-                } catch (\Throwable $e) {
-                    // Log but don't fail - image processing is optional
-                    error_log("Image processing failed for movie {$movieId}: " . $e->getMessage());
-                }
-            }
-
             // Log activity
             $this->auth->logActivity(
                 $this->auth->id(),
@@ -760,7 +751,7 @@ class MovieController
                 ['title' => $title, 'source' => $source]
             );
 
-            // Clear any buffered output and send JSON response
+            // Clear any buffered output and send clean JSON response
             ob_end_clean();
             Response::json([
                 'success' => true,

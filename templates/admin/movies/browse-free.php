@@ -532,9 +532,11 @@ function closeImportModal() {
 function confirmImport() {
     if (!selectedVideo) return;
 
-    const btn = event.target;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="lucide-loader-2"></i> Importing...';
+    const btn = document.querySelector('#importModal .btn-primary');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="lucide-loader-2"></i> Importing...';
+    }
 
     // Build request body with all necessary fields
     const source = selectedVideo.source || currentSource;
@@ -556,26 +558,49 @@ function confirmImport() {
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: params.toString()
     })
-    .then(r => r.json())
-    .then(data => {
+    .then(r => {
+        // Read as text first to avoid JSON parse errors
+        return r.text().then(text => {
+            return { status: r.status, text: text };
+        });
+    })
+    .then(({ status, text }) => {
+        // Try to parse JSON from the response
+        let data;
+        try {
+            // Strip any content before the JSON (PHP warnings/errors)
+            const jsonStart = text.indexOf('{');
+            if (jsonStart > 0) {
+                text = text.substring(jsonStart);
+            }
+            data = JSON.parse(text);
+        } catch (e) {
+            console.error('Response was not JSON:', text);
+            throw new Error('Invalid response from server');
+        }
+
         if (data.success) {
             closeImportModal();
             showSuccessModal(data.movie_id, selectedVideo.title);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
 
             // Mark the card as imported
             markVideoAsImported(selectedVideo.video_id);
         } else {
             alert('Import failed: ' + (data.message || 'Unknown error'));
+        }
+
+        if (btn) {
             btn.disabled = false;
             btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
         }
     })
-    .catch(() => {
-        alert('Import failed. Please try again.');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
+    .catch(err => {
+        console.error('Import error:', err);
+        alert('Import failed: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
+        }
     });
 }
 
