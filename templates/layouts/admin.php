@@ -691,13 +691,13 @@
                         <i class="lucide-clapperboard"></i>
                         <span>TV Shows</span>
                     </a>
-                    <a href="/admin/epg" class="nav-item <?= in_array($pageTitle ?? '', ['EPG', 'EPG Management']) ? 'active' : '' ?>">
-                        <i class="lucide-calendar"></i>
-                        <span>EPG</span>
-                    </a>
                     <a href="/admin/categories" class="nav-item <?= in_array($pageTitle ?? '', ['Categories', 'Add Category', 'Edit Category']) ? 'active' : '' ?>">
                         <i class="lucide-folder"></i>
                         <span>Categories</span>
+                    </a>
+                    <a href="/admin/epg" class="nav-item <?= in_array($pageTitle ?? '', ['EPG', 'EPG Management']) ? 'active' : '' ?>">
+                        <i class="lucide-calendar"></i>
+                        <span>EPG</span>
                     </a>
                 </div>
 

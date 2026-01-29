@@ -57,6 +57,7 @@ use CariIPTV\Controllers\Admin\SettingsController;
 use CariIPTV\Controllers\Admin\ChannelController;
 use CariIPTV\Controllers\Admin\MovieController;
 use CariIPTV\Controllers\Admin\SeriesController;
+use CariIPTV\Controllers\Admin\CategoryController;
 
 // Initialize session
 Session::start();
@@ -196,6 +197,14 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     // TV Shows Season Trailers
     $router->post('/series/{id}/seasons/{seasonId}/trailers/add', [SeriesController::class, 'addTrailer']);
     $router->post('/series/{id}/seasons/{seasonId}/trailers/{trailerId}/remove', [SeriesController::class, 'removeTrailer']);
+
+    // Categories Management
+    $router->get('/categories', [CategoryController::class, 'index']);
+    $router->post('/categories/store', [CategoryController::class, 'store']);
+    $router->post('/categories/{id}/update', [CategoryController::class, 'update']);
+    $router->post('/categories/{id}/delete', [CategoryController::class, 'delete']);
+    $router->post('/categories/{id}/toggle-active', [CategoryController::class, 'toggleActive']);
+    $router->post('/categories/update-order', [CategoryController::class, 'updateOrder']);
 });
 
 // Dispatch the request
