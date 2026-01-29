@@ -64,17 +64,19 @@ cari-iptv/
 │   ├── Services/          # Business logic layer
 │   │   ├── AdminAuthService.php   # Authentication, permissions, roles
 │   │   ├── ChannelService.php     # Channel CRUD operations
+│   │   ├── MovieService.php       # Movie CRUD, TMDB import, trailers
 │   │   ├── SettingsService.php    # Database KV store for settings
 │   │   ├── EmailService.php       # Pure PHP SMTP (no PHPMailer)
-│   │   ├── ImageService.php       # Image processing (resize, WebP)
+│   │   ├── ImageService.php       # Image processing (resize, WebP conversion)
 │   │   ├── AIService.php          # AI integration (Ollama, OpenAI, Anthropic)
-│   │   └── MetadataService.php    # External API integration
+│   │   └── MetadataService.php    # TMDB, Fanart.tv, YouTube API integration
 │   │
 │   ├── Controllers/Admin/  # Admin panel controllers
 │   │   ├── AuthController.php
 │   │   ├── DashboardController.php
 │   │   ├── AdminUserController.php
 │   │   ├── ChannelController.php
+│   │   ├── MovieController.php
 │   │   ├── ProfileController.php
 │   │   └── SettingsController.php
 │   │
@@ -116,6 +118,34 @@ cari-iptv/
 3. **MVC** - Controllers orchestrate, Services contain logic
 4. **Middleware** - Auth checks before controller actions
 
+### Image Processing (WebP Conversion)
+
+All images should be processed through `ImageService` for WebP conversion and optimization:
+
+```php
+use CariIPTV\Services\ImageService;
+
+$imageService = new ImageService();
+
+// Process image from URL (downloads, resizes, converts to WebP)
+$result = $imageService->processFromUrl(
+    $url,        // Remote image URL
+    'vod',       // Context: 'vod', 'channel', 'avatar', 'logo'
+    $entityId,   // Movie/channel ID
+    'poster'     // Type: 'poster', 'backdrop', 'logo', etc.
+);
+
+// Returns: ['success' => true, 'variants' => ['poster' => '/uploads/vod/123/poster_poster.webp']]
+```
+
+**Predefined sizes by context:**
+- `channel`: thumb (64x64), medium (200x200), large (400x400), landscape (500x296)
+- `vod`: thumb (150x225), poster (342x513), backdrop (780x439)
+- `avatar`: thumb (64x64), medium (200x200)
+- `logo`: small (120x60), medium (200x100)
+
+**IMPORTANT:** When saving movies or channels with remote image URLs (from TMDB, Fanart.tv, etc.), always call `processImages()` to download and convert to local WebP files. This improves performance and reduces external dependencies.
+
 ### Security Patterns (ALWAYS FOLLOW)
 
 ```php
@@ -155,10 +185,12 @@ $db->lastInsertId();            // Get last insert ID
 | `admin_users` | Admin accounts with roles |
 | `admin_permissions` | Granular permissions |
 | `channels` | TV channels with stream URLs |
-| `categories` | Channel/VOD categories |
-| `streaming_servers` | Stream server configuration |
-| `content_owners` | Content provider tracking |
-| `settings` | Key-value configuration store |
+| `movies` | Movie content with metadata |
+| `movie_trailers` | YouTube trailer links for movies |
+| `movie_artwork` | Fanart.tv artwork (posters, backdrops, logos) |
+| `movie_cast` | Cast and crew from TMDB |
+| `categories` | Channel/VOD categories (type: live, vod, series) |
+| `settings` | Key-value configuration store (grouped by feature) |
 
 ### Admin Roles (Hierarchy)
 1. `viewer` (level 1) - Read-only access
@@ -307,6 +339,43 @@ Currently manual testing only:
 - **Permissions:** `storage/` and `public/uploads/` need write access (0775)
 - **Config:** Environment variables in `.env` file
 
+### Install & Update Scripts
+
+The platform uses bash scripts for installation and updates. **IMPORTANT: After making changes, update the branch name in these scripts before pushing.**
+
+**Files to update:**
+- `install.sh` - Line ~1140: `BRANCH="your-branch-name"`
+- `update.sh` - Line ~19: `BRANCH="your-branch-name"`
+
+**Running updates on test/production:**
+```bash
+# Update command (use the current branch name)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/update.sh?$(date +%s)" | sudo bash
+
+# Example with specific branch:
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/add-movies-menu-OxBkb/update.sh?$(date +%s)" | sudo bash
+
+# Fresh install command:
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/install.sh?$(date +%s)" | sudo bash
+```
+
+**What the update script does:**
+1. Creates backup (if --backup flag used)
+2. Enables maintenance mode
+3. Downloads latest code from the specified branch
+4. Copies files: `src/`, `public/`, `templates/`, `database/migrations/`
+5. Runs pending database migrations (tracked in `_migrations` table)
+6. Fixes file permissions
+7. Installs/updates Ollama for AI features
+8. Clears cache and restarts PHP-FPM/Nginx
+9. Disables maintenance mode
+
+**Important notes:**
+- The `$(date +%s)` cache-buster ensures you get the latest script
+- Migrations are idempotent - they track which have been run
+- The script requires root/sudo access
+- Always test on development/staging first
+
 ## Important Guidelines for AI Assistants
 
 ### DO
@@ -335,23 +404,24 @@ Currently manual testing only:
 
 ## Project Status
 
-### Completed (Phases 0-1.7)
+### Completed (Phases 0-3)
 - Admin authentication system
 - Role-based access control
 - Admin user management
-- Settings system
+- Settings system (with TMDB, Fanart.tv, YouTube API integration)
 - Email service
 - Profile management
+- Channel management (CRUD, bulk actions, logo search)
+- Movies management (CRUD, TMDB/Fanart.tv metadata, trailers, YouTube import)
 
-### In Progress (Phase 3)
-- Channel management (CRUD complete)
-- Category management (pending)
+### In Progress (Phase 4)
+- Series management
+- Category management refinements
 
 ### Future Phases
 - User profiles with parental controls
 - Live TV player integration
 - EPG system
-- VOD management
 - Package/subscription management
 - Analytics dashboard
 

@@ -683,9 +683,9 @@
                         <i class="lucide-tv"></i>
                         <span>Channels</span>
                     </a>
-                    <a href="/admin/vod" class="nav-item <?= in_array($pageTitle ?? '', ['VOD Library', 'Add VOD', 'Edit VOD']) ? 'active' : '' ?>">
+                    <a href="/admin/movies" class="nav-item <?= in_array($pageTitle ?? '', ['Movies', 'Add Movie', 'Edit Movie', 'Browse Free Content']) ? 'active' : '' ?>">
                         <i class="lucide-film"></i>
-                        <span>VOD Library</span>
+                        <span>Movies</span>
                     </a>
                     <a href="/admin/series" class="nav-item <?= in_array($pageTitle ?? '', ['Series', 'Add Series', 'Edit Series']) ? 'active' : '' ?>">
                         <i class="lucide-clapperboard"></i>

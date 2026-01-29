@@ -303,6 +303,55 @@
                 </form>
             </div>
         </div>
+
+        <!-- YouTube Data API Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="lucide-youtube"></i>
+                    YouTube Data API
+                </h3>
+                <span class="status-badge <?= ($integrationStatus['metadata']['youtube']['connected'] ?? false) ? 'connected' : 'disconnected' ?>">
+                    <?= ($integrationStatus['metadata']['youtube']['connected'] ?? false) ? 'Connected' : 'Not Connected' ?>
+                </span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">YouTube Data API enables searching for trailers and royalty-free content.</p>
+
+                <form action="/admin/settings/youtube" method="POST">
+                    <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+                    <div class="form-group">
+                        <label class="form-label" for="youtube_api_key">API Key</label>
+                        <div class="input-with-button">
+                            <input type="password" id="youtube_api_key" name="youtube_api_key" class="form-input"
+                                   placeholder="<?= !empty($settings['metadata']['youtube_api_key']) ? '••••••••••••••••' : 'Enter API key' ?>"
+                                   autocomplete="off">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="testYoutubeConnection()">
+                                <i class="lucide-plug"></i> Test
+                            </button>
+                        </div>
+                        <small class="form-help">
+                            Get a free API key at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a> (enable YouTube Data API v3)
+                        </small>
+                    </div>
+
+                    <div class="info-box">
+                        <i class="lucide-info"></i>
+                        <div>
+                            <strong>Free Tier Limits</strong>
+                            <p>YouTube Data API provides 10,000 units/day for free. A search costs ~100 units.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="lucide-save"></i> Save YouTube Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1090,6 +1139,17 @@ function testTmdbConnection() {
     .then(r => r.json())
     .then(data => showTestResult('TMDB Connection', data.message, data.success))
     .catch(() => showTestResult('TMDB Connection', 'Connection test failed', false));
+}
+
+function testYoutubeConnection() {
+    fetch('/admin/settings/test-youtube', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: '_token=<?= $csrf ?>'
+    })
+    .then(r => r.json())
+    .then(data => showTestResult('YouTube Data API Connection', data.message, data.success))
+    .catch(() => showTestResult('YouTube Data API Connection', 'Connection test failed', false));
 }
 
 // Close modal on overlay click

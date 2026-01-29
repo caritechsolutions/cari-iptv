@@ -434,6 +434,61 @@ class SettingsController
     }
 
     /**
+     * Update YouTube API settings
+     */
+    public function updateYoutube(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        // Get current API key to preserve if not provided
+        $currentYoutubeKey = $this->settings->get('youtube_api_key', '', 'metadata');
+        $newYoutubeKey = trim($_POST['youtube_api_key'] ?? '');
+
+        $this->settings->setMany([
+            'youtube_api_key' => !empty($newYoutubeKey) ? $newYoutubeKey : $currentYoutubeKey,
+        ], 'metadata');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'youtube']);
+
+        Session::flash('success', 'YouTube API settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Test YouTube Data API connection
+     */
+    public function testYoutube(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $metadataService = new MetadataService();
+
+        if (!$metadataService->isYoutubeConfigured()) {
+            Response::json([
+                'success' => false,
+                'message' => 'YouTube API key not configured.',
+            ]);
+            return;
+        }
+
+        $connected = $metadataService->testYoutubeConnection();
+
+        Response::json([
+            'success' => $connected,
+            'message' => $connected ? 'YouTube Data API connection successful!' : 'Connection failed. Check your API key.',
+        ]);
+    }
+
+    /**
      * Update Image settings
      */
     public function updateImage(): void

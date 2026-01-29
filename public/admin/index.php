@@ -55,6 +55,7 @@ use CariIPTV\Controllers\Admin\ProfileController;
 use CariIPTV\Controllers\Admin\AdminUserController;
 use CariIPTV\Controllers\Admin\SettingsController;
 use CariIPTV\Controllers\Admin\ChannelController;
+use CariIPTV\Controllers\Admin\MovieController;
 
 // Initialize session
 Session::start();
@@ -114,6 +115,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/test-ollama', [SettingsController::class, 'testOllama']);
     $router->post('/settings/test-fanart', [SettingsController::class, 'testFanart']);
     $router->post('/settings/test-tmdb', [SettingsController::class, 'testTmdb']);
+    $router->post('/settings/youtube', [SettingsController::class, 'updateYoutube']);
+    $router->post('/settings/test-youtube', [SettingsController::class, 'testYoutube']);
 
     // Channel Management
     $router->get('/channels', [ChannelController::class, 'index']);
@@ -128,9 +131,36 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/channels/search-logos', [ChannelController::class, 'searchLogos']);
     $router->post('/channels/generate-description', [ChannelController::class, 'generateDescription']);
 
+    // Movie Management
+    $router->get('/movies', [MovieController::class, 'index']);
+    $router->get('/movies/create', [MovieController::class, 'create']);
+    $router->post('/movies/store', [MovieController::class, 'store']);
+    $router->get('/movies/browse-free', [MovieController::class, 'browseFreeContent']);
+    $router->get('/movies/{id}/edit', [MovieController::class, 'edit']);
+    $router->post('/movies/{id}/update', [MovieController::class, 'update']);
+    $router->post('/movies/{id}/delete', [MovieController::class, 'delete']);
+    $router->post('/movies/{id}/toggle-featured', [MovieController::class, 'toggleFeatured']);
+    $router->post('/movies/{id}/status', [MovieController::class, 'updateStatus']);
+    $router->post('/movies/bulk', [MovieController::class, 'bulkAction']);
+
+    // Movie Metadata Search
+    $router->post('/movies/search-tmdb', [MovieController::class, 'searchTmdb']);
+    $router->post('/movies/tmdb-details', [MovieController::class, 'getTmdbDetails']);
+    $router->post('/movies/search-fanart', [MovieController::class, 'searchFanart']);
+    $router->post('/movies/search-trailers', [MovieController::class, 'searchTrailers']);
+    $router->post('/movies/import-tmdb', [MovieController::class, 'importFromTmdb']);
+
+    // Movie Trailers
+    $router->post('/movies/{id}/trailers/add', [MovieController::class, 'addTrailer']);
+    $router->post('/movies/{id}/trailers/{trailerId}/remove', [MovieController::class, 'removeTrailer']);
+
+    // Free Content
+    $router->post('/movies/search-free', [MovieController::class, 'searchFreeContent']);
+    $router->post('/movies/import-free', [MovieController::class, 'importFreeContent']);
+    $router->post('/movies/{id}/process-images', [MovieController::class, 'processMovieImages']);
+
     // TODO: Add more routes as we build out the admin panel
-    // $router->get('/vod', [VodController::class, 'index']);
-    // etc.
+    // Series management coming next
 });
 
 // Dispatch the request

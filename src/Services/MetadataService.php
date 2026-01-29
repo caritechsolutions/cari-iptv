@@ -16,6 +16,7 @@ class MetadataService
     private const FANART_TV_API = 'https://webservice.fanart.tv/v3';
     private const TMDB_API = 'https://api.themoviedb.org/3';
     private const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
+    private const YOUTUBE_API = 'https://www.googleapis.com/youtube/v3';
 
     // Channel logos API (jaruba/channel-logos)
     private const CHANNEL_LOGOS_API = 'https://jaruba.github.io/channel-logos/logo_paths.json';
@@ -48,6 +49,9 @@ class MetadataService
             'tmdb' => [
                 'api_key' => $this->settings->get('tmdb_api_key', '', 'metadata'),
             ],
+            'youtube' => [
+                'api_key' => $this->settings->get('youtube_api_key', '', 'metadata'),
+            ],
         ];
     }
 
@@ -65,6 +69,14 @@ class MetadataService
     public function isTmdbConfigured(): bool
     {
         return !empty($this->config['tmdb']['api_key']);
+    }
+
+    /**
+     * Check if YouTube API is configured
+     */
+    public function isYoutubeConfigured(): bool
+    {
+        return !empty($this->config['youtube']['api_key']);
     }
 
     /**
@@ -107,6 +119,34 @@ class MetadataService
 
         try {
             $url = self::TMDB_API . '/configuration?api_key=' . $this->config['tmdb']['api_key'];
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            return $httpCode === 200;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Test YouTube Data API connection
+     */
+    public function testYoutubeConnection(): bool
+    {
+        if (!$this->isYoutubeConfigured()) {
+            return false;
+        }
+
+        try {
+            $url = self::YOUTUBE_API . '/videos?part=snippet&chart=mostPopular&maxResults=1&key=' . $this->config['youtube']['api_key'];
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -691,6 +731,541 @@ class MetadataService
                 'configured' => $this->isTmdbConfigured(),
                 'connected' => $this->isTmdbConfigured() ? $this->testTmdbConnection() : false,
             ],
+            'youtube' => [
+                'configured' => $this->isYoutubeConfigured(),
+                'connected' => $this->isYoutubeConfigured() ? $this->testYoutubeConnection() : false,
+            ],
         ];
+    }
+
+    /**
+     * Search YouTube for trailers
+     */
+    public function searchYoutubeTrailers(string $movieTitle, ?int $year = null): array
+    {
+        if (!$this->isYoutubeConfigured()) {
+            return ['error' => 'YouTube API key not configured'];
+        }
+
+        try {
+            $query = $movieTitle . ($year ? " {$year}" : '') . ' official trailer';
+
+            $params = [
+                'part' => 'snippet',
+                'q' => $query,
+                'type' => 'video',
+                'videoCategoryId' => '1', // Film & Animation
+                'maxResults' => 10,
+                'key' => $this->config['youtube']['api_key'],
+            ];
+
+            $url = self::YOUTUBE_API . '/search?' . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                return $this->formatYoutubeResults($data['items'] ?? []);
+            }
+
+            return ['error' => 'API request failed'];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Search YouTube for Creative Commons (royalty-free) content
+     */
+    public function searchYoutubeCreativeCommons(string $query, string $type = 'movie'): array
+    {
+        if (!$this->isYoutubeConfigured()) {
+            return ['error' => 'YouTube API key not configured'];
+        }
+
+        try {
+            $searchQuery = $query;
+            if ($type === 'movie') {
+                $searchQuery .= ' full movie';
+            }
+
+            $params = [
+                'part' => 'snippet',
+                'q' => $searchQuery,
+                'type' => 'video',
+                'videoLicense' => 'creativeCommon',
+                'videoDuration' => $type === 'movie' ? 'long' : 'any', // long = > 20 minutes
+                'maxResults' => 20,
+                'key' => $this->config['youtube']['api_key'],
+            ];
+
+            $url = self::YOUTUBE_API . '/search?' . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $results = $this->formatYoutubeResults($data['items'] ?? []);
+
+                // Get video details for duration
+                if (!empty($results['results'])) {
+                    $videoIds = array_column($results['results'], 'video_id');
+                    $details = $this->getYoutubeVideoDetails($videoIds);
+
+                    // Merge duration info
+                    foreach ($results['results'] as &$video) {
+                        if (isset($details[$video['video_id']])) {
+                            $video['duration'] = $details[$video['video_id']]['duration'];
+                            $video['duration_formatted'] = $details[$video['video_id']]['duration_formatted'];
+                        }
+                    }
+                }
+
+                return $results;
+            }
+
+            return ['error' => 'API request failed'];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get YouTube video details (for duration, etc.)
+     */
+    public function getYoutubeVideoDetails(array $videoIds): array
+    {
+        if (!$this->isYoutubeConfigured() || empty($videoIds)) {
+            return [];
+        }
+
+        try {
+            $params = [
+                'part' => 'contentDetails,snippet',
+                'id' => implode(',', array_slice($videoIds, 0, 50)),
+                'key' => $this->config['youtube']['api_key'],
+            ];
+
+            $url = self::YOUTUBE_API . '/videos?' . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $details = [];
+
+                foreach ($data['items'] ?? [] as $video) {
+                    $duration = $this->parseYoutubeDuration($video['contentDetails']['duration'] ?? 'PT0S');
+                    $details[$video['id']] = [
+                        'duration' => $duration,
+                        'duration_formatted' => $this->formatDuration($duration),
+                    ];
+                }
+
+                return $details;
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Format YouTube search results
+     */
+    private function formatYoutubeResults(array $items): array
+    {
+        $formatted = [];
+        foreach ($items as $item) {
+            $videoId = $item['id']['videoId'] ?? null;
+            if (!$videoId) continue;
+
+            $formatted[] = [
+                'video_id' => $videoId,
+                'title' => $item['snippet']['title'],
+                'description' => $item['snippet']['description'],
+                'thumbnail' => $item['snippet']['thumbnails']['high']['url'] ?? $item['snippet']['thumbnails']['default']['url'],
+                'channel' => $item['snippet']['channelTitle'],
+                'published_at' => $item['snippet']['publishedAt'],
+                'url' => 'https://www.youtube.com/watch?v=' . $videoId,
+                'embed_url' => 'https://www.youtube.com/embed/' . $videoId,
+            ];
+        }
+        return ['results' => $formatted];
+    }
+
+    /**
+     * Parse YouTube ISO 8601 duration to seconds
+     */
+    private function parseYoutubeDuration(string $duration): int
+    {
+        $interval = new \DateInterval($duration);
+        return ($interval->h * 3600) + ($interval->i * 60) + $interval->s;
+    }
+
+    /**
+     * Format seconds to human readable duration
+     */
+    private function formatDuration(int $seconds): string
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        $secs = $seconds % 60;
+
+        if ($hours > 0) {
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
+        }
+        return sprintf('%d:%02d', $minutes, $secs);
+    }
+
+    /**
+     * Get movie videos from TMDB (including trailers)
+     */
+    public function getMovieVideos(int $tmdbId): array
+    {
+        if (!$this->isTmdbConfigured()) {
+            return [];
+        }
+
+        try {
+            $url = self::TMDB_API . '/movie/' . $tmdbId . '/videos?api_key=' . $this->config['tmdb']['api_key'];
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $videos = [];
+
+                foreach ($data['results'] ?? [] as $video) {
+                    if ($video['site'] === 'YouTube') {
+                        $videos[] = [
+                            'key' => $video['key'],
+                            'name' => $video['name'],
+                            'type' => $video['type'], // Trailer, Teaser, Clip, etc.
+                            'url' => 'https://www.youtube.com/watch?v=' . $video['key'],
+                            'embed_url' => 'https://www.youtube.com/embed/' . $video['key'],
+                        ];
+                    }
+                }
+
+                return $videos;
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get movie artwork from Fanart.tv
+     */
+    public function getMovieArtwork(int $tmdbId): array
+    {
+        if (!$this->isFanartConfigured()) {
+            return [];
+        }
+
+        try {
+            $url = self::FANART_TV_API . '/movies/' . $tmdbId . '?api_key=' . $this->config['fanart_tv']['api_key'];
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+
+                $artwork = [
+                    'posters' => [],
+                    'backdrops' => [],
+                    'logos' => [],
+                    'discs' => [],
+                    'banners' => [],
+                ];
+
+                // Movie posters
+                if (!empty($data['movieposter'])) {
+                    foreach (array_slice($data['movieposter'], 0, 10) as $img) {
+                        $artwork['posters'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // Movie backgrounds
+                if (!empty($data['moviebackground'])) {
+                    foreach (array_slice($data['moviebackground'], 0, 10) as $img) {
+                        $artwork['backdrops'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // HD Movie clearart/logos
+                if (!empty($data['hdmovielogo'])) {
+                    foreach (array_slice($data['hdmovielogo'], 0, 5) as $img) {
+                        $artwork['logos'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                } elseif (!empty($data['movielogo'])) {
+                    foreach (array_slice($data['movielogo'], 0, 5) as $img) {
+                        $artwork['logos'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // Movie disc art
+                if (!empty($data['moviedisc'])) {
+                    foreach (array_slice($data['moviedisc'], 0, 5) as $img) {
+                        $artwork['discs'][] = [
+                            'url' => $img['url'],
+                            'disc_type' => $img['disc_type'] ?? 'dvd',
+                        ];
+                    }
+                }
+
+                // Movie banners
+                if (!empty($data['moviebanner'])) {
+                    foreach (array_slice($data['moviebanner'], 0, 5) as $img) {
+                        $artwork['banners'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                return $artwork;
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Search Internet Archive for public domain movies
+     * https://archive.org/advancedsearch.php
+     */
+    public function searchInternetArchive(string $query, string $type = 'movie'): array
+    {
+        try {
+            // Build search query - keep it simple for better results
+            // Just search for the term in movies mediatype
+            $searchQuery = trim($query);
+            if (empty($searchQuery)) {
+                return ['results' => []];
+            }
+
+            // Build URL manually because http_build_query doesn't handle repeated params well
+            $fields = ['identifier', 'title', 'description', 'year', 'runtime', 'creator', 'subject'];
+            $fieldParams = implode('&', array_map(fn($f) => 'fl[]=' . $f, $fields));
+
+            // Simple query: search term + movies mediatype
+            $encodedQuery = rawurlencode("({$searchQuery}) AND mediatype:(movies)");
+
+            $url = "https://archive.org/advancedsearch.php?q={$encodedQuery}&{$fieldParams}&sort[]=downloads+desc&rows=25&page=1&output=json";
+
+            error_log("Internet Archive URL: " . $url);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_USERAGENT => 'CARI-IPTV/1.0',
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => true,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                error_log("Internet Archive cURL error: " . $curlError);
+                return ['error' => 'Connection failed: ' . $curlError];
+            }
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    error_log("Internet Archive JSON error: " . json_last_error_msg());
+                    return ['error' => 'Invalid response format'];
+                }
+                $docs = $data['response']['docs'] ?? [];
+                error_log("Internet Archive found " . count($docs) . " results");
+                return $this->formatInternetArchiveResults($docs);
+            }
+
+            error_log("Internet Archive HTTP error: " . $httpCode);
+            return ['error' => 'API request failed with status ' . $httpCode];
+        } catch (\Exception $e) {
+            error_log("Internet Archive exception: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Format Internet Archive search results
+     */
+    private function formatInternetArchiveResults(array $items): array
+    {
+        $formatted = [];
+        foreach ($items as $item) {
+            $identifier = $item['identifier'] ?? '';
+            if (empty($identifier)) continue;
+
+            // Parse runtime (can be like "1:30:00" or "90 min")
+            $runtime = $item['runtime'] ?? '';
+            $durationSeconds = $this->parseArchiveRuntime($runtime);
+
+            $formatted[] = [
+                'source' => 'internet_archive',
+                'video_id' => $identifier,
+                'title' => $item['title'] ?? $identifier,
+                'description' => is_array($item['description'] ?? null)
+                    ? ($item['description'][0] ?? '')
+                    : ($item['description'] ?? ''),
+                'thumbnail' => "https://archive.org/services/img/{$identifier}",
+                'channel' => is_array($item['creator'] ?? null)
+                    ? ($item['creator'][0] ?? 'Internet Archive')
+                    : ($item['creator'] ?? 'Internet Archive'),
+                'year' => $item['year'] ?? null,
+                'duration' => $durationSeconds,
+                'duration_formatted' => $durationSeconds > 0 ? $this->formatDuration($durationSeconds) : '',
+                'url' => "https://archive.org/details/{$identifier}",
+                'embed_url' => "https://archive.org/embed/{$identifier}",
+                'stream_url' => "https://archive.org/download/{$identifier}/{$identifier}.mp4",
+            ];
+        }
+        return ['results' => $formatted];
+    }
+
+    /**
+     * Parse Internet Archive runtime to seconds
+     */
+    private function parseArchiveRuntime(string $runtime): int
+    {
+        if (empty($runtime)) return 0;
+
+        // Format: "1:30:00" or "90:00" or "90 min"
+        if (preg_match('/(\d+):(\d+):(\d+)/', $runtime, $matches)) {
+            return (int)$matches[1] * 3600 + (int)$matches[2] * 60 + (int)$matches[3];
+        }
+        if (preg_match('/(\d+):(\d+)/', $runtime, $matches)) {
+            return (int)$matches[1] * 60 + (int)$matches[2];
+        }
+        if (preg_match('/(\d+)\s*min/i', $runtime, $matches)) {
+            return (int)$matches[1] * 60;
+        }
+        return 0;
+    }
+
+    /**
+     * Get details for a specific Internet Archive item
+     */
+    public function getInternetArchiveDetails(string $identifier): ?array
+    {
+        try {
+            $url = "https://archive.org/metadata/{$identifier}";
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_USERAGENT => 'CARI-IPTV/1.0',
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $metadata = $data['metadata'] ?? [];
+                $files = $data['files'] ?? [];
+
+                // Find the best video file
+                $videoFile = null;
+                $preferredFormats = ['mp4', 'mpeg4', 'h.264', 'ogv'];
+                foreach ($files as $file) {
+                    $format = strtolower($file['format'] ?? '');
+                    if (str_contains($format, 'mp4') || str_contains($format, 'mpeg4') || str_contains($format, 'h.264')) {
+                        $videoFile = $file;
+                        break;
+                    }
+                }
+
+                return [
+                    'identifier' => $identifier,
+                    'title' => $metadata['title'] ?? $identifier,
+                    'description' => is_array($metadata['description'] ?? null)
+                        ? implode("\n", $metadata['description'])
+                        : ($metadata['description'] ?? ''),
+                    'year' => $metadata['year'] ?? $metadata['date'] ?? null,
+                    'creator' => is_array($metadata['creator'] ?? null)
+                        ? implode(', ', $metadata['creator'])
+                        : ($metadata['creator'] ?? ''),
+                    'runtime' => $metadata['runtime'] ?? '',
+                    'thumbnail' => "https://archive.org/services/img/{$identifier}",
+                    'stream_url' => $videoFile
+                        ? "https://archive.org/download/{$identifier}/" . urlencode($videoFile['name'])
+                        : "https://archive.org/download/{$identifier}/{$identifier}.mp4",
+                    'embed_url' => "https://archive.org/embed/{$identifier}",
+                    'license' => $metadata['licenseurl'] ?? 'Public Domain',
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 }

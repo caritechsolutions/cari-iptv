@@ -1137,7 +1137,7 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="claude/add-channels-page-I5a8f"
+    BRANCH="claude/add-movies-menu-OxBkb"
     TEMP_DIR=$(mktemp -d)
 
     log_info "Downloading application files from $BRANCH branch..."
