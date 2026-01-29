@@ -1195,6 +1195,7 @@ install_application_files() {
     mkdir -p "$INSTALL_DIR/public/uploads/channels"
     mkdir -p "$INSTALL_DIR/public/uploads/avatars"
     mkdir -p "$INSTALL_DIR/public/uploads/logos"
+    mkdir -p "$INSTALL_DIR/public/uploads/vod"
     chown -R $WEB_USER:$WEB_GROUP "$INSTALL_DIR/public/uploads"
     chmod -R 775 "$INSTALL_DIR/public/uploads"
 
