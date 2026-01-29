@@ -687,9 +687,9 @@
                         <i class="lucide-film"></i>
                         <span>Movies</span>
                     </a>
-                    <a href="/admin/series" class="nav-item <?= in_array($pageTitle ?? '', ['Series', 'Add Series', 'Edit Series']) ? 'active' : '' ?>">
+                    <a href="/admin/series" class="nav-item <?= str_contains($pageTitle ?? '', 'TV Show') || str_contains($pageTitle ?? '', 'Seasons') || str_contains($pageTitle ?? '', 'Season ') ? 'active' : '' ?>">
                         <i class="lucide-clapperboard"></i>
-                        <span>Series</span>
+                        <span>TV Shows</span>
                     </a>
                     <a href="/admin/epg" class="nav-item <?= in_array($pageTitle ?? '', ['EPG', 'EPG Management']) ? 'active' : '' ?>">
                         <i class="lucide-calendar"></i>

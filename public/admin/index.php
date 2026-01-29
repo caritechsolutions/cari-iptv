@@ -56,6 +56,7 @@ use CariIPTV\Controllers\Admin\AdminUserController;
 use CariIPTV\Controllers\Admin\SettingsController;
 use CariIPTV\Controllers\Admin\ChannelController;
 use CariIPTV\Controllers\Admin\MovieController;
+use CariIPTV\Controllers\Admin\SeriesController;
 
 // Initialize session
 Session::start();
@@ -159,8 +160,41 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/movies/import-free', [MovieController::class, 'importFreeContent']);
     $router->post('/movies/{id}/process-images', [MovieController::class, 'processMovieImages']);
 
-    // TODO: Add more routes as we build out the admin panel
-    // Series management coming next
+    // TV Shows (Series) Management
+    $router->get('/series', [SeriesController::class, 'index']);
+    $router->get('/series/create', [SeriesController::class, 'create']);
+    $router->post('/series/store', [SeriesController::class, 'store']);
+    $router->get('/series/{id}/edit', [SeriesController::class, 'edit']);
+    $router->post('/series/{id}/update', [SeriesController::class, 'update']);
+    $router->post('/series/{id}/delete', [SeriesController::class, 'delete']);
+    $router->post('/series/{id}/toggle-featured', [SeriesController::class, 'toggleFeatured']);
+    $router->post('/series/{id}/status', [SeriesController::class, 'updateStatus']);
+    $router->post('/series/bulk', [SeriesController::class, 'bulkAction']);
+
+    // TV Shows Metadata Search
+    $router->post('/series/search-tmdb', [SeriesController::class, 'searchTmdb']);
+    $router->post('/series/tmdb-details', [SeriesController::class, 'getTmdbDetails']);
+    $router->post('/series/search-fanart', [SeriesController::class, 'searchFanart']);
+    $router->post('/series/search-trailers', [SeriesController::class, 'searchTrailers']);
+    $router->post('/series/import-tmdb', [SeriesController::class, 'importFromTmdb']);
+    $router->post('/series/{id}/process-images', [SeriesController::class, 'processShowImages']);
+
+    // TV Shows Seasons
+    $router->get('/series/{id}/seasons', [SeriesController::class, 'seasons']);
+    $router->post('/series/{id}/seasons/add', [SeriesController::class, 'addSeason']);
+    $router->post('/series/{id}/seasons/{seasonId}/update', [SeriesController::class, 'updateSeason']);
+    $router->post('/series/{id}/seasons/{seasonId}/delete', [SeriesController::class, 'deleteSeason']);
+    $router->post('/series/{id}/seasons/import', [SeriesController::class, 'importSeasons']);
+
+    // TV Shows Episodes
+    $router->get('/series/{id}/seasons/{seasonId}/episodes', [SeriesController::class, 'episodes']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/add', [SeriesController::class, 'addEpisode']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/update', [SeriesController::class, 'updateEpisode']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/delete', [SeriesController::class, 'deleteEpisode']);
+
+    // TV Shows Season Trailers
+    $router->post('/series/{id}/seasons/{seasonId}/trailers/add', [SeriesController::class, 'addTrailer']);
+    $router->post('/series/{id}/seasons/{seasonId}/trailers/{trailerId}/remove', [SeriesController::class, 'removeTrailer']);
 });
 
 // Dispatch the request
