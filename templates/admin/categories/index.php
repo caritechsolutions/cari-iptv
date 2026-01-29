@@ -295,6 +295,54 @@ $typeColors = ['live' => 'badge-info', 'vod' => 'badge-warning', 'series' => 'ba
 </div>
 
 <style>
+/* Filter styles */
+.filters-form {
+    width: 100%;
+}
+
+.filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.filter-group {
+    flex: 0 0 auto;
+}
+
+.filter-search {
+    flex: 1 1 250px;
+    min-width: 200px;
+}
+
+.search-input-wrapper {
+    position: relative;
+}
+
+.search-input-wrapper i {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+}
+
+.search-input-wrapper input {
+    padding-left: 2.5rem;
+}
+
+.filter-group .form-input,
+.filter-group .form-select {
+    min-width: 150px;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
 /* Category-specific styles */
 .cat-name-cell {
     display: flex;
