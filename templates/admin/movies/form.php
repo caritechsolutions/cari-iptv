@@ -380,6 +380,58 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 </div>
 
 <style>
+/* Modal Overlay - Fixed positioning */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: #1e293b;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: 1.5fr 1fr;
