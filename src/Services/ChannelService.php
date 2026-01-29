@@ -365,7 +365,7 @@ class ChannelService
     /**
      * Save channel categories
      */
-    private function saveChannelCategories(int $channelId, array $categoryIds, ?int $primaryCategoryId = null): void
+    public function saveChannelCategories(int $channelId, array $categoryIds, ?int $primaryCategoryId = null): void
     {
         // Delete existing
         $this->db->delete('channel_categories', 'channel_id = ?', [$channelId]);
@@ -402,7 +402,7 @@ class ChannelService
     /**
      * Generate unique slug
      */
-    private function generateSlug(string $name, ?int $excludeId = null): string
+    public function generateSlug(string $name, ?int $excludeId = null): string
     {
         $slug = strtolower(trim($name));
         $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
@@ -434,7 +434,7 @@ class ChannelService
     /**
      * Generate unique key code
      */
-    private function generateKeyCode(): string
+    public function generateKeyCode(): string
     {
         // Get the max numeric key_code
         $result = $this->db->fetch(
