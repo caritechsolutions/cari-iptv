@@ -517,6 +517,57 @@ class SeriesController
         }
     }
 
+    /**
+     * Fetch TMDB data for a single manually-added season
+     */
+    public function fetchSeasonTmdb(int $id, int $seasonId): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $show = $this->seriesService->getShow($id);
+        if (!$show || empty($show['tmdb_id'])) {
+            $this->sendJson(['success' => false, 'message' => 'Show not found or no TMDB ID linked']);
+            return;
+        }
+
+        $season = $this->seriesService->getSeason($seasonId);
+        if (!$season) {
+            $this->sendJson(['success' => false, 'message' => 'Season not found']);
+            return;
+        }
+
+        try {
+            $tmdbId = (int) $show['tmdb_id'];
+            $seasonNumber = (int) $season['season_number'];
+
+            $seasonDetails = $this->metadataService->getTVSeasonDetails($tmdbId, $seasonNumber);
+            if (!$seasonDetails) {
+                $this->sendJson(['success' => false, 'message' => "Season {$seasonNumber} not found on TMDB"]);
+                return;
+            }
+
+            $result = $this->seriesService->fetchSeasonFromTmdb($id, $seasonId, $seasonDetails);
+
+            $message = $result['updated'] ? "Season updated from TMDB." : "Season data unchanged.";
+            if ($result['episodes_added'] > 0) {
+                $message .= " {$result['episodes_added']} episode(s) added.";
+            }
+
+            $this->sendJson([
+                'success' => true,
+                'message' => $message,
+                'episodes_added' => $result['episodes_added'],
+                'updated' => $result['updated'],
+            ]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
     // ========================================================================
     // EPISODES MANAGEMENT
     // ========================================================================

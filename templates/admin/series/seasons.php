@@ -127,8 +127,13 @@ if (!empty($seasons)) {
                 </div>
                 <div class="season-card-footer">
                     <a href="/admin/series/<?= $showId ?>/seasons/<?= $season['id'] ?>/episodes" class="btn btn-primary btn-sm">
-                        <i class="lucide-list"></i> View Episodes
+                        <i class="lucide-list"></i> Episodes
                     </a>
+                    <?php if ($hasTmdb): ?>
+                        <button type="button" class="btn btn-info btn-sm" onclick="fetchSeasonTmdb(<?= $season['id'] ?>, <?= $season['season_number'] ?>)" title="Fetch data from TMDB" id="fetchBtn-<?= $season['id'] ?>">
+                            <i class="lucide-download"></i> TMDB
+                        </button>
+                    <?php endif; ?>
                     <button type="button" class="btn btn-danger btn-sm" onclick="deleteSeason(<?= $season['id'] ?>, '<?= htmlspecialchars(addslashes($season['name'])) ?>')">
                         <i class="lucide-trash-2"></i>
                     </button>
@@ -801,6 +806,41 @@ function importFromTmdb() {
     .catch(() => {
         importModal.style.display = 'none';
         showToast('Network error during import. Please try again.', 'error');
+    });
+}
+
+// ========================================================================
+// FETCH SEASON DATA FROM TMDB
+// ========================================================================
+
+function fetchSeasonTmdb(seasonId, seasonNumber) {
+    const btn = document.getElementById('fetchBtn-' + seasonId);
+    if (!btn) return;
+
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="lucide-loader"></i>';
+    btn.disabled = true;
+
+    fetch(`/admin/series/${showId}/seasons/${seasonId}/fetch-tmdb`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `_token=${csrfToken}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message || 'Season data fetched from TMDB.', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(data.message || 'Failed to fetch season data.', 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    })
+    .catch(() => {
+        showToast('Network error. Please try again.', 'error');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
     });
 }
 

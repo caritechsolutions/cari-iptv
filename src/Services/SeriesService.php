@@ -676,6 +676,53 @@ class SeriesService
         return $seasonId;
     }
 
+    /**
+     * Fetch TMDB data for an existing season (update metadata + import missing episodes)
+     */
+    public function fetchSeasonFromTmdb(int $seriesId, int $seasonId, array $seasonDetails): array
+    {
+        $imported = ['episodes_added' => 0, 'updated' => false];
+
+        // Update season metadata
+        $updateData = [];
+        if (!empty($seasonDetails['name'])) $updateData['name'] = $seasonDetails['name'];
+        if (!empty($seasonDetails['overview'])) $updateData['overview'] = $seasonDetails['overview'];
+        if (!empty($seasonDetails['poster'])) $updateData['poster_url'] = $seasonDetails['poster'];
+        if (!empty($seasonDetails['air_date'])) $updateData['air_date'] = $seasonDetails['air_date'];
+        if (!empty($seasonDetails['id'])) $updateData['tmdb_id'] = $seasonDetails['id'];
+        $updateData['episode_count'] = count($seasonDetails['episodes'] ?? []);
+
+        if (!empty($updateData)) {
+            $this->updateSeason($seasonId, $updateData);
+            $imported['updated'] = true;
+        }
+
+        // Import episodes that don't exist yet
+        $existingEpisodes = $this->db->fetchAll(
+            "SELECT episode_number FROM series_episodes WHERE season_id = ?",
+            [$seasonId]
+        );
+        $existingNumbers = array_column($existingEpisodes, 'episode_number');
+
+        foreach ($seasonDetails['episodes'] ?? [] as $ep) {
+            if (!in_array($ep['episode_number'], $existingNumbers)) {
+                $this->createEpisode($seriesId, $seasonId, [
+                    'tmdb_id' => $ep['id'] ?? null,
+                    'episode_number' => $ep['episode_number'],
+                    'name' => $ep['name'] ?? null,
+                    'overview' => $ep['overview'] ?? null,
+                    'air_date' => $ep['air_date'] ?? null,
+                    'runtime' => $ep['runtime'] ?? null,
+                    'still_url' => $ep['still'] ?? null,
+                    'vote_average' => $ep['vote_average'] ?? null,
+                ]);
+                $imported['episodes_added']++;
+            }
+        }
+
+        return $imported;
+    }
+
     // ========================================================================
     // STATISTICS
     // ========================================================================

@@ -184,6 +184,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/series/{id}/seasons/add', [SeriesController::class, 'addSeason']);
     $router->post('/series/{id}/seasons/{seasonId}/update', [SeriesController::class, 'updateSeason']);
     $router->post('/series/{id}/seasons/{seasonId}/delete', [SeriesController::class, 'deleteSeason']);
+    $router->post('/series/{id}/seasons/{seasonId}/fetch-tmdb', [SeriesController::class, 'fetchSeasonTmdb']);
     $router->post('/series/{id}/seasons/import', [SeriesController::class, 'importSeasons']);
 
     // TV Shows Episodes
