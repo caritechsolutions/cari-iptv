@@ -574,6 +574,48 @@ class SeriesService
         return $processed;
     }
 
+    /**
+     * Process season poster image and convert to WebP
+     */
+    public function processSeasonImages(int $seriesId, int $seasonId, ?string $posterUrl): ?string
+    {
+        if (empty($posterUrl) || !str_starts_with($posterUrl, 'http')) {
+            return null;
+        }
+
+        $entityId = "s{$seriesId}_season{$seasonId}";
+        $result = $this->imageService->processFromUrl($posterUrl, 'vod', $entityId, 'poster');
+
+        if ($result['success']) {
+            $localPath = $result['variants']['poster'] ?? $result['base_path'] . '_poster.webp';
+            $this->db->update('series_seasons', ['poster_url' => $localPath], 'id = ?', [$seasonId]);
+            return $localPath;
+        }
+
+        return null;
+    }
+
+    /**
+     * Process episode still image and convert to WebP
+     */
+    public function processEpisodeImages(int $seriesId, int $episodeId, ?string $stillUrl): ?string
+    {
+        if (empty($stillUrl) || !str_starts_with($stillUrl, 'http')) {
+            return null;
+        }
+
+        $entityId = "s{$seriesId}_ep{$episodeId}";
+        $result = $this->imageService->processFromUrl($stillUrl, 'vod', $entityId, 'still');
+
+        if ($result['success']) {
+            $localPath = $result['variants']['backdrop'] ?? $result['base_path'] . '_backdrop.webp';
+            $this->db->update('series_episodes', ['still_url' => $localPath], 'id = ?', [$episodeId]);
+            return $localPath;
+        }
+
+        return null;
+    }
+
     // ========================================================================
     // TMDB IMPORT
     // ========================================================================
@@ -659,9 +701,12 @@ class SeriesService
             'episode_count' => count($seasonDetails['episodes'] ?? []),
         ]);
 
+        // Convert season poster to WebP
+        $this->processSeasonImages($seriesId, $seasonId, $seasonDetails['poster'] ?? null);
+
         // Import episodes
         foreach ($seasonDetails['episodes'] ?? [] as $ep) {
-            $this->createEpisode($seriesId, $seasonId, [
+            $episodeId = $this->createEpisode($seriesId, $seasonId, [
                 'tmdb_id' => $ep['id'] ?? null,
                 'episode_number' => $ep['episode_number'],
                 'name' => $ep['name'] ?? null,
@@ -671,6 +716,9 @@ class SeriesService
                 'still_url' => $ep['still'] ?? null,
                 'vote_average' => $ep['vote_average'] ?? null,
             ]);
+
+            // Convert episode still to WebP
+            $this->processEpisodeImages($seriesId, $episodeId, $ep['still'] ?? null);
         }
 
         return $seasonId;
@@ -697,6 +745,9 @@ class SeriesService
             $imported['updated'] = true;
         }
 
+        // Convert season poster to WebP
+        $this->processSeasonImages($seriesId, $seasonId, $seasonDetails['poster'] ?? null);
+
         // Import episodes that don't exist yet
         $existingEpisodes = $this->db->fetchAll(
             "SELECT episode_number FROM series_episodes WHERE season_id = ?",
@@ -706,7 +757,7 @@ class SeriesService
 
         foreach ($seasonDetails['episodes'] ?? [] as $ep) {
             if (!in_array($ep['episode_number'], $existingNumbers)) {
-                $this->createEpisode($seriesId, $seasonId, [
+                $episodeId = $this->createEpisode($seriesId, $seasonId, [
                     'tmdb_id' => $ep['id'] ?? null,
                     'episode_number' => $ep['episode_number'],
                     'name' => $ep['name'] ?? null,
@@ -716,6 +767,10 @@ class SeriesService
                     'still_url' => $ep['still'] ?? null,
                     'vote_average' => $ep['vote_average'] ?? null,
                 ]);
+
+                // Convert episode still to WebP
+                $this->processEpisodeImages($seriesId, $episodeId, $ep['still'] ?? null);
+
                 $imported['episodes_added']++;
             }
         }
