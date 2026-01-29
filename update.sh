@@ -584,21 +584,30 @@ install_tsduck() {
     local UBUNTU_TAG=""
 
     case "$VERSION_CODENAME" in
-        noble|plucky|oracular)
-            TSDUCK_VERSION="3.43-4524"
+        noble)
+            # Ubuntu 24.04
+            TSDUCK_VERSION="3.43-4549"
             UBUNTU_TAG="ubuntu24"
             ;;
+        plucky|oracular)
+            # Ubuntu 25.x
+            TSDUCK_VERSION="3.43-4549"
+            UBUNTU_TAG="ubuntu25"
+            ;;
         jammy)
+            # Ubuntu 22.04
             TSDUCK_VERSION="3.33-3139"
             UBUNTU_TAG="ubuntu22"
             ;;
         focal)
-            TSDUCK_VERSION="3.26-2349"
-            UBUNTU_TAG="ubuntu20"
+            # Ubuntu 20.04 - no official TSDuck package available
+            log_warn "No TSDuck package available for Ubuntu 20.04"
+            log_warn "EIT extraction will not be available. Consider upgrading to Ubuntu 22.04+"
+            return 0
             ;;
         *)
             log_warn "Unknown Ubuntu version ($VERSION_CODENAME), trying ubuntu24 package"
-            TSDUCK_VERSION="3.43-4524"
+            TSDUCK_VERSION="3.43-4549"
             UBUNTU_TAG="ubuntu24"
             ;;
     esac
