@@ -454,6 +454,9 @@ fix_permissions() {
     chown -R "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/public/uploads"
     chmod -R 775 "$INSTALL_DIR/public/uploads"
 
+    # Ensure packages directory exists for local TSDuck debs
+    mkdir -p "$INSTALL_DIR/packages"
+
     # Make scripts executable
     chmod +x "$INSTALL_DIR/install.sh" 2>/dev/null || true
     chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
@@ -613,53 +616,107 @@ install_tsduck() {
     esac
 
     local PACKAGE_NAME="tsduck_${TSDUCK_VERSION}.${UBUNTU_TAG}_${ARCH}.deb"
-    local DEB_FILE="/tmp/tsduck.deb"
-    rm -f "$DEB_FILE"
+    log_info "Looking for TSDuck package: $PACKAGE_NAME"
 
-    local GITHUB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+    local DEB_FILE=""
+    local FOUND_LOCAL=false
 
-    log_info "Downloading TSDuck v${TSDUCK_VERSION} from GitHub..."
-
-    # Try download with retries
-    local DOWNLOAD_SUCCESS=false
-    for attempt in 1 2 3; do
-        if command -v wget &> /dev/null; then
-            if wget --no-check-certificate -q -O "$DEB_FILE" "$GITHUB_URL" 2>/dev/null; then
-                DOWNLOAD_SUCCESS=true
-                break
-            fi
-        else
-            if curl -k -L -f -o "$DEB_FILE" "$GITHUB_URL" 2>/dev/null; then
-                DOWNLOAD_SUCCESS=true
-                break
-            fi
+    # STEP 1: Check for local package in packages/ directory
+    if [[ -d "$INSTALL_DIR/packages" ]]; then
+        local LOCAL_DEB=$(find "$INSTALL_DIR/packages" -name "tsduck*${UBUNTU_TAG}*${ARCH}.deb" 2>/dev/null | head -1)
+        if [[ -f "$LOCAL_DEB" ]]; then
+            log_info "Found local TSDuck package: $(basename "$LOCAL_DEB")"
+            DEB_FILE="$LOCAL_DEB"
+            FOUND_LOCAL=true
         fi
-        log_warn "Download attempt $attempt failed, retrying..."
-        sleep 2
-    done
-
-    if [[ "$DOWNLOAD_SUCCESS" = false ]] || [[ ! -f "$DEB_FILE" ]] || [[ ! -s "$DEB_FILE" ]]; then
-        log_warn "Failed to download TSDuck package"
-        log_warn "EIT extraction from satellite streams will not be available"
-        log_warn "Install manually from: https://github.com/tsduck/tsduck/releases"
-        return 0
     fi
 
-    # Verify it's a valid .deb file
-    local FILE_TYPE=$(file "$DEB_FILE" 2>/dev/null || echo "unknown")
-    if ! echo "$FILE_TYPE" | grep -qi "debian\|archive"; then
-        log_warn "Downloaded file is not a valid Debian package"
+    # STEP 2: If no local package, try downloading
+    if [[ "$FOUND_LOCAL" = false ]]; then
+        log_info "No local package found, attempting download..."
+        DEB_FILE="/tmp/tsduck.deb"
         rm -f "$DEB_FILE"
-        return 0
+
+        local CARICODER_URL="https://github.com/caritechsolutions/Caricoder2/raw/main/packages/${PACKAGE_NAME}"
+        local TSDUCK_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+
+        local DOWNLOAD_SUCCESS=false
+
+        # Try Caricoder2 repo first
+        log_info "Trying Caricoder2 repository..."
+        for attempt in 1 2; do
+            if command -v wget &> /dev/null; then
+                if wget --no-check-certificate -q -O "$DEB_FILE" "$CARICODER_URL" 2>/dev/null; then
+                    if [[ -s "$DEB_FILE" ]] && file "$DEB_FILE" 2>/dev/null | grep -qi "debian\|archive"; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from Caricoder2 repository"
+                        break
+                    fi
+                    rm -f "$DEB_FILE"
+                fi
+            else
+                if curl -k -L -f -o "$DEB_FILE" "$CARICODER_URL" 2>/dev/null; then
+                    if [[ -s "$DEB_FILE" ]] && file "$DEB_FILE" 2>/dev/null | grep -qi "debian\|archive"; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from Caricoder2 repository"
+                        break
+                    fi
+                    rm -f "$DEB_FILE"
+                fi
+            fi
+            sleep 2
+        done
+
+        # Fall back to TSDuck GitHub releases
+        if [[ "$DOWNLOAD_SUCCESS" = false ]]; then
+            log_info "Trying TSDuck GitHub releases..."
+            rm -f "$DEB_FILE"
+            for attempt in 1 2 3; do
+                if command -v wget &> /dev/null; then
+                    if wget --no-check-certificate -q -O "$DEB_FILE" "$TSDUCK_URL" 2>/dev/null; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from TSDuck releases"
+                        break
+                    fi
+                else
+                    if curl -k -L -f -o "$DEB_FILE" "$TSDUCK_URL" 2>/dev/null; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from TSDuck releases"
+                        break
+                    fi
+                fi
+                log_warn "Download attempt $attempt failed, retrying..."
+                sleep 2
+            done
+        fi
+
+        if [[ "$DOWNLOAD_SUCCESS" = false ]] || [[ ! -f "$DEB_FILE" ]] || [[ ! -s "$DEB_FILE" ]]; then
+            log_warn "Failed to download TSDuck package"
+            log_warn "EIT extraction from satellite streams will not be available"
+            log_warn ""
+            log_warn "To install manually, download the package and place it in the packages/ directory:"
+            log_warn "  1. Download from: https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+            log_warn "  2. Place in: $INSTALL_DIR/packages/"
+            log_warn "  3. Re-run updater"
+            return 0
+        fi
+
+        # Verify it's a valid .deb file
+        local FILE_TYPE=$(file "$DEB_FILE" 2>/dev/null || echo "unknown")
+        if ! echo "$FILE_TYPE" | grep -qi "debian\|archive"; then
+            log_warn "Downloaded file is not a valid Debian package"
+            rm -f "$DEB_FILE"
+            log_warn "EIT extraction will not be available - install TSDuck manually if needed"
+            return 0
+        fi
+
+        log_info "Download successful ($(du -h "$DEB_FILE" | cut -f1))"
     fi
 
-    log_info "Download successful ($(du -h "$DEB_FILE" | cut -f1))"
-
-    # Install runtime dependencies
+    # STEP 3: Install the package
     log_info "Installing TSDuck runtime dependencies..."
     apt-get install -y libcurl4 libpcsclite1 libedit2 2>/dev/null || true
 
-    # Install the package
     log_info "Installing TSDuck package..."
     if dpkg -i "$DEB_FILE"; then
         log_info "TSDuck package installed"
@@ -668,8 +725,10 @@ install_tsduck() {
         apt-get install -f -y
     fi
 
-    # Cleanup temp file
-    rm -f "$DEB_FILE"
+    # Cleanup temp file (but not local package)
+    if [[ "$FOUND_LOCAL" = false ]] && [[ -f "/tmp/tsduck.deb" ]]; then
+        rm -f "/tmp/tsduck.deb"
+    fi
 
     # Verify installation
     if command -v tsp &> /dev/null; then
