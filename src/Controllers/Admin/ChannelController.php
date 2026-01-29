@@ -116,41 +116,47 @@ class ChannelController
         // Remove validation errors key before database insert
         unset($data['errors']);
 
-        // Handle logo upload
-        if (!empty($_FILES['logo']['name'])) {
-            $logoUrl = $this->channelService->uploadLogo($_FILES['logo'], 'logo');
-            if ($logoUrl) {
-                $data['logo_url'] = $logoUrl;
-            }
-        } elseif (!empty($_POST['logo_url_external'])) {
-            // Handle external logo URL (from Fanart.tv search)
-            $externalLogo = $this->processExternalLogo($_POST['logo_url_external']);
-            if ($externalLogo) {
-                $data['logo_url'] = $externalLogo;
-            }
-        }
-
-        // Handle landscape logo upload
-        if (!empty($_FILES['logo_landscape']['name'])) {
-            $landscapeUrl = $this->channelService->uploadLogo($_FILES['logo_landscape'], 'landscape');
-            if ($landscapeUrl) {
-                $data['logo_landscape_url'] = $landscapeUrl;
-            }
-        } elseif (!empty($_POST['logo_landscape_url_external'])) {
-            // Handle external landscape logo URL
-            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape');
-            if ($externalLandscape) {
-                $data['logo_landscape_url'] = $externalLandscape;
-            }
-        }
-
         // Handle description
         if (isset($_POST['description'])) {
             $data['description'] = trim($_POST['description']);
         }
 
         try {
+            // Create channel first (logos processed after so we have the channel ID for WebP paths)
             $channelId = $this->channelService->createChannel($data);
+
+            // Handle logo upload with WebP conversion
+            $logoUpdate = [];
+
+            if (!empty($_FILES['logo']['name'])) {
+                $logoUrl = $this->processUploadedLogo($_FILES['logo'], $channelId, 'logo');
+                if ($logoUrl) {
+                    $logoUpdate['logo_url'] = $logoUrl;
+                }
+            } elseif (!empty($_POST['logo_url_external'])) {
+                $externalLogo = $this->processExternalLogo($_POST['logo_url_external'], 'logo', $channelId);
+                if ($externalLogo) {
+                    $logoUpdate['logo_url'] = $externalLogo;
+                }
+            }
+
+            // Handle landscape logo upload with WebP conversion
+            if (!empty($_FILES['logo_landscape']['name'])) {
+                $landscapeUrl = $this->processUploadedLogo($_FILES['logo_landscape'], $channelId, 'landscape');
+                if ($landscapeUrl) {
+                    $logoUpdate['logo_landscape_url'] = $landscapeUrl;
+                }
+            } elseif (!empty($_POST['logo_landscape_url_external'])) {
+                $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape', $channelId);
+                if ($externalLandscape) {
+                    $logoUpdate['logo_landscape_url'] = $externalLandscape;
+                }
+            }
+
+            // Update channel with processed logo paths
+            if (!empty($logoUpdate)) {
+                $this->channelService->updateChannel($channelId, $logoUpdate);
+            }
 
             // Log activity
             $this->auth->logActivity(
@@ -230,21 +236,18 @@ class ChannelController
         // Remove validation errors key before database update
         unset($data['errors']);
 
-        // Handle logo upload
+        // Handle logo upload with WebP conversion
         if (!empty($_FILES['logo']['name'])) {
-            $logoUrl = $this->channelService->uploadLogo($_FILES['logo'], 'logo');
+            $logoUrl = $this->processUploadedLogo($_FILES['logo'], $id, 'logo');
             if ($logoUrl) {
-                // Delete old logo
                 if (!empty($channel['logo_url'])) {
                     $this->channelService->deleteLogo($channel['logo_url']);
                 }
                 $data['logo_url'] = $logoUrl;
             }
         } elseif (!empty($_POST['logo_url_external'])) {
-            // Handle external logo URL (from Fanart.tv search)
-            $externalLogo = $this->processExternalLogo($_POST['logo_url_external']);
+            $externalLogo = $this->processExternalLogo($_POST['logo_url_external'], 'logo', $id);
             if ($externalLogo) {
-                // Delete old logo
                 if (!empty($channel['logo_url'])) {
                     $this->channelService->deleteLogo($channel['logo_url']);
                 }
@@ -252,21 +255,18 @@ class ChannelController
             }
         }
 
-        // Handle landscape logo upload
+        // Handle landscape logo upload with WebP conversion
         if (!empty($_FILES['logo_landscape']['name'])) {
-            $landscapeUrl = $this->channelService->uploadLogo($_FILES['logo_landscape'], 'landscape');
+            $landscapeUrl = $this->processUploadedLogo($_FILES['logo_landscape'], $id, 'landscape');
             if ($landscapeUrl) {
-                // Delete old landscape logo
                 if (!empty($channel['logo_landscape_url'])) {
                     $this->channelService->deleteLogo($channel['logo_landscape_url']);
                 }
                 $data['logo_landscape_url'] = $landscapeUrl;
             }
         } elseif (!empty($_POST['logo_landscape_url_external'])) {
-            // Handle external landscape logo URL
-            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape');
+            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape', $id);
             if ($externalLandscape) {
-                // Delete old landscape logo
                 if (!empty($channel['logo_landscape_url'])) {
                     $this->channelService->deleteLogo($channel['logo_landscape_url']);
                 }
@@ -634,9 +634,9 @@ class ChannelController
     }
 
     /**
-     * Process external logo URL (download and save)
+     * Process external logo URL (download, convert to WebP)
      */
-    private function processExternalLogo(string $url, string $type = 'logo'): ?string
+    private function processExternalLogo(string $url, string $type = 'logo', ?int $channelId = null): ?string
     {
         if (empty($url)) {
             return null;
@@ -644,18 +644,42 @@ class ChannelController
 
         try {
             $imageService = new ImageService();
-            $result = $imageService->processFromUrl($url, 'channel', null, $type);
+            $result = $imageService->processFromUrl($url, 'channel', $channelId, $type);
 
             if ($result && $result['success'] && !empty($result['variants'])) {
-                // Return the medium size variant, or landscape for landscape type
                 if ($type === 'landscape' && isset($result['variants']['landscape'])) {
                     return $result['variants']['landscape'];
                 }
                 return $result['variants']['medium'] ?? $result['variants']['large'] ?? array_values($result['variants'])[0] ?? null;
             }
         } catch (\Exception $e) {
-            // Log error but don't fail
             error_log('Failed to process external logo: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Process uploaded logo file (resize, convert to WebP)
+     */
+    private function processUploadedLogo(array $file, int $channelId, string $type = 'logo'): ?string
+    {
+        if (empty($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
+            return null;
+        }
+
+        try {
+            $imageService = new ImageService();
+            $result = $imageService->processUpload($file, 'channel', $channelId, $type);
+
+            if ($result && $result['success'] && !empty($result['variants'])) {
+                if ($type === 'landscape' && isset($result['variants']['landscape'])) {
+                    return $result['variants']['landscape'];
+                }
+                return $result['variants']['medium'] ?? $result['variants']['large'] ?? array_values($result['variants'])[0] ?? null;
+            }
+        } catch (\Exception $e) {
+            error_log('Failed to process uploaded logo: ' . $e->getMessage());
         }
 
         return null;
@@ -765,9 +789,9 @@ class ChannelController
 
                 $channelId = $this->channelService->createChannel($data);
 
-                // Process logo if available
+                // Process logo with WebP conversion
                 if (!empty($ch['logo_url'])) {
-                    $localLogo = $this->processExternalLogo($ch['logo_url'], 'logo');
+                    $localLogo = $this->processExternalLogo($ch['logo_url'], 'logo', $channelId);
                     if ($localLogo) {
                         $this->channelService->updateChannel($channelId, ['logo_url' => $localLogo]);
                     }
