@@ -189,12 +189,8 @@ $typeColors = ['live' => 'badge-info', 'vod' => 'badge-warning', 'series' => 'ba
                                 </td>
                                 <td class="text-right">
                                     <div class="action-buttons">
-                                        <button type="button" class="btn btn-secondary btn-xs" onclick="openEditModal(<?= htmlspecialchars(json_encode($cat)) ?>)" title="Edit">
-                                            <i class="lucide-edit"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-danger btn-xs" onclick="deleteCategory(<?= $cat['id'] ?>, '<?= htmlspecialchars(addslashes($cat['name'])) ?>')" title="Delete">
-                                            <i class="lucide-trash-2"></i>
-                                        </button>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="openEditModal(<?= htmlspecialchars(json_encode($cat)) ?>)">Edit</button>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="deleteCategory(<?= $cat['id'] ?>, '<?= htmlspecialchars(addslashes($cat['name'])) ?>')">Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -337,18 +333,16 @@ $typeColors = ['live' => 'badge-info', 'vod' => 'badge-warning', 'series' => 'ba
 
 .action-buttons {
     display: flex;
-    gap: 0.375rem;
+    gap: 0.5rem;
+    align-items: center;
     justify-content: flex-end;
+    flex-wrap: nowrap;
 }
 
-.btn-xs {
-    padding: 0.25rem 0.5rem;
+.action-buttons .btn {
+    white-space: nowrap;
     font-size: 0.75rem;
-    line-height: 1.2;
-}
-
-.btn-xs i {
-    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
 }
 
 .stat-icon.purple {
