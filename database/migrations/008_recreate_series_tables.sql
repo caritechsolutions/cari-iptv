@@ -4,7 +4,11 @@
 
 SET NAMES utf8mb4;
 
--- Drop existing series tables in correct order (foreign key dependencies)
+-- Disable foreign key checks so we can drop in any order
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Drop any tables that reference series (from previous sessions)
+DROP TABLE IF EXISTS `vod_assets`;
 DROP TABLE IF EXISTS `series_categories`;
 DROP TABLE IF EXISTS `series_cast`;
 DROP TABLE IF EXISTS `series_artwork`;
@@ -12,6 +16,9 @@ DROP TABLE IF EXISTS `series_trailers`;
 DROP TABLE IF EXISTS `series_episodes`;
 DROP TABLE IF EXISTS `series_seasons`;
 DROP TABLE IF EXISTS `series`;
+
+-- Re-enable foreign key checks
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- Series main table (TV Shows)
 CREATE TABLE `series` (
