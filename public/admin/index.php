@@ -58,6 +58,7 @@ use CariIPTV\Controllers\Admin\ChannelController;
 use CariIPTV\Controllers\Admin\MovieController;
 use CariIPTV\Controllers\Admin\SeriesController;
 use CariIPTV\Controllers\Admin\CategoryController;
+use CariIPTV\Controllers\Admin\EpgController;
 
 // Initialize session
 Session::start();
@@ -210,6 +211,18 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/categories/{id}/delete', [CategoryController::class, 'delete']);
     $router->post('/categories/{id}/toggle-active', [CategoryController::class, 'toggleActive']);
     $router->post('/categories/update-order', [CategoryController::class, 'updateOrder']);
+
+    // EPG Management
+    $router->get('/epg', [EpgController::class, 'index']);
+    $router->post('/epg/store', [EpgController::class, 'store']);
+    $router->post('/epg/{id}/update', [EpgController::class, 'update']);
+    $router->post('/epg/{id}/delete', [EpgController::class, 'delete']);
+    $router->post('/epg/{id}/fetch', [EpgController::class, 'fetch']);
+    $router->post('/epg/{id}/upload', [EpgController::class, 'upload']);
+    $router->get('/epg/{id}/mappings', [EpgController::class, 'mappings']);
+    $router->post('/epg/save-mapping', [EpgController::class, 'saveMapping']);
+    $router->post('/epg/{id}/auto-map', [EpgController::class, 'autoMap']);
+    $router->post('/epg/cleanup', [EpgController::class, 'cleanup']);
 });
 
 // Dispatch the request
