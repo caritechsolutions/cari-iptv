@@ -13,6 +13,7 @@ use CariIPTV\Services\ChannelService;
 use CariIPTV\Services\MetadataService;
 use CariIPTV\Services\AIService;
 use CariIPTV\Services\ImageService;
+use CariIPTV\Services\IptvOrgService;
 
 class ChannelController
 {
@@ -658,5 +659,163 @@ class ChannelController
         }
 
         return null;
+    }
+
+    // ========================================================================
+    // IPTV-ORG IMPORT
+    // ========================================================================
+
+    /**
+     * Search iptv-org channels (AJAX)
+     */
+    public function searchIptvOrg(): void
+    {
+        $service = new IptvOrgService();
+
+        $filters = [
+            'search' => $_POST['search'] ?? '',
+            'country' => $_POST['country'] ?? '',
+            'category' => $_POST['category'] ?? '',
+            'limit' => 100,
+        ];
+
+        $result = $service->searchChannels($filters);
+        Response::json($result);
+    }
+
+    /**
+     * Get iptv-org countries list (AJAX)
+     */
+    public function iptvOrgCountries(): void
+    {
+        $service = new IptvOrgService();
+        Response::json([
+            'success' => true,
+            'countries' => $service->getCountries(),
+            'categories' => $service->getCategories(),
+        ]);
+    }
+
+    /**
+     * Import selected iptv-org channels (AJAX)
+     */
+    public function importIptvOrg(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $channelsJson = $_POST['channels'] ?? '[]';
+        $channels = json_decode($channelsJson, true);
+
+        if (empty($channels) || !is_array($channels)) {
+            Response::json(['success' => false, 'message' => 'No channels selected']);
+            return;
+        }
+
+        $imported = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        foreach ($channels as $ch) {
+            if (empty($ch['name']) || empty($ch['stream_url'])) {
+                $errors++;
+                continue;
+            }
+
+            // Check if channel already exists by name or stream URL
+            $existing = $this->db->fetch(
+                "SELECT id FROM channels WHERE name = ? OR stream_url = ?",
+                [$ch['name'], $ch['stream_url']]
+            );
+
+            if ($existing) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $slug = $this->channelService->generateSlug($ch['name']);
+                $keyCode = $this->channelService->generateKeyCode();
+
+                $data = [
+                    'name' => $ch['name'],
+                    'slug' => $slug,
+                    'key_code' => $keyCode,
+                    'stream_url' => $ch['stream_url'],
+                    'country' => $ch['country'] ?? null,
+                    'language' => $ch['language'] ?? null,
+                    'epg_channel_id' => $ch['iptv_org_id'] ?? null,
+                    'external_id' => $ch['iptv_org_id'] ?? null,
+                    'is_active' => 1,
+                    'is_published' => 0,
+                    'sort_order' => 0,
+                ];
+
+                // Set quality flags
+                $quality = strtolower($ch['quality'] ?? '');
+                if (str_contains($quality, '4k') || str_contains($quality, '2160')) {
+                    $data['is_4k'] = 1;
+                    $data['is_hd'] = 1;
+                } elseif (str_contains($quality, '1080') || str_contains($quality, '720')) {
+                    $data['is_hd'] = 1;
+                }
+
+                $channelId = $this->channelService->createChannel($data);
+
+                // Process logo if available
+                if (!empty($ch['logo_url'])) {
+                    $localLogo = $this->processExternalLogo($ch['logo_url'], 'logo');
+                    if ($localLogo) {
+                        $this->channelService->updateChannel($channelId, ['logo_url' => $localLogo]);
+                    }
+                }
+
+                // Map categories
+                if (!empty($ch['categories'])) {
+                    $categoryIds = [];
+                    foreach ($ch['categories'] as $catName) {
+                        $cat = $this->db->fetch(
+                            "SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND type = 'live'",
+                            [$catName]
+                        );
+                        if ($cat) {
+                            $categoryIds[] = $cat['id'];
+                        }
+                    }
+                    if (!empty($categoryIds)) {
+                        $this->channelService->saveChannelCategories($channelId, $categoryIds, $categoryIds[0]);
+                    }
+                }
+
+                $imported++;
+            } catch (\Exception $e) {
+                error_log('IPTV-org import error: ' . $e->getMessage());
+                $errors++;
+            }
+        }
+
+        $this->auth->logActivity(
+            $this->auth->id(),
+            'import',
+            'channels',
+            'iptv-org',
+            null,
+            ['imported' => $imported, 'skipped' => $skipped, 'errors' => $errors]
+        );
+
+        $message = "{$imported} channel(s) imported.";
+        if ($skipped > 0) $message .= " {$skipped} already existed.";
+        if ($errors > 0) $message .= " {$errors} error(s).";
+
+        Response::json([
+            'success' => true,
+            'message' => $message,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ]);
     }
 }

@@ -133,6 +133,11 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/channels/search-logos', [ChannelController::class, 'searchLogos']);
     $router->post('/channels/generate-description', [ChannelController::class, 'generateDescription']);
 
+    // Channel IPTV-org Import
+    $router->post('/channels/search-iptv-org', [ChannelController::class, 'searchIptvOrg']);
+    $router->get('/channels/iptv-org-countries', [ChannelController::class, 'iptvOrgCountries']);
+    $router->post('/channels/import-iptv-org', [ChannelController::class, 'importIptvOrg']);
+
     // Movie Management
     $router->get('/movies', [MovieController::class, 'index']);
     $router->get('/movies/create', [MovieController::class, 'create']);
