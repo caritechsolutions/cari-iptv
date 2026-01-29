@@ -659,6 +659,7 @@ class MovieController
 
     /**
      * Import free content from various sources
+     * Each step is individually wrapped with diagnostics
      */
     public function importFreeContent(): void
     {
@@ -666,51 +667,58 @@ class MovieController
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
-        ob_start();
 
-        $token = $_POST['_token'] ?? '';
-        if (!Session::validateCsrf($token)) {
-            ob_end_clean();
-            Response::json(['success' => false, 'message' => 'Invalid request']);
-            return;
-        }
-
-        $videoId = trim($_POST['video_id'] ?? '');
-        $title = trim($_POST['title'] ?? '');
-        $description = trim($_POST['description'] ?? '');
-        $thumbnail = trim($_POST['thumbnail'] ?? '');
-        $duration = (int) ($_POST['duration'] ?? 0);
-        $source = trim($_POST['source'] ?? 'youtube');
-        $streamUrl = trim($_POST['stream_url'] ?? '');
-        $sourceUrl = trim($_POST['source_url'] ?? '');
-        $year = trim($_POST['year'] ?? '');
-
-        if (empty($videoId) || empty($title)) {
-            ob_end_clean();
-            Response::json(['success' => false, 'message' => 'Video ID and title required']);
-            return;
-        }
-
-        // Check if already imported
-        $existingUrl = $sourceUrl ?: ($source === 'internet_archive'
-            ? "https://archive.org/details/{$videoId}"
-            : "https://www.youtube.com/watch?v={$videoId}");
-
-        $existing = $this->movieService->findBySourceUrl($existingUrl);
-        if ($existing) {
-            ob_end_clean();
-            Response::json([
-                'success' => false,
-                'message' => 'This content has already been imported',
-                'movie_id' => $existing['id'],
-            ]);
-            return;
-        }
+        // Diagnostic steps tracker
+        $steps = [];
 
         try {
-            // Build movie data based on source
-            // Store remote thumbnail URL directly - no image processing during import
-            // Images will be processed when user edits the movie
+            // Step 1: CSRF validation
+            $steps[] = 'csrf_check';
+            $token = $_POST['_token'] ?? '';
+            if (!Session::validateCsrf($token)) {
+                $this->sendJson(['success' => false, 'message' => 'Invalid CSRF token', 'failed_step' => 'csrf_check']);
+                return;
+            }
+            $steps[] = 'csrf_ok';
+
+            // Step 2: Parse input
+            $steps[] = 'parse_input';
+            $videoId = trim($_POST['video_id'] ?? '');
+            $title = trim($_POST['title'] ?? '');
+            $description = trim($_POST['description'] ?? '');
+            $thumbnail = trim($_POST['thumbnail'] ?? '');
+            $duration = (int) ($_POST['duration'] ?? 0);
+            $source = trim($_POST['source'] ?? 'youtube');
+            $streamUrl = trim($_POST['stream_url'] ?? '');
+            $sourceUrl = trim($_POST['source_url'] ?? '');
+            $year = trim($_POST['year'] ?? '');
+
+            if (empty($videoId) || empty($title)) {
+                $this->sendJson(['success' => false, 'message' => 'Video ID and title required', 'failed_step' => 'parse_input']);
+                return;
+            }
+            $steps[] = 'input_ok';
+
+            // Step 3: Duplicate check
+            $steps[] = 'duplicate_check';
+            $existingUrl = $sourceUrl ?: ($source === 'internet_archive'
+                ? "https://archive.org/details/{$videoId}"
+                : "https://www.youtube.com/watch?v={$videoId}");
+
+            $existing = $this->movieService->findBySourceUrl($existingUrl);
+            if ($existing) {
+                $this->sendJson([
+                    'success' => false,
+                    'message' => 'This content has already been imported',
+                    'movie_id' => $existing['id'],
+                    'failed_step' => 'duplicate_check',
+                ]);
+                return;
+            }
+            $steps[] = 'no_duplicate';
+
+            // Step 4: Build movie data
+            $steps[] = 'build_data';
             if ($source === 'internet_archive') {
                 $movieData = [
                     'title' => $title,
@@ -725,7 +733,6 @@ class MovieController
                     'status' => 'draft',
                 ];
             } else {
-                // YouTube Creative Commons
                 $movieData = [
                     'title' => $title,
                     'synopsis' => $description,
@@ -738,30 +745,108 @@ class MovieController
                     'status' => 'draft',
                 ];
             }
+            $steps[] = 'data_built';
 
+            // Step 5: Insert into database
+            $steps[] = 'db_insert';
             $movieId = $this->movieService->createMovie($movieData);
+            $steps[] = 'db_insert_ok:' . $movieId;
 
-            // Log activity
-            $this->auth->logActivity(
-                $this->auth->id(),
-                'import',
-                'movies',
-                'movie',
-                $movieId,
-                ['title' => $title, 'source' => $source]
-            );
+            // Step 6: Log activity (non-critical, wrapped separately)
+            $steps[] = 'log_activity';
+            try {
+                $this->auth->logActivity(
+                    $this->auth->id(),
+                    'import',
+                    'movies',
+                    'movie',
+                    $movieId,
+                    ['title' => $title, 'source' => $source]
+                );
+                $steps[] = 'log_ok';
+            } catch (\Throwable $e) {
+                $steps[] = 'log_failed:' . $e->getMessage();
+                // Non-critical, continue
+            }
 
-            // Clear any buffered output and send clean JSON response
-            ob_end_clean();
-            Response::json([
+            // Step 7: Send success response
+            $steps[] = 'sending_response';
+            $this->sendJson([
                 'success' => true,
                 'message' => 'Free content imported successfully',
                 'movie_id' => $movieId,
+                'steps' => $steps,
+            ]);
+
+        } catch (\Throwable $e) {
+            $steps[] = 'exception:' . $e->getMessage();
+            error_log("Import free content error: " . $e->getMessage() . " | Steps: " . implode(' -> ', $steps));
+            $this->sendJson([
+                'success' => false,
+                'message' => 'Import error: ' . $e->getMessage(),
+                'failed_step' => end($steps),
+                'steps' => $steps,
+            ]);
+        }
+    }
+
+    /**
+     * Process images for a movie (called separately after import)
+     */
+    public function processMovieImages(int $id): void
+    {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $movie = $this->movieService->getMovie($id);
+        if (!$movie) {
+            $this->sendJson(['success' => false, 'message' => 'Movie not found']);
+            return;
+        }
+
+        try {
+            $processed = [];
+
+            // Process poster if it's a remote URL
+            if (!empty($movie['poster_url']) && str_starts_with($movie['poster_url'], 'http')) {
+                $processed = $this->movieService->processImages($id, [
+                    'poster_url' => $movie['poster_url'],
+                ]);
+            }
+
+            $this->sendJson([
+                'success' => true,
+                'message' => 'Images processed',
+                'processed' => $processed,
             ]);
         } catch (\Throwable $e) {
-            ob_end_clean();
-            Response::json(['success' => false, 'message' => $e->getMessage()]);
+            $this->sendJson([
+                'success' => false,
+                'message' => 'Image processing failed: ' . $e->getMessage(),
+            ]);
         }
+    }
+
+    /**
+     * Send a clean JSON response, clearing all buffers
+     */
+    private function sendJson(array $data): void
+    {
+        // Clear ALL output buffers
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
     }
 
     /**

@@ -102,7 +102,13 @@
         </div>
         <div class="modal-body">
             <p id="successMessage" class="mb-2">Movie has been imported successfully!</p>
-            <p class="text-muted text-sm">The video has been added to your library as a draft. You can edit the details and publish when ready.</p>
+            <div id="imageProgress" style="display: none;">
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <p id="imageProgressText" class="text-sm text-muted mt-1">Downloading and optimizing poster...</p>
+            </div>
+            <p class="text-muted text-sm mt-1">The video has been added to your library as a draft. You can edit the details and publish when ready.</p>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeSuccessModal()">
@@ -382,12 +388,41 @@
     border-top: 1px solid var(--border-color);
 }
 
+.mt-1 {
+    margin-top: 0.5rem;
+}
+
 .mt-2 {
     margin-top: 1rem;
 }
 
 .mb-2 {
     margin-bottom: 1rem;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-dark);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 0.75rem;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 100%;
+    background: var(--primary);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.progress-bar.done {
+    background: var(--success);
+}
+
+.progress-bar.error {
+    background: var(--danger);
 }
 </style>
 
@@ -553,54 +588,112 @@ function confirmImport() {
         year: selectedVideo.year || ''
     });
 
+    console.log('Starting import for:', selectedVideo.title);
+    console.log('Source:', source);
+    console.log('Params:', params.toString());
+
     fetch('/admin/movies/import-free', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: params.toString()
     })
     .then(r => {
-        // Read as text first to avoid JSON parse errors
-        return r.text().then(text => {
-            return { status: r.status, text: text };
-        });
+        console.log('Response status:', r.status);
+        console.log('Response headers:', r.headers.get('content-type'));
+        return r.text().then(text => ({ status: r.status, text: text }));
     })
     .then(({ status, text }) => {
+        console.log('Raw response (' + text.length + ' chars):', text.substring(0, 500));
+
         // Try to parse JSON from the response
         let data;
         try {
             // Strip any content before the JSON (PHP warnings/errors)
             const jsonStart = text.indexOf('{');
             if (jsonStart > 0) {
+                console.warn('Found non-JSON content before JSON:', text.substring(0, jsonStart));
                 text = text.substring(jsonStart);
             }
             data = JSON.parse(text);
         } catch (e) {
-            console.error('Response was not JSON:', text);
-            throw new Error('Invalid response from server');
+            console.error('JSON parse error:', e.message);
+            console.error('Full response text:', text);
+            throw new Error('Server returned invalid response (HTTP ' + status + '). Check browser console for details.');
+        }
+
+        console.log('Parsed response:', data);
+        if (data.steps) {
+            console.log('Server steps:', data.steps.join(' -> '));
+        }
+
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
         }
 
         if (data.success) {
             closeImportModal();
             showSuccessModal(data.movie_id, selectedVideo.title);
-
-            // Mark the card as imported
             markVideoAsImported(selectedVideo.video_id);
-        } else {
-            alert('Import failed: ' + (data.message || 'Unknown error'));
-        }
 
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
+            // Process images in background after successful import
+            processImagesInBackground(data.movie_id);
+        } else {
+            const failStep = data.failed_step ? ` (step: ${data.failed_step})` : '';
+            alert('Import failed: ' + (data.message || 'Unknown error') + failStep);
         }
     })
     .catch(err => {
-        console.error('Import error:', err);
-        alert('Import failed: ' + err.message);
+        console.error('Fetch error:', err);
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = '<i class="lucide-download"></i> Import Movie';
         }
+        alert('Import failed: ' + err.message);
+    });
+}
+
+function processImagesInBackground(movieId) {
+    const progressDiv = document.getElementById('imageProgress');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('imageProgressText');
+
+    if (!progressDiv) return;
+
+    progressDiv.style.display = 'block';
+    progressBar.style.width = '30%';
+    progressText.textContent = 'Downloading and optimizing poster image...';
+
+    fetch(`/admin/movies/${movieId}/process-images`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `_token=${csrfToken}`
+    })
+    .then(r => r.text())
+    .then(text => {
+        let data;
+        try {
+            const jsonStart = text.indexOf('{');
+            if (jsonStart > 0) text = text.substring(jsonStart);
+            data = JSON.parse(text);
+        } catch (e) {
+            data = { success: false };
+        }
+
+        if (data.success) {
+            progressBar.style.width = '100%';
+            progressBar.classList.add('done');
+            progressText.textContent = 'Poster image optimized successfully!';
+        } else {
+            progressBar.style.width = '100%';
+            progressBar.classList.add('error');
+            progressText.textContent = 'Image optimization skipped (poster will use remote URL)';
+        }
+    })
+    .catch(() => {
+        progressBar.style.width = '100%';
+        progressBar.classList.add('error');
+        progressText.textContent = 'Image optimization skipped (poster will use remote URL)';
     });
 }
 
@@ -629,6 +722,16 @@ function markVideoAsImported(videoId) {
 function showSuccessModal(movieId, title) {
     document.getElementById('successMessage').textContent = `"${title}" has been imported successfully!`;
     document.getElementById('editMovieBtn').href = `/admin/movies/${movieId}/edit`;
+
+    // Reset progress bar state
+    const progressDiv = document.getElementById('imageProgress');
+    const progressBar = document.getElementById('progressBar');
+    if (progressDiv) progressDiv.style.display = 'none';
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.classList.remove('done', 'error');
+    }
+
     document.getElementById('successModal').style.display = 'flex';
 }
 

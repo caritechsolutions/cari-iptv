@@ -157,6 +157,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     // Free Content
     $router->post('/movies/search-free', [MovieController::class, 'searchFreeContent']);
     $router->post('/movies/import-free', [MovieController::class, 'importFreeContent']);
+    $router->post('/movies/{id}/process-images', [MovieController::class, 'processMovieImages']);
 
     // TODO: Add more routes as we build out the admin panel
     // Series management coming next
