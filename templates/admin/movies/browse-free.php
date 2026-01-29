@@ -632,9 +632,13 @@ function confirmImport() {
         }
 
         if (data.success) {
+            // Save video info before closing modal (which nulls selectedVideo)
+            const videoTitle = selectedVideo.title;
+            const videoId = selectedVideo.video_id;
+
             closeImportModal();
-            showSuccessModal(data.movie_id, selectedVideo.title);
-            markVideoAsImported(selectedVideo.video_id);
+            showSuccessModal(data.movie_id, videoTitle);
+            markVideoAsImported(videoId);
 
             // Process images in background after successful import
             processImagesInBackground(data.movie_id);
