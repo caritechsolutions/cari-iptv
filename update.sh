@@ -298,11 +298,20 @@ apply_update() {
         rsync -a --exclude='.htaccess' public/ "$INSTALL_DIR/public/"
         rsync -a src/ "$INSTALL_DIR/src/"
         rsync -a templates/ "$INSTALL_DIR/templates/"
+        # Copy scripts directory (EPG fetch, etc.)
+        if [ -d "scripts" ]; then
+            rsync -a scripts/ "$INSTALL_DIR/scripts/"
+        fi
     else
         # Fallback to cp
         cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
         cp -r src/* "$INSTALL_DIR/src/" 2>/dev/null || true
         cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
+        # Copy scripts directory
+        if [ -d "scripts" ]; then
+            mkdir -p "$INSTALL_DIR/scripts"
+            cp -r scripts/* "$INSTALL_DIR/scripts/" 2>/dev/null || true
+        fi
     fi
 
     # Copy new database migrations (if any) - delete old ones first to ensure clean copy
@@ -448,6 +457,7 @@ fix_permissions() {
     # Make scripts executable
     chmod +x "$INSTALL_DIR/install.sh" 2>/dev/null || true
     chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/scripts/"*.php 2>/dev/null || true
 
     log_info "Permissions updated"
 }
@@ -546,6 +556,121 @@ install_ollama() {
     log_info "Ollama setup complete"
 }
 
+install_tsduck() {
+    log_step "Checking TSDuck (MPEG Transport Stream Toolkit)"
+
+    # Check if TSDuck is installed AND working
+    if command -v tsp &> /dev/null; then
+        if tsp --version &> /dev/null; then
+            log_info "TSDuck already installed: $(tsp --version 2>&1 | head -1)"
+            return 0
+        else
+            # TSDuck exists but is broken (library issues) - remove it
+            log_warn "TSDuck is installed but broken, removing..."
+            dpkg --purge tsduck 2>/dev/null || true
+            apt-get remove --purge tsduck -y 2>/dev/null || true
+        fi
+    fi
+
+    log_info "TSDuck not found - installing..."
+
+    # Detect architecture and OS version
+    local ARCH=$(dpkg --print-architecture)
+    source /etc/os-release
+    log_info "Detected: $ARCH on $PRETTY_NAME ($VERSION_CODENAME)"
+
+    # Determine TSDuck version and package name based on Ubuntu version
+    local TSDUCK_VERSION=""
+    local UBUNTU_TAG=""
+
+    case "$VERSION_CODENAME" in
+        noble|plucky|oracular)
+            TSDUCK_VERSION="3.43-4524"
+            UBUNTU_TAG="ubuntu24"
+            ;;
+        jammy)
+            TSDUCK_VERSION="3.33-3139"
+            UBUNTU_TAG="ubuntu22"
+            ;;
+        focal)
+            TSDUCK_VERSION="3.26-2349"
+            UBUNTU_TAG="ubuntu20"
+            ;;
+        *)
+            log_warn "Unknown Ubuntu version ($VERSION_CODENAME), trying ubuntu24 package"
+            TSDUCK_VERSION="3.43-4524"
+            UBUNTU_TAG="ubuntu24"
+            ;;
+    esac
+
+    local PACKAGE_NAME="tsduck_${TSDUCK_VERSION}.${UBUNTU_TAG}_${ARCH}.deb"
+    local DEB_FILE="/tmp/tsduck.deb"
+    rm -f "$DEB_FILE"
+
+    local GITHUB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+
+    log_info "Downloading TSDuck v${TSDUCK_VERSION} from GitHub..."
+
+    # Try download with retries
+    local DOWNLOAD_SUCCESS=false
+    for attempt in 1 2 3; do
+        if command -v wget &> /dev/null; then
+            if wget --no-check-certificate -q -O "$DEB_FILE" "$GITHUB_URL" 2>/dev/null; then
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
+        else
+            if curl -k -L -f -o "$DEB_FILE" "$GITHUB_URL" 2>/dev/null; then
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
+        fi
+        log_warn "Download attempt $attempt failed, retrying..."
+        sleep 2
+    done
+
+    if [[ "$DOWNLOAD_SUCCESS" = false ]] || [[ ! -f "$DEB_FILE" ]] || [[ ! -s "$DEB_FILE" ]]; then
+        log_warn "Failed to download TSDuck package"
+        log_warn "EIT extraction from satellite streams will not be available"
+        log_warn "Install manually from: https://github.com/tsduck/tsduck/releases"
+        return 0
+    fi
+
+    # Verify it's a valid .deb file
+    local FILE_TYPE=$(file "$DEB_FILE" 2>/dev/null || echo "unknown")
+    if ! echo "$FILE_TYPE" | grep -qi "debian\|archive"; then
+        log_warn "Downloaded file is not a valid Debian package"
+        rm -f "$DEB_FILE"
+        return 0
+    fi
+
+    log_info "Download successful ($(du -h "$DEB_FILE" | cut -f1))"
+
+    # Install runtime dependencies
+    log_info "Installing TSDuck runtime dependencies..."
+    apt-get install -y libcurl4 libpcsclite1 libedit2 2>/dev/null || true
+
+    # Install the package
+    log_info "Installing TSDuck package..."
+    if dpkg -i "$DEB_FILE"; then
+        log_info "TSDuck package installed"
+    else
+        log_warn "dpkg install had issues, attempting to fix dependencies..."
+        apt-get install -f -y
+    fi
+
+    # Cleanup temp file
+    rm -f "$DEB_FILE"
+
+    # Verify installation
+    if command -v tsp &> /dev/null; then
+        log_info "TSDuck installed successfully: $(tsp --version 2>&1 | head -1)"
+    else
+        log_warn "TSDuck installation may have failed"
+        log_warn "EIT extraction will not be available - install manually if needed"
+    fi
+}
+
 print_completion() {
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
@@ -612,6 +737,7 @@ main() {
     run_migrations
     fix_permissions
     install_ollama
+    install_tsduck
     clear_cache
 
     disable_maintenance_mode

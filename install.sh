@@ -299,6 +299,127 @@ install_ollama() {
     log_info "Ollama setup complete"
 }
 
+install_tsduck() {
+    log_step "Installing TSDuck (MPEG Transport Stream Toolkit)"
+
+    # Check if TSDuck is installed AND working
+    if command -v tsp &> /dev/null; then
+        if tsp --version &> /dev/null; then
+            log_info "TSDuck already installed: $(tsp --version 2>&1 | head -1)"
+            return 0
+        else
+            # TSDuck exists but is broken (library issues) - remove it
+            log_warn "TSDuck is installed but broken, removing..."
+            dpkg --purge tsduck 2>/dev/null || true
+            apt-get remove --purge tsduck -y 2>/dev/null || true
+        fi
+    fi
+
+    # Detect architecture and OS version
+    local ARCH=$(dpkg --print-architecture)
+    source /etc/os-release
+    log_info "Detected: $ARCH on $PRETTY_NAME ($VERSION_CODENAME)"
+
+    # Determine TSDuck version and package name based on Ubuntu version
+    local TSDUCK_VERSION=""
+    local UBUNTU_TAG=""
+
+    case "$VERSION_CODENAME" in
+        noble|plucky|oracular)
+            # Ubuntu 24.04+
+            TSDUCK_VERSION="3.43-4524"
+            UBUNTU_TAG="ubuntu24"
+            ;;
+        jammy)
+            # Ubuntu 22.04
+            TSDUCK_VERSION="3.33-3139"
+            UBUNTU_TAG="ubuntu22"
+            ;;
+        focal)
+            # Ubuntu 20.04
+            TSDUCK_VERSION="3.26-2349"
+            UBUNTU_TAG="ubuntu20"
+            ;;
+        *)
+            # Unknown - try ubuntu24 package
+            log_warn "Unknown Ubuntu version ($VERSION_CODENAME), trying ubuntu24 package"
+            TSDUCK_VERSION="3.43-4524"
+            UBUNTU_TAG="ubuntu24"
+            ;;
+    esac
+
+    local PACKAGE_NAME="tsduck_${TSDUCK_VERSION}.${UBUNTU_TAG}_${ARCH}.deb"
+    log_info "Looking for TSDuck package: $PACKAGE_NAME"
+
+    local DEB_FILE="/tmp/tsduck.deb"
+    rm -f "$DEB_FILE"
+
+    local GITHUB_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+
+    log_info "Downloading TSDuck v${TSDUCK_VERSION} from GitHub..."
+
+    # Try download with retries
+    local DOWNLOAD_SUCCESS=false
+    for attempt in 1 2 3; do
+        if command -v wget &> /dev/null; then
+            if wget --no-check-certificate -q -O "$DEB_FILE" "$GITHUB_URL" 2>/dev/null; then
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
+        else
+            if curl -k -L -f -o "$DEB_FILE" "$GITHUB_URL" 2>/dev/null; then
+                DOWNLOAD_SUCCESS=true
+                break
+            fi
+        fi
+        log_warn "Download attempt $attempt failed, retrying..."
+        sleep 2
+    done
+
+    if [[ "$DOWNLOAD_SUCCESS" = false ]] || [[ ! -f "$DEB_FILE" ]] || [[ ! -s "$DEB_FILE" ]]; then
+        log_warn "Failed to download TSDuck package"
+        log_warn "EIT extraction from satellite streams will not be available"
+        log_warn "You can install TSDuck manually later from: https://github.com/tsduck/tsduck/releases"
+        return 0
+    fi
+
+    # Verify it's a valid .deb file
+    local FILE_TYPE=$(file "$DEB_FILE" 2>/dev/null || echo "unknown")
+    if ! echo "$FILE_TYPE" | grep -qi "debian\|archive"; then
+        log_warn "Downloaded file is not a valid Debian package"
+        rm -f "$DEB_FILE"
+        log_warn "EIT extraction will not be available - install TSDuck manually if needed"
+        return 0
+    fi
+
+    log_info "Download successful ($(du -h "$DEB_FILE" | cut -f1))"
+
+    # Install runtime dependencies
+    log_info "Installing TSDuck runtime dependencies..."
+    apt-get install -y libcurl4 libpcsclite1 libedit2 2>/dev/null || true
+
+    # Install the package
+    log_info "Installing TSDuck package..."
+    if dpkg -i "$DEB_FILE"; then
+        log_info "TSDuck package installed"
+    else
+        log_warn "dpkg install had issues, attempting to fix dependencies..."
+        apt-get install -f -y
+    fi
+
+    # Cleanup temp file
+    rm -f "$DEB_FILE"
+
+    # Verify installation
+    if command -v tsp &> /dev/null; then
+        log_info "TSDuck installed successfully: $(tsp --version 2>&1 | head -1)"
+    else
+        log_warn "TSDuck installation may have failed"
+        log_warn "EIT extraction from satellite streams will not be available"
+        log_warn "You can install TSDuck manually later from: https://github.com/tsduck/tsduck/releases"
+    fi
+}
+
 install_dependencies_rhel() {
     log_step "Installing Dependencies (RHEL/CentOS)"
 
@@ -1314,6 +1435,9 @@ main() {
 
     # Install Ollama for local AI capabilities
     install_ollama
+
+    # Install TSDuck for EIT extraction from satellite streams
+    install_tsduck
 
     configure_mysql
     configure_php
