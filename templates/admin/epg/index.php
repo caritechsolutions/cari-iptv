@@ -196,7 +196,7 @@
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Capture Timeout (seconds)</label>
-                        <input type="number" id="captureTimeout" class="form-input" value="120" min="10" max="600">
+                        <input type="number" id="captureTimeout" class="form-input" value="30" min="10" max="600">
                         <small class="form-hint">How long to capture EIT data</small>
                     </div>
                 </div>
@@ -512,7 +512,7 @@ function openAddModal() {
     document.getElementById('sourceUrl').value = '';
     document.getElementById('sourcePort').value = '';
     document.getElementById('eitPid').value = '0x12';
-    document.getElementById('captureTimeout').value = '120';
+    document.getElementById('captureTimeout').value = '30';
     document.getElementById('xmltvUrl').value = '';
     document.getElementById('sourceActive').checked = true;
     document.getElementById('sourceAutoRefresh').checked = false;
@@ -538,7 +538,7 @@ function openEditModal(src) {
         document.getElementById('sourceUrl').value = src.source_url || '';
         document.getElementById('sourcePort').value = src.source_port || '';
         document.getElementById('eitPid').value = src.eit_pid || '0x12';
-        document.getElementById('captureTimeout').value = src.capture_timeout || 120;
+        document.getElementById('captureTimeout').value = src.capture_timeout || 30;
     } else {
         document.getElementById('xmltvUrl').value = src.source_url || '';
     }

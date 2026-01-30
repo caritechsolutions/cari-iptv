@@ -72,7 +72,7 @@ class EpgController
             'source_url' => trim($_POST['source_url'] ?? '') ?: null,
             'source_port' => !empty($_POST['source_port']) ? (int) $_POST['source_port'] : null,
             'eit_pid' => trim($_POST['eit_pid'] ?? '') ?: '0x12',
-            'capture_timeout' => (int) ($_POST['capture_timeout'] ?? 120),
+            'capture_timeout' => (int) ($_POST['capture_timeout'] ?? 30),
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'auto_refresh' => isset($_POST['auto_refresh']) ? 1 : 0,
             'refresh_interval' => (int) ($_POST['refresh_interval'] ?? 3600),
@@ -114,7 +114,7 @@ class EpgController
             'source_url' => trim($_POST['source_url'] ?? '') ?: null,
             'source_port' => !empty($_POST['source_port']) ? (int) $_POST['source_port'] : null,
             'eit_pid' => trim($_POST['eit_pid'] ?? '') ?: '0x12',
-            'capture_timeout' => (int) ($_POST['capture_timeout'] ?? 120),
+            'capture_timeout' => (int) ($_POST['capture_timeout'] ?? 30),
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'auto_refresh' => isset($_POST['auto_refresh']) ? 1 : 0,
             'refresh_interval' => (int) ($_POST['refresh_interval'] ?? 3600),
@@ -160,6 +160,10 @@ class EpgController
      */
     public function fetch(int $id): void
     {
+        // EIT capture can take 30-120 seconds, disable PHP time limit
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
             $this->sendJson(['success' => false, 'message' => 'Invalid request']);
