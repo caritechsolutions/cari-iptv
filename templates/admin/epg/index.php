@@ -124,7 +124,7 @@
                                 </td>
                                 <td>
                                     <div class="action-buttons">
-                                        <button class="btn btn-primary btn-sm" onclick="fetchSource(<?= $src['id'] ?>)" title="Fetch now">
+                                        <button class="btn btn-primary btn-sm" onclick="fetchSource(<?= $src['id'] ?>, <?= (int)$src['capture_timeout'] ?>, '<?= htmlspecialchars($src['type']) ?>')" title="Fetch now" id="fetchBtn-<?= $src['id'] ?>">
                                             <i class="lucide-download"></i> Fetch
                                         </button>
                                         <?php if ($src['type'] === 'xmltv_file'): ?>
@@ -149,6 +149,26 @@
                 </table>
             </div>
         <?php endif; ?>
+    </div>
+</div>
+
+<!-- Fetch Progress -->
+<div id="fetchProgress" class="card" style="display: none; margin-top: 16px;">
+    <div class="card-body" style="padding: 1.25rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="fetch-spinner"></div>
+                <span id="fetchPhaseText" style="font-weight: 500; color: #e2e8f0;">Initializing...</span>
+            </div>
+            <span id="fetchTimer" style="font-size: 13px; color: #94a3b8; font-variant-numeric: tabular-nums;">0s</span>
+        </div>
+        <div class="fetch-progress-track">
+            <div class="fetch-progress-bar" id="fetchProgressBar"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+            <span id="fetchStepInfo" style="font-size: 12px; color: #64748b;">Starting capture...</span>
+            <span id="fetchPctText" style="font-size: 12px; color: #64748b;">0%</span>
+        </div>
     </div>
 </div>
 
@@ -521,6 +541,49 @@
 .toast.show { transform: translateX(0); }
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
+
+.fetch-progress-track {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.fetch-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #6366f1, #818cf8);
+    border-radius: 4px;
+    transition: width 1s linear;
+    position: relative;
+}
+
+.fetch-progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    animation: fetchShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes fetchShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.fetch-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(99, 102, 241, 0.3);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
 </style>
 
 <script>
@@ -664,15 +727,87 @@ function deleteSource(id, name) {
 }
 
 // ========================================================================
-// FETCH
+// FETCH WITH PROGRESS
 // ========================================================================
 
-function fetchSource(id) {
-    const btn = event.target.closest('button');
+let fetchTimerInterval = null;
+let fetchProgressInterval = null;
+
+function fetchSource(id, captureTimeout, sourceType) {
+    const btn = document.getElementById('fetchBtn-' + id);
+    if (!btn) return;
     const origHtml = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="lucide-loader"></i>';
 
+    // Disable all other fetch buttons while running
+    document.querySelectorAll('[id^="fetchBtn-"]').forEach(b => b.disabled = true);
+
+    // Show progress bar
+    const progressEl = document.getElementById('fetchProgress');
+    const progressBar = document.getElementById('fetchProgressBar');
+    const phaseText = document.getElementById('fetchPhaseText');
+    const timerText = document.getElementById('fetchTimer');
+    const stepInfo = document.getElementById('fetchStepInfo');
+    const pctText = document.getElementById('fetchPctText');
+
+    progressEl.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressBar.style.background = 'linear-gradient(90deg, #6366f1, #818cf8)';
+    pctText.textContent = '0%';
+
+    // Estimate total duration for progress calculation
+    // EIT: capture_timeout for EIT + min(timeout,30) for SDT + ~5s for parsing
+    // XMLTV: ~10-30s depending on size
+    let totalEstimate;
+    const phases = [];
+
+    if (sourceType === 'eit') {
+        const sdtTime = Math.min(captureTimeout, 30);
+        const parseTime = 5;
+        totalEstimate = captureTimeout + sdtTime + parseTime;
+        phases.push(
+            { at: 0, pct: 0, label: 'Capturing EIT data...', step: `EIT capture (PID 0x12) — up to ${captureTimeout}s` },
+            { at: captureTimeout, pct: Math.round((captureTimeout / totalEstimate) * 100), label: 'Capturing SDT service names...', step: `SDT capture — up to ${sdtTime}s` },
+            { at: captureTimeout + sdtTime, pct: Math.round(((captureTimeout + sdtTime) / totalEstimate) * 100), label: 'Parsing and importing programmes...', step: 'Processing XML and writing to database' }
+        );
+    } else {
+        totalEstimate = 20;
+        phases.push(
+            { at: 0, pct: 0, label: 'Fetching XMLTV data...', step: 'Downloading and parsing XML' },
+            { at: 10, pct: 50, label: 'Importing programmes...', step: 'Writing to database' }
+        );
+    }
+
+    // Start elapsed timer
+    let elapsed = 0;
+    phaseText.textContent = phases[0].label;
+    stepInfo.textContent = phases[0].step;
+
+    fetchTimerInterval = setInterval(() => {
+        elapsed++;
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        timerText.textContent = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+        // Update phase based on elapsed time
+        for (let i = phases.length - 1; i >= 0; i--) {
+            if (elapsed >= phases[i].at) {
+                phaseText.textContent = phases[i].label;
+                stepInfo.textContent = phases[i].step;
+                break;
+            }
+        }
+    }, 1000);
+
+    // Animate progress bar smoothly
+    fetchProgressInterval = setInterval(() => {
+        const pct = Math.min(95, Math.round((elapsed / totalEstimate) * 100));
+        progressBar.style.width = pct + '%';
+        pctText.textContent = pct + '%';
+    }, 500);
+
+    // Send the actual fetch request
     fetch(`/admin/epg/${id}/fetch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -680,19 +815,45 @@ function fetchSource(id) {
     })
     .then(r => r.json())
     .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
+        clearInterval(fetchTimerInterval);
+        clearInterval(fetchProgressInterval);
+
         if (data.success) {
-            showToast(`${data.message}`, 'success');
+            // Complete the progress bar
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'linear-gradient(90deg, #22c55e, #4ade80)';
+            pctText.textContent = '100%';
+            phaseText.textContent = 'Fetch complete!';
+            stepInfo.textContent = data.message || 'Done';
+
+            showToast(data.message, 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
+            progressBar.style.width = '100%';
+            progressBar.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
+            pctText.textContent = '';
+            phaseText.textContent = 'Fetch failed';
+            stepInfo.textContent = data.message || 'Unknown error';
+
             showToast(data.message || 'Fetch failed', 'error');
+            // Re-enable buttons
+            document.querySelectorAll('[id^="fetchBtn-"]').forEach(b => b.disabled = false);
+            btn.innerHTML = origHtml;
         }
     })
     .catch(() => {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
+        clearInterval(fetchTimerInterval);
+        clearInterval(fetchProgressInterval);
+
+        progressBar.style.width = '100%';
+        progressBar.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
+        pctText.textContent = '';
+        phaseText.textContent = 'Network error';
+        stepInfo.textContent = 'Connection failed or request timed out';
+
         showToast('Network error during fetch', 'error');
+        document.querySelectorAll('[id^="fetchBtn-"]').forEach(b => b.disabled = false);
+        btn.innerHTML = origHtml;
     });
 }
 
