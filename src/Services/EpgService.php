@@ -250,10 +250,17 @@ class EpgService
         }
 
         // Import the EIT data
-        $result = $this->importEitXml($source['id'], $eitFile, $serviceNames);
+        try {
+            $result = $this->importEitXml($source['id'], $eitFile, $serviceNames);
+        } catch (\Exception $e) {
+            error_log('EIT import failed: ' . $e->getMessage());
+            $this->updateSourceStatus($source['id'], 'error', 'Import failed: ' . $e->getMessage());
+            if (file_exists($eitFile)) unlink($eitFile);
+            return null;
+        }
 
         // Clean up
-        unlink($eitFile);
+        if (file_exists($eitFile)) unlink($eitFile);
 
         if ($result['success']) {
             $this->updateSourceStatus($source['id'], 'success',

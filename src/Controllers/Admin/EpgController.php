@@ -176,12 +176,18 @@ class EpgController
             return;
         }
 
-        if ($source['type'] === 'eit') {
-            $this->epgService->extractEit($source);
-        } elseif ($source['type'] === 'xmltv_url') {
-            $this->fetchXmltvUrl($source);
-        } elseif ($source['type'] === 'xmltv_file') {
-            $this->sendJson(['success' => false, 'message' => 'Use the upload function for file-based sources']);
+        try {
+            if ($source['type'] === 'eit') {
+                $this->epgService->extractEit($source);
+            } elseif ($source['type'] === 'xmltv_url') {
+                $this->fetchXmltvUrl($source);
+            } elseif ($source['type'] === 'xmltv_file') {
+                $this->sendJson(['success' => false, 'message' => 'Use the upload function for file-based sources']);
+                return;
+            }
+        } catch (\Exception $e) {
+            error_log('EPG fetch error: ' . $e->getMessage());
+            $this->sendJson(['success' => false, 'message' => 'Fetch error: ' . $e->getMessage()]);
             return;
         }
 
