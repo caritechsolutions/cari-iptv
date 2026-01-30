@@ -152,6 +152,33 @@
     </div>
 </div>
 
+<!-- Programme Guide -->
+<div class="content-card" style="margin-top: 24px;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <h3><i class="lucide-tv"></i> Programme Guide</h3>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <select id="progChannelFilter" class="form-input" style="width: auto; min-width: 180px;" onchange="loadProgrammes()">
+                <option value="">All Channels</option>
+            </select>
+            <input type="date" id="progDateFilter" class="form-input" style="width: auto;" onchange="loadProgrammes()">
+            <label style="display: flex; align-items: center; gap: 4px; color: #94a3b8; font-size: 13px; cursor: pointer;">
+                <input type="checkbox" id="progNowFilter" onchange="loadProgrammes()"> Now Showing
+            </label>
+            <button class="btn btn-primary btn-sm" onclick="loadProgrammes()">
+                <i class="lucide-refresh-cw"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div id="programmeContent">
+        <p style="text-align: center; color: #64748b; padding: 40px 0;">Click <strong>Refresh</strong> or change filters to load programme listings.</p>
+    </div>
+    <div id="programmePagination" style="display: none; padding: 16px; border-top: 1px solid #2d3748; text-align: center;">
+        <button class="btn btn-secondary btn-sm" id="progPrevBtn" onclick="changePage(-1)" disabled>&laquo; Previous</button>
+        <span id="progPageInfo" style="margin: 0 12px; color: #94a3b8; font-size: 13px;"></span>
+        <button class="btn btn-secondary btn-sm" id="progNextBtn" onclick="changePage(1)" disabled>Next &raquo;</button>
+    </div>
+</div>
+
 <!-- Add/Edit Source Modal -->
 <div class="modal-overlay" id="sourceModal" style="display: none;">
     <div class="modal-content" style="max-width: 600px;">
@@ -867,6 +894,129 @@ function cleanupProgrammes() {
     })
     .catch(() => showToast('Network error', 'error'));
 }
+
+// ========================================================================
+// PROGRAMME GUIDE
+// ========================================================================
+
+let currentProgPage = 1;
+let channelsLoaded = false;
+
+function loadProgrammes(page) {
+    if (page !== undefined) currentProgPage = page;
+    else currentProgPage = 1;
+
+    const channelId = document.getElementById('progChannelFilter').value;
+    const date = document.getElementById('progDateFilter').value;
+    const now = document.getElementById('progNowFilter').checked ? '1' : '';
+
+    const params = new URLSearchParams({ page: currentProgPage, per_page: 50 });
+    if (channelId) params.set('channel_id', channelId);
+    if (date) params.set('date', date);
+    if (now) params.set('now', now);
+
+    document.getElementById('programmeContent').innerHTML =
+        '<p style="text-align:center;color:#64748b;padding:40px 0;"><i class="lucide-loader"></i> Loading programmes...</p>';
+
+    fetch(`/admin/epg/programmes?${params.toString()}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            document.getElementById('programmeContent').innerHTML =
+                '<p style="text-align:center;color:#ef4444;padding:40px 0;">' + (data.message || 'Failed to load') + '</p>';
+            return;
+        }
+
+        // Populate channel filter dropdown (once)
+        if (!channelsLoaded && data.channels && data.channels.length > 0) {
+            const sel = document.getElementById('progChannelFilter');
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">All Channels</option>';
+            data.channels.forEach(ch => {
+                sel.innerHTML += `<option value="${ch.id}" ${ch.id == currentVal ? 'selected' : ''}>${esc(ch.name)}</option>`;
+            });
+            channelsLoaded = true;
+        }
+
+        if (!data.programmes || data.programmes.length === 0) {
+            document.getElementById('programmeContent').innerHTML =
+                '<p style="text-align:center;color:#64748b;padding:40px 0;">No programmes found. Try changing the filters or run a fetch first.</p>';
+            document.getElementById('programmePagination').style.display = 'none';
+            return;
+        }
+
+        let html = '<div class="table-responsive"><table class="data-table"><thead><tr>';
+        html += '<th>Channel</th><th>Time</th><th>Title</th><th>Description</th><th>Category</th>';
+        html += '</tr></thead><tbody>';
+
+        const now = new Date();
+        data.programmes.forEach(p => {
+            const start = new Date(p.start_time.replace(' ', 'T'));
+            const end = new Date(p.end_time.replace(' ', 'T'));
+            const isLive = start <= now && end > now;
+
+            const startStr = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const endStr = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+            html += `<tr style="${isLive ? 'background: rgba(99, 102, 241, 0.1); border-left: 3px solid #6366f1;' : ''}">`;
+            html += `<td><strong>${esc(p.channel_name || 'Unmapped')}</strong></td>`;
+            html += `<td style="white-space: nowrap;">`;
+            html += `<span style="color: #94a3b8; font-size: 11px;">${dateStr}</span><br>`;
+            html += `${startStr} - ${endStr}`;
+            if (isLive) html += ' <span class="badge badge-success" style="font-size: 10px;">LIVE</span>';
+            html += `</td>`;
+            html += `<td><strong>${esc(p.title)}</strong>`;
+            if (p.subtitle) html += `<br><span style="color: #94a3b8; font-size: 12px;">${esc(p.subtitle)}</span>`;
+            html += `</td>`;
+            html += `<td style="max-width: 300px; font-size: 12px; color: #94a3b8;">${esc(p.description || '')}</td>`;
+            html += `<td>${p.category ? '<span class="badge badge-info">' + esc(p.category) + '</span>' : ''}</td>`;
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        document.getElementById('programmeContent').innerHTML = html;
+
+        // Pagination
+        const pagination = document.getElementById('programmePagination');
+        if (data.total_pages > 1) {
+            pagination.style.display = 'block';
+            document.getElementById('progPageInfo').textContent =
+                `Page ${data.page} of ${data.total_pages} (${data.total} programmes)`;
+            document.getElementById('progPrevBtn').disabled = data.page <= 1;
+            document.getElementById('progNextBtn').disabled = data.page >= data.total_pages;
+        } else {
+            pagination.style.display = data.total > 0 ? 'block' : 'none';
+            document.getElementById('progPageInfo').textContent = `${data.total} programme${data.total !== 1 ? 's' : ''}`;
+            document.getElementById('progPrevBtn').disabled = true;
+            document.getElementById('progNextBtn').disabled = true;
+        }
+    })
+    .catch(() => {
+        document.getElementById('programmeContent').innerHTML =
+            '<p style="text-align:center;color:#ef4444;padding:40px 0;">Failed to load programmes.</p>';
+    });
+}
+
+function changePage(delta) {
+    loadProgrammes(currentProgPage + delta);
+}
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// Auto-load programmes on page load if there are any
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('progDateFilter').value = today;
+    if (<?= (int)$stats['total_programmes'] ?> > 0) {
+        loadProgrammes();
+    }
+});
 
 function showToast(message, type) {
     const existing = document.querySelector('.toast');

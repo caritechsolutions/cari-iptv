@@ -347,6 +347,45 @@ class EpgController
         ]);
     }
 
+    /**
+     * Get programme listings (AJAX)
+     */
+    public function programmes(): void
+    {
+        $filters = [
+            'channel_id' => $_GET['channel_id'] ?? null,
+            'source_id' => $_GET['source_id'] ?? null,
+            'date' => $_GET['date'] ?? null,
+            'now' => isset($_GET['now']) && $_GET['now'] === '1',
+            'page' => $_GET['page'] ?? 1,
+            'per_page' => $_GET['per_page'] ?? 50,
+        ];
+
+        $result = $this->epgService->getProgrammes($filters);
+
+        // Get available channels and sources for filter dropdowns
+        $channels = $this->db->fetchAll(
+            "SELECT DISTINCT c.id, c.name FROM channels c
+             INNER JOIN epg_programs p ON p.channel_id = c.id
+             ORDER BY c.name"
+        );
+
+        $sources = $this->db->fetchAll(
+            "SELECT id, name FROM epg_sources ORDER BY name"
+        );
+
+        $this->sendJson([
+            'success' => true,
+            'programmes' => $result['data'],
+            'total' => $result['total'],
+            'page' => $result['page'],
+            'per_page' => $result['per_page'],
+            'total_pages' => $result['total_pages'],
+            'channels' => $channels,
+            'sources' => $sources,
+        ]);
+    }
+
     // ========================================================================
     // HELPERS
     // ========================================================================

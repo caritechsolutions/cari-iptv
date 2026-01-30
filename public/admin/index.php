@@ -214,6 +214,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
 
     // EPG Management
     $router->get('/epg', [EpgController::class, 'index']);
+    $router->get('/epg/programmes', [EpgController::class, 'programmes']);
     $router->post('/epg/store', [EpgController::class, 'store']);
     $router->post('/epg/{id}/update', [EpgController::class, 'update']);
     $router->post('/epg/{id}/delete', [EpgController::class, 'delete']);
