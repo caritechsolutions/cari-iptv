@@ -46,11 +46,64 @@ CREATE TABLE IF NOT EXISTS `epg_channel_map` (
 
 -- ============================================
 -- Extend epg_programs with source tracking
+-- Uses prepared statements for idempotent column additions
 -- ============================================
-ALTER TABLE `epg_programs`
-    ADD COLUMN `epg_source_id` INT UNSIGNED DEFAULT NULL AFTER `id`,
-    ADD COLUMN `subtitle` VARCHAR(500) DEFAULT NULL AFTER `title`,
-    ADD COLUMN `external_event_id` VARCHAR(50) DEFAULT NULL COMMENT 'event_id from EIT or programme ID' AFTER `channel_id`,
-    ADD COLUMN `language` VARCHAR(10) DEFAULT NULL AFTER `rating`,
-    ADD INDEX `idx_source` (`epg_source_id`),
-    ADD INDEX `idx_external_event` (`channel_id`, `external_event_id`);
+
+-- Add epg_source_id column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'epg_programs' AND COLUMN_NAME = 'epg_source_id');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `epg_programs` ADD COLUMN `epg_source_id` INT UNSIGNED DEFAULT NULL AFTER `id`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add subtitle column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'epg_programs' AND COLUMN_NAME = 'subtitle');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `epg_programs` ADD COLUMN `subtitle` VARCHAR(500) DEFAULT NULL AFTER `title`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add external_event_id column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'epg_programs' AND COLUMN_NAME = 'external_event_id');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `epg_programs` ADD COLUMN `external_event_id` VARCHAR(50) DEFAULT NULL COMMENT ''event_id from EIT or programme ID'' AFTER `channel_id`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add language column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'epg_programs' AND COLUMN_NAME = 'language');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `epg_programs` ADD COLUMN `language` VARCHAR(10) DEFAULT NULL AFTER `rating`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add indexes (safe to add - will error silently if they exist)
+SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'epg_programs' AND INDEX_NAME = 'idx_source');
+SET @s = IF(@idx_exists = 0,
+    'ALTER TABLE `epg_programs` ADD INDEX `idx_source` (`epg_source_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'epg_programs' AND INDEX_NAME = 'idx_external_event');
+SET @s = IF(@idx_exists = 0,
+    'ALTER TABLE `epg_programs` ADD INDEX `idx_external_event` (`channel_id`, `external_event_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
