@@ -59,6 +59,7 @@ use CariIPTV\Controllers\Admin\MovieController;
 use CariIPTV\Controllers\Admin\SeriesController;
 use CariIPTV\Controllers\Admin\CategoryController;
 use CariIPTV\Controllers\Admin\EpgController;
+use CariIPTV\Controllers\Admin\AppLayoutController;
 
 // Initialize session
 Session::start();
@@ -224,6 +225,27 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/epg/save-mapping', [EpgController::class, 'saveMapping']);
     $router->post('/epg/{id}/auto-map', [EpgController::class, 'autoMap']);
     $router->post('/epg/cleanup', [EpgController::class, 'cleanup']);
+
+    // App Layout Management
+    $router->get('/app-layout', [AppLayoutController::class, 'index']);
+    $router->post('/app-layout/store', [AppLayoutController::class, 'store']);
+    $router->get('/app-layout/search-content', [AppLayoutController::class, 'searchContent']);
+    $router->get('/app-layout/{id}/builder', [AppLayoutController::class, 'builder']);
+    $router->post('/app-layout/{id}/update', [AppLayoutController::class, 'update']);
+    $router->post('/app-layout/{id}/delete', [AppLayoutController::class, 'delete']);
+    $router->post('/app-layout/{id}/duplicate', [AppLayoutController::class, 'duplicate']);
+    $router->post('/app-layout/{id}/publish', [AppLayoutController::class, 'publish']);
+
+    // App Layout Sections
+    $router->post('/app-layout/{id}/sections/add', [AppLayoutController::class, 'addSection']);
+    $router->post('/app-layout/{id}/sections/reorder', [AppLayoutController::class, 'reorderSections']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/update', [AppLayoutController::class, 'updateSection']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/delete', [AppLayoutController::class, 'deleteSection']);
+
+    // App Layout Section Items
+    $router->post('/app-layout/{id}/sections/{sectionId}/items/add', [AppLayoutController::class, 'addItem']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/items/reorder', [AppLayoutController::class, 'reorderItems']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/items/{itemId}/remove', [AppLayoutController::class, 'removeItem']);
 });
 
 // Dispatch the request

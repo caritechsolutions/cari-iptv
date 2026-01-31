@@ -699,6 +699,10 @@
                         <i class="lucide-calendar"></i>
                         <span>EPG</span>
                     </a>
+                    <a href="/admin/app-layout" class="nav-item <?= ($pageTitle ?? '') === 'App Layout' || str_starts_with($pageTitle ?? '', 'Edit Layout') ? 'active' : '' ?>">
+                        <i class="lucide-layout"></i>
+                        <span>App Layout</span>
+                    </a>
                 </div>
 
                 <div class="nav-section">
