@@ -230,6 +230,9 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->get('/app-layout', [AppLayoutController::class, 'index']);
     $router->post('/app-layout/store', [AppLayoutController::class, 'store']);
     $router->get('/app-layout/search-content', [AppLayoutController::class, 'searchContent']);
+    $router->get('/app-layout/search-tmdb', [AppLayoutController::class, 'searchTmdb']);
+    $router->post('/app-layout/import-tmdb-item', [AppLayoutController::class, 'importTmdbItem']);
+    $router->post('/app-layout/upload-item-image', [AppLayoutController::class, 'uploadItemImage']);
     $router->get('/app-layout/{id}/builder', [AppLayoutController::class, 'builder']);
     $router->post('/app-layout/{id}/update', [AppLayoutController::class, 'update']);
     $router->post('/app-layout/{id}/delete', [AppLayoutController::class, 'delete']);

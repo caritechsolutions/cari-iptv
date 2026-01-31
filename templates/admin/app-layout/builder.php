@@ -321,14 +321,43 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
     }
 
     /* Content Picker Modal */
+    .picker-source-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .picker-source-tab {
+        flex: 1;
+        padding: 0.6rem 0.75rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        background: transparent;
+        color: var(--text-secondary);
+        border: none;
+        border-right: 1px solid var(--border-color);
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+    }
+    .picker-source-tab:last-child { border-right: none; }
+    .picker-source-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .picker-source-tab.active { background: var(--primary); color: white; }
+    .picker-source-tab i { font-size: 0.85rem; }
+
+    .picker-panel { display: none; }
+    .picker-panel.active { display: block; }
+
     .content-search {
         margin-bottom: 1rem;
         display: flex;
         gap: 0.5rem;
     }
-    .content-search input {
-        flex: 1;
-    }
+    .content-search input { flex: 1; }
     .content-type-tabs {
         display: flex;
         gap: 0.25rem;
@@ -345,38 +374,87 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
         transition: var(--transition);
     }
     .content-type-tab:hover { color: var(--text-primary); }
-    .content-type-tab.active {
-        background: var(--primary);
-        color: white;
-    }
+    .content-type-tab.active { background: var(--primary); color: white; }
+
     .content-results {
-        max-height: 350px;
+        max-height: 400px;
         overflow-y: auto;
     }
     .content-result-item {
         display: flex;
         align-items: center;
         gap: 0.75rem;
-        padding: 0.5rem;
+        padding: 0.6rem 0.5rem;
         border-radius: 8px;
         cursor: pointer;
         transition: var(--transition);
+        border: 1px solid transparent;
     }
-    .content-result-item:hover { background: var(--bg-hover); }
+    .content-result-item:hover { background: var(--bg-hover); border-color: var(--border-color); }
     .content-result-img {
-        width: 40px;
-        height: 56px;
-        border-radius: 4px;
+        width: 48px;
+        height: 72px;
+        border-radius: 6px;
         object-fit: cover;
         background: var(--bg-hover);
         flex-shrink: 0;
     }
-    .content-result-info { flex: 1; }
+    .content-result-info { flex: 1; min-width: 0; }
     .content-result-name { font-size: 0.85rem; font-weight: 500; }
-    .content-result-meta { font-size: 0.7rem; color: var(--text-muted); }
+    .content-result-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+    .content-result-desc {
+        font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .content-result-rating {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: 0.7rem; color: var(--warning); margin-left: 6px;
+    }
+    .content-result-badge {
+        font-size: 0.6rem; padding: 1px 6px; border-radius: 4px;
+        background: rgba(99,102,241,0.2); color: var(--primary-light);
+        font-weight: 600; text-transform: uppercase;
+    }
+
+    /* Upload area */
+    .upload-area {
+        border: 2px dashed var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+        text-align: center;
+        cursor: pointer;
+        transition: var(--transition);
+        margin-bottom: 1rem;
+    }
+    .upload-area:hover, .upload-area.drag-over {
+        border-color: var(--primary);
+        background: rgba(99,102,241,0.05);
+    }
+    .upload-area i { font-size: 2rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .upload-area p { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem; }
+    .upload-area .text-xs { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; }
+    .upload-preview {
+        display: none; align-items: center; gap: 1rem;
+        padding: 0.75rem; background: var(--bg-dark); border-radius: 8px;
+        border: 1px solid var(--border-color); margin-bottom: 1rem;
+    }
+    .upload-preview.active { display: flex; }
+    .upload-preview img {
+        width: 80px; height: 120px; object-fit: cover; border-radius: 6px;
+    }
+    .upload-preview-info { flex: 1; }
+    .upload-preview-name { font-size: 0.85rem; font-weight: 500; }
+    .upload-preview-size { font-size: 0.7rem; color: var(--text-muted); }
+
+    .tmdb-search-info {
+        font-size: 0.75rem; color: var(--text-muted);
+        padding: 0.5rem 0; display: flex; align-items: center; gap: 0.4rem;
+    }
 
     /* Modal sizing */
     .modal-lg { max-width: 700px; }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
 
 <!-- Builder Toolbar -->
@@ -548,17 +626,86 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
             <button class="modal-close" onclick="closeModal('contentPickerModal')">&times;</button>
         </div>
         <div class="modal-body">
-            <div class="content-type-tabs">
-                <button class="content-type-tab active" onclick="switchContentType('movie', this)">Movies</button>
-                <button class="content-type-tab" onclick="switchContentType('series', this)">TV Shows</button>
-                <button class="content-type-tab" onclick="switchContentType('channel', this)">Channels</button>
-                <button class="content-type-tab" onclick="switchContentType('category', this)">Categories</button>
+            <!-- Source tabs: Library / TMDB / Upload -->
+            <div class="picker-source-tabs">
+                <button class="picker-source-tab active" onclick="switchPickerSource('library', this)">
+                    <i class="lucide-database"></i> My Library
+                </button>
+                <button class="picker-source-tab" onclick="switchPickerSource('tmdb', this)">
+                    <i class="lucide-globe"></i> TMDB Search
+                </button>
+                <button class="picker-source-tab" onclick="switchPickerSource('upload', this)">
+                    <i class="lucide-upload"></i> Upload Image
+                </button>
             </div>
-            <div class="content-search">
-                <input type="text" id="contentSearchInput" class="form-input" placeholder="Search..." oninput="debounceSearch()">
+
+            <!-- Library Panel -->
+            <div class="picker-panel active" id="pickerLibrary">
+                <div class="content-type-tabs">
+                    <button class="content-type-tab active" onclick="switchContentType('movie', this)">Movies</button>
+                    <button class="content-type-tab" onclick="switchContentType('series', this)">TV Shows</button>
+                    <button class="content-type-tab" onclick="switchContentType('channel', this)">Channels</button>
+                    <button class="content-type-tab" onclick="switchContentType('category', this)">Categories</button>
+                </div>
+                <div class="content-search">
+                    <input type="text" id="contentSearchInput" class="form-input" placeholder="Search your library..." oninput="debounceSearch()">
+                </div>
+                <div class="content-results" id="contentResults">
+                    <div class="text-muted text-sm" style="padding: 2rem; text-align: center;">Type to search or browse content</div>
+                </div>
             </div>
-            <div class="content-results" id="contentResults">
-                <div class="text-muted text-sm" style="padding: 2rem; text-align: center;">Type to search or browse content</div>
+
+            <!-- TMDB Panel -->
+            <div class="picker-panel" id="pickerTmdb">
+                <div class="content-type-tabs">
+                    <button class="content-type-tab active" onclick="switchTmdbType('movie', this)">Movies</button>
+                    <button class="content-type-tab" onclick="switchTmdbType('series', this)">TV Shows</button>
+                </div>
+                <div class="content-search">
+                    <input type="text" id="tmdbSearchInput" class="form-input" placeholder="Search TMDB by title..." oninput="debounceTmdbSearch()">
+                </div>
+                <div class="tmdb-search-info">
+                    <i class="lucide-info" style="width:12px;height:12px;"></i>
+                    Search for movies or TV shows on TMDB. Content will be imported to your library when added.
+                </div>
+                <div class="content-results" id="tmdbResults">
+                    <div class="text-muted text-sm" style="padding: 2rem; text-align: center;">Enter a title to search TMDB</div>
+                </div>
+            </div>
+
+            <!-- Upload Panel -->
+            <div class="picker-panel" id="pickerUpload">
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('uploadInput').click()">
+                    <i class="lucide-image-plus"></i>
+                    <p>Click to upload or drag & drop an image</p>
+                    <div class="text-xs">JPG, PNG, WebP up to 5MB</div>
+                </div>
+                <input type="file" id="uploadInput" accept="image/*" style="display:none" onchange="handleFileSelect(this)">
+
+                <div class="upload-preview" id="uploadPreview">
+                    <img id="uploadPreviewImg" src="" alt="Preview">
+                    <div class="upload-preview-info">
+                        <div class="upload-preview-name" id="uploadFileName">image.jpg</div>
+                        <div class="upload-preview-size" id="uploadFileSize">0 KB</div>
+                        <button class="btn btn-sm btn-secondary" onclick="clearUpload()" style="margin-top:0.5rem;">
+                            <i class="lucide-x"></i> Remove
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Title (optional)</label>
+                    <input type="text" id="uploadTitle" class="form-input" placeholder="Image title or label">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Link URL (optional)</label>
+                    <input type="text" id="uploadLinkUrl" class="form-input" placeholder="Where should this link to?">
+                </div>
+                <div style="display:flex;justify-content:flex-end;">
+                    <button class="btn btn-primary" id="uploadSubmitBtn" onclick="submitUpload()" disabled>
+                        <i class="lucide-upload"></i> Upload & Add
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -775,19 +922,54 @@ function updateSectionField(sectionId, field, value) {
 // ======================================
 // Content Picker
 // ======================================
+let currentPickerSource = 'library';
+let tmdbSearchType = 'movie';
+let tmdbSearchTimeout = null;
+
 function openContentPicker(sectionId) {
     activeSectionForPicker = sectionId;
     currentContentType = 'movie';
+    currentPickerSource = 'library';
+    tmdbSearchType = 'movie';
+
+    // Reset all panels
+    document.querySelectorAll('.picker-source-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+    document.querySelectorAll('.picker-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
+
+    // Reset library search
     document.getElementById('contentSearchInput').value = '';
     document.getElementById('contentResults').innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Type to search or browse content</div>';
-    document.querySelectorAll('.content-type-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+    document.querySelectorAll('#pickerLibrary .content-type-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+
+    // Reset TMDB search
+    document.getElementById('tmdbSearchInput').value = '';
+    document.getElementById('tmdbResults').innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Enter a title to search TMDB</div>';
+
+    // Reset upload
+    clearUpload();
+
     document.getElementById('contentPickerModal').classList.add('active');
     searchContent('');
 }
 
+function switchPickerSource(source, btn) {
+    currentPickerSource = source;
+    document.querySelectorAll('.picker-source-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.picker-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('picker' + source.charAt(0).toUpperCase() + source.slice(1)).classList.add('active');
+
+    if (source === 'tmdb') {
+        document.getElementById('tmdbSearchInput').focus();
+    } else if (source === 'library') {
+        document.getElementById('contentSearchInput').focus();
+    }
+}
+
+// --- Library search ---
 function switchContentType(type, btn) {
     currentContentType = type;
-    document.querySelectorAll('.content-type-tab').forEach(t => t.classList.remove('active'));
+    btn.closest('.content-type-tabs').querySelectorAll('.content-type-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     searchContent(document.getElementById('contentSearchInput').value);
 }
@@ -801,14 +983,17 @@ function debounceSearch() {
 
 async function searchContent(query) {
     const container = document.getElementById('contentResults');
-    container.innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Searching...</div>';
+    container.innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;"><i class="lucide-loader-2" style="animation:spin 1s linear infinite;width:16px;height:16px;display:inline-block;"></i> Searching...</div>';
 
     try {
         const res = await fetch(`/admin/app-layout/search-content?type=${currentContentType}&q=${encodeURIComponent(query)}`);
         const data = await res.json();
 
         if (!data.results || data.results.length === 0) {
-            container.innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">No results found</div>';
+            container.innerHTML = `<div class="text-muted text-sm" style="padding:2rem;text-align:center;">
+                No results in your library.
+                <br><a href="#" onclick="event.preventDefault();switchPickerSource('tmdb',document.querySelectorAll('.picker-source-tab')[1])" style="color:var(--primary-light);margin-top:0.5rem;display:inline-block;">Search TMDB instead</a>
+            </div>`;
             return;
         }
 
@@ -816,7 +1001,7 @@ async function searchContent(query) {
         data.results.forEach(item => {
             const img = item.image || item.poster_url || item.logo_url || '';
             const imgHtml = img
-                ? `<img class="content-result-img" src="${escapeHtml(img)}" alt="">`
+                ? `<img class="content-result-img" src="${escapeHtml(img)}" alt="" onerror="this.style.display='none'">`
                 : `<div class="content-result-img" style="display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:var(--text-muted)">${escapeHtml(currentContentType)}</div>`;
 
             html += `<div class="content-result-item" onclick="addContentItem(${item.id}, '${escapeHtml(item.name || '')}')">
@@ -856,6 +1041,199 @@ async function addContentItem(contentId, name) {
     }
 }
 
+// --- TMDB search ---
+function switchTmdbType(type, btn) {
+    tmdbSearchType = type;
+    btn.closest('.content-type-tabs').querySelectorAll('.content-type-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const q = document.getElementById('tmdbSearchInput').value;
+    if (q.trim()) searchTmdb(q);
+}
+
+function debounceTmdbSearch() {
+    clearTimeout(tmdbSearchTimeout);
+    tmdbSearchTimeout = setTimeout(() => {
+        searchTmdb(document.getElementById('tmdbSearchInput').value);
+    }, 400);
+}
+
+async function searchTmdb(query) {
+    if (!query.trim()) {
+        document.getElementById('tmdbResults').innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Enter a title to search TMDB</div>';
+        return;
+    }
+
+    const container = document.getElementById('tmdbResults');
+    container.innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;"><i class="lucide-loader-2" style="animation:spin 1s linear infinite;width:16px;height:16px;display:inline-block;"></i> Searching TMDB...</div>';
+
+    try {
+        const res = await fetch(`/admin/app-layout/search-tmdb?type=${tmdbSearchType}&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+
+        if (!data.success) {
+            container.innerHTML = `<div class="text-muted text-sm" style="padding:2rem;text-align:center;">${escapeHtml(data.message || 'Search failed')}</div>`;
+            return;
+        }
+
+        if (!data.results || data.results.length === 0) {
+            container.innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">No results found on TMDB</div>';
+            return;
+        }
+
+        let html = '';
+        data.results.forEach(item => {
+            const posterHtml = item.poster
+                ? `<img class="content-result-img" src="${escapeHtml(item.poster)}" alt="" loading="lazy">`
+                : `<div class="content-result-img" style="display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:var(--text-muted)">No poster</div>`;
+
+            const rating = item.vote_average ? `<span class="content-result-rating"><i class="lucide-star" style="width:10px;height:10px;"></i> ${Number(item.vote_average).toFixed(1)}</span>` : '';
+            const badge = `<span class="content-result-badge">${item.type === 'series' ? 'TV' : 'Movie'}</span>`;
+            const desc = item.overview ? `<div class="content-result-desc">${escapeHtml(item.overview)}</div>` : '';
+
+            html += `<div class="content-result-item" onclick="importTmdbItem(${item.tmdb_id}, '${escapeHtml(item.type)}')">
+                ${posterHtml}
+                <div class="content-result-info">
+                    <div class="content-result-name">${escapeHtml(item.name)} ${rating} ${badge}</div>
+                    <div class="content-result-meta">${escapeHtml(item.year || 'Unknown year')}</div>
+                    ${desc}
+                </div>
+            </div>`;
+        });
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Search failed - check network connection</div>';
+    }
+}
+
+async function importTmdbItem(tmdbId, contentType) {
+    if (!activeSectionForPicker) return;
+
+    // Show importing state on the clicked item
+    event.currentTarget.style.opacity = '0.5';
+    event.currentTarget.style.pointerEvents = 'none';
+
+    const form = new FormData();
+    form.append('_token', csrfToken);
+    form.append('section_id', activeSectionForPicker);
+    form.append('tmdb_id', tmdbId);
+    form.append('content_type', contentType);
+
+    try {
+        const res = await fetch('/admin/app-layout/import-tmdb-item', { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.success) {
+            closeModal('contentPickerModal');
+            window.location.reload();
+        } else {
+            alert(data.message || 'Failed to import');
+            event.currentTarget.style.opacity = '';
+            event.currentTarget.style.pointerEvents = '';
+        }
+    } catch (e) {
+        alert('Network error');
+    }
+}
+
+// --- Upload ---
+let selectedFile = null;
+
+function handleFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+        alert('File too large. Maximum 5MB.');
+        return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        return;
+    }
+
+    selectedFile = file;
+    document.getElementById('uploadFileName').textContent = file.name;
+    document.getElementById('uploadFileSize').textContent = (file.size / 1024).toFixed(0) + ' KB';
+    document.getElementById('uploadSubmitBtn').disabled = false;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        document.getElementById('uploadPreviewImg').src = e.target.result;
+        document.getElementById('uploadPreview').classList.add('active');
+        document.getElementById('uploadArea').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearUpload() {
+    selectedFile = null;
+    document.getElementById('uploadInput').value = '';
+    document.getElementById('uploadPreview').classList.remove('active');
+    document.getElementById('uploadArea').style.display = '';
+    document.getElementById('uploadSubmitBtn').disabled = true;
+    document.getElementById('uploadTitle').value = '';
+    document.getElementById('uploadLinkUrl').value = '';
+}
+
+async function submitUpload() {
+    if (!selectedFile || !activeSectionForPicker) return;
+
+    const btn = document.getElementById('uploadSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader-2" style="animation:spin 1s linear infinite"></i> Uploading...';
+
+    const form = new FormData();
+    form.append('_token', csrfToken);
+    form.append('section_id', activeSectionForPicker);
+    form.append('image', selectedFile);
+    form.append('title', document.getElementById('uploadTitle').value);
+    form.append('link_url', document.getElementById('uploadLinkUrl').value);
+
+    try {
+        const res = await fetch('/admin/app-layout/upload-item-image', { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.success) {
+            closeModal('contentPickerModal');
+            window.location.reload();
+        } else {
+            alert(data.message || 'Upload failed');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-upload"></i> Upload & Add';
+        }
+    } catch (e) {
+        alert('Network error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="lucide-upload"></i> Upload & Add';
+    }
+}
+
+// Upload drag & drop
+document.addEventListener('DOMContentLoaded', function() {
+    const area = document.getElementById('uploadArea');
+    if (!area) return;
+
+    ['dragenter','dragover'].forEach(e => area.addEventListener(e, function(ev) {
+        ev.preventDefault();
+        area.classList.add('drag-over');
+    }));
+    ['dragleave','drop'].forEach(e => area.addEventListener(e, function(ev) {
+        ev.preventDefault();
+        area.classList.remove('drag-over');
+    }));
+    area.addEventListener('drop', function(ev) {
+        const file = ev.dataTransfer.files[0];
+        if (file) {
+            const input = document.getElementById('uploadInput');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            handleFileSelect(input);
+        }
+    });
+});
+
+// --- Remove item ---
 async function removeItem(sectionId, itemId) {
     const form = new FormData();
     form.append('_token', csrfToken);

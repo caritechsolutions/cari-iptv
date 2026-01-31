@@ -11,6 +11,8 @@ use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\AppLayoutService;
+use CariIPTV\Services\MetadataService;
+use CariIPTV\Services\ImageService;
 
 class AppLayoutController
 {
@@ -725,7 +727,7 @@ class AppLayoutController
     // ========================================================================
 
     /**
-     * Search content for the picker
+     * Search local library content for the picker
      */
     public function searchContent(): void
     {
@@ -734,6 +736,206 @@ class AppLayoutController
 
         $results = $this->layoutService->searchContent($type, $query);
         $this->sendJson(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * Search TMDB for movies/shows (AJAX)
+     */
+    public function searchTmdb(): void
+    {
+        $query = trim($_GET['q'] ?? '');
+        $type = $_GET['type'] ?? 'movie';
+
+        if (empty($query)) {
+            $this->sendJson(['success' => true, 'results' => []]);
+            return;
+        }
+
+        $metadata = new MetadataService();
+
+        if ($type === 'series') {
+            $data = $metadata->searchTVShows($query);
+        } else {
+            $data = $metadata->searchMovies($query);
+        }
+
+        if (isset($data['error'])) {
+            $this->sendJson(['success' => false, 'message' => $data['error']]);
+            return;
+        }
+
+        // Normalize results for the picker
+        $results = [];
+        foreach ($data['results'] ?? [] as $item) {
+            $results[] = [
+                'tmdb_id' => $item['id'],
+                'name' => $item['title'] ?? $item['name'] ?? 'Untitled',
+                'year' => $item['year'] ?? '',
+                'overview' => mb_substr($item['overview'] ?? '', 0, 120),
+                'poster' => $item['poster'] ?? null,
+                'backdrop' => $item['backdrop'] ?? null,
+                'vote_average' => $item['vote_average'] ?? 0,
+                'type' => $type,
+            ];
+        }
+
+        $this->sendJson(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * Import content from TMDB and add to section (AJAX)
+     */
+    public function importTmdbItem(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $sectionId = (int) ($_POST['section_id'] ?? 0);
+        $tmdbId = (int) ($_POST['tmdb_id'] ?? 0);
+        $contentType = $_POST['content_type'] ?? 'movie';
+
+        if (!$sectionId || !$tmdbId) {
+            $this->sendJson(['success' => false, 'message' => 'Missing section or TMDB ID']);
+            return;
+        }
+
+        $metadata = new MetadataService();
+
+        if ($contentType === 'series') {
+            // Check if already imported
+            $existing = $this->db->fetch(
+                "SELECT id FROM tv_shows WHERE tmdb_id = ?",
+                [$tmdbId]
+            );
+
+            if ($existing) {
+                $contentId = (int) $existing['id'];
+            } else {
+                // Get details and import
+                $details = $metadata->getTVShowDetails($tmdbId);
+                if (!$details) {
+                    $this->sendJson(['success' => false, 'message' => 'Could not fetch show details from TMDB']);
+                    return;
+                }
+
+                $contentId = $this->db->insert('tv_shows', [
+                    'tmdb_id' => $tmdbId,
+                    'title' => $details['name'] ?? 'Untitled',
+                    'original_title' => $details['original_name'] ?? null,
+                    'synopsis' => $details['overview'] ?? null,
+                    'first_air_year' => !empty($details['first_air_date']) ? (int) substr($details['first_air_date'], 0, 4) : null,
+                    'poster_url' => $details['poster'] ?? null,
+                    'backdrop_url' => $details['backdrop'] ?? null,
+                    'vote_average' => $details['vote_average'] ?? 0,
+                    'status' => 'draft',
+                    'source' => 'tmdb',
+                ]);
+            }
+        } else {
+            // Movie
+            $existing = $this->db->fetch(
+                "SELECT id FROM movies WHERE tmdb_id = ?",
+                [$tmdbId]
+            );
+
+            if ($existing) {
+                $contentId = (int) $existing['id'];
+            } else {
+                $details = $metadata->getMovieDetails($tmdbId);
+                if (!$details) {
+                    $this->sendJson(['success' => false, 'message' => 'Could not fetch movie details from TMDB']);
+                    return;
+                }
+
+                $contentId = $this->db->insert('movies', [
+                    'tmdb_id' => $tmdbId,
+                    'title' => $details['title'] ?? 'Untitled',
+                    'original_title' => $details['original_title'] ?? null,
+                    'tagline' => $details['tagline'] ?? null,
+                    'synopsis' => $details['overview'] ?? null,
+                    'year' => !empty($details['release_date']) ? (int) substr($details['release_date'], 0, 4) : null,
+                    'release_date' => $details['release_date'] ?? null,
+                    'runtime' => $details['runtime'] ?? null,
+                    'vote_average' => $details['vote_average'] ?? 0,
+                    'poster_url' => $details['poster'] ?? null,
+                    'backdrop_url' => $details['backdrop'] ?? null,
+                    'status' => 'draft',
+                    'source' => 'tmdb',
+                ]);
+            }
+        }
+
+        // Add as content item to the section
+        $itemId = $this->layoutService->addItem($sectionId, [
+            'content_type' => $contentType === 'series' ? 'series' : 'movie',
+            'content_id' => $contentId,
+        ]);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => 'Content added',
+            'item_id' => $itemId,
+            'content_id' => $contentId,
+        ]);
+    }
+
+    /**
+     * Upload a custom image for a section item (AJAX)
+     */
+    public function uploadItemImage(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $sectionId = (int) ($_POST['section_id'] ?? 0);
+        if (!$sectionId) {
+            $this->sendJson(['success' => false, 'message' => 'Section ID required']);
+            return;
+        }
+
+        if (empty($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+            $this->sendJson(['success' => false, 'message' => 'No image uploaded or upload error']);
+            return;
+        }
+
+        $imageService = new ImageService();
+        $result = $imageService->processUpload(
+            $_FILES['image'],
+            'layout',
+            $sectionId,
+            'custom'
+        );
+
+        if (!$result['success']) {
+            $this->sendJson(['success' => false, 'message' => $result['error'] ?? 'Image processing failed']);
+            return;
+        }
+
+        // Add as custom content item
+        $imageUrl = $result['variants']['poster'] ?? $result['variants']['backdrop'] ?? $result['base_path'] . '_poster.webp';
+
+        $itemId = $this->layoutService->addItem($sectionId, [
+            'content_type' => 'custom',
+            'content_id' => null,
+            'settings' => [
+                'image_url' => $imageUrl,
+                'title' => $_POST['title'] ?? 'Custom Image',
+                'link_url' => $_POST['link_url'] ?? '',
+            ],
+        ]);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => 'Image uploaded and added',
+            'item_id' => $itemId,
+            'image_url' => $imageUrl,
+        ]);
     }
 
     // ========================================================================

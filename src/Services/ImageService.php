@@ -29,6 +29,11 @@ class ImageService
             'small' => ['width' => 120, 'height' => 60],
             'medium' => ['width' => 200, 'height' => 100],
         ],
+        'layout' => [
+            'thumb' => ['width' => 150, 'height' => 225],
+            'banner' => ['width' => 1280, 'height' => 720],
+            'poster' => ['width' => 342, 'height' => 513],
+        ],
     ];
 
     private int $quality = 85;
