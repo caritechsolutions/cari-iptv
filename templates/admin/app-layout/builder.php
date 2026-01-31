@@ -451,8 +451,54 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
         padding: 0.5rem 0; display: flex; align-items: center; gap: 0.4rem;
     }
 
-    /* Modal sizing */
+    /* Modal overlay */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
     .modal-lg { max-width: 700px; }
+    .modal-header {
+        padding: 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .modal-header h3 { font-size: 1rem; font-weight: 600; }
+    .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 1.25rem;
+        padding: 0.25rem;
+    }
+    .modal-close:hover { color: var(--text-primary); }
+    .modal-body { padding: 1.25rem; }
+    .modal-footer {
+        padding: 1rem 1.25rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
 
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
