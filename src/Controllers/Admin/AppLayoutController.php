@@ -208,7 +208,7 @@ class AppLayoutController
 
         Response::view('admin/app-layout/builder', [
             'pageTitle' => 'Edit Layout: ' . $layout['name'],
-            'layout' => $layout,
+            'appLayout' => $layout,
             'sections' => $sections,
             'sectionTypes' => $sectionTypes,
             'user' => $this->auth->user(),

@@ -386,16 +386,16 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
             <i class="lucide-arrow-left"></i> All Layouts
         </a>
         <div class="layout-title-edit">
-            <h2 id="layoutTitle"><?= htmlspecialchars($layout['name']) ?></h2>
-            <span class="badge <?= $statusColors[$layout['status']] ?? '' ?>"><?= ucfirst($layout['status']) ?></span>
-            <span class="badge badge-info"><?= $platformLabels[$layout['platform']] ?? $layout['platform'] ?></span>
+            <h2 id="layoutTitle"><?= htmlspecialchars($appLayout['name']) ?></h2>
+            <span class="badge <?= $statusColors[$appLayout['status']] ?? '' ?>"><?= ucfirst($appLayout['status']) ?></span>
+            <span class="badge badge-info"><?= $platformLabels[$appLayout['platform']] ?? $appLayout['platform'] ?></span>
         </div>
     </div>
     <div class="builder-toolbar-right">
         <button class="btn btn-secondary btn-sm" onclick="openRenameModal()">
             <i class="lucide-pencil"></i> Rename
         </button>
-        <?php if ($layout['status'] === 'draft'): ?>
+        <?php if ($appLayout['status'] === 'draft'): ?>
             <button class="btn btn-primary btn-sm" onclick="publishLayout()">
                 <i class="lucide-upload"></i> Publish
             </button>
@@ -574,7 +574,7 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
         <div class="modal-body">
             <div class="form-group">
                 <label class="form-label">Layout Name</label>
-                <input type="text" id="renameInput" class="form-input" value="<?= htmlspecialchars($layout['name']) ?>">
+                <input type="text" id="renameInput" class="form-input" value="<?= htmlspecialchars($appLayout['name']) ?>">
             </div>
         </div>
         <div class="modal-footer">
@@ -586,7 +586,7 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
 
 <script>
 const csrfToken = '<?= $csrf ?>';
-const layoutId = <?= $layout['id'] ?>;
+const layoutId = <?= $appLayout['id'] ?>;
 let activeSectionForPicker = null;
 let currentContentType = 'movie';
 let searchTimeout = null;
