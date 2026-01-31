@@ -703,6 +703,10 @@
                         <i class="lucide-layout"></i>
                         <span>App Layout</span>
                     </a>
+                    <a href="/admin/app-layout/pages" class="nav-item <?= ($pageTitle ?? '') === 'Pages & Navigation' ? 'active' : '' ?>">
+                        <i class="lucide-navigation"></i>
+                        <span>Pages & Nav</span>
+                    </a>
                 </div>
 
                 <div class="nav-section">

@@ -246,6 +246,20 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/app-layout/{id}/sections/{sectionId}/items/add', [AppLayoutController::class, 'addItem']);
     $router->post('/app-layout/{id}/sections/{sectionId}/items/reorder', [AppLayoutController::class, 'reorderItems']);
     $router->post('/app-layout/{id}/sections/{sectionId}/items/{itemId}/remove', [AppLayoutController::class, 'removeItem']);
+
+    // App Pages
+    $router->get('/app-layout/pages', [AppLayoutController::class, 'pages']);
+    $router->post('/app-layout/pages/store', [AppLayoutController::class, 'storePage']);
+    $router->post('/app-layout/pages/reorder', [AppLayoutController::class, 'reorderPages']);
+    $router->post('/app-layout/pages/{id}/update', [AppLayoutController::class, 'updatePage']);
+    $router->post('/app-layout/pages/{id}/delete', [AppLayoutController::class, 'deletePage']);
+
+    // App Navigation
+    $router->post('/app-layout/navigation/save', [AppLayoutController::class, 'saveNavigation']);
+    $router->post('/app-layout/navigation/items/add', [AppLayoutController::class, 'addNavItem']);
+    $router->post('/app-layout/navigation/items/reorder', [AppLayoutController::class, 'reorderNavItems']);
+    $router->post('/app-layout/navigation/items/{id}/update', [AppLayoutController::class, 'updateNavItem']);
+    $router->post('/app-layout/navigation/items/{id}/remove', [AppLayoutController::class, 'removeNavItem']);
 });
 
 // Dispatch the request

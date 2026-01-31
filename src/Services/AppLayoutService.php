@@ -633,6 +633,324 @@ class AppLayoutService
     }
 
     // ========================================================================
+    // PAGES
+    // ========================================================================
+
+    /**
+     * Get available page types with metadata
+     */
+    public function getPageTypes(): array
+    {
+        return [
+            'home' => ['name' => 'Home', 'icon' => 'lucide-home', 'description' => 'Main landing page', 'has_layout' => true],
+            'movies' => ['name' => 'Movies', 'icon' => 'lucide-film', 'description' => 'Movie browsing & listing', 'has_layout' => true],
+            'series' => ['name' => 'TV Shows', 'icon' => 'lucide-clapperboard', 'description' => 'TV series browsing & listing', 'has_layout' => true],
+            'live_tv' => ['name' => 'Live TV', 'icon' => 'lucide-radio', 'description' => 'Live channel guide & player', 'has_layout' => true],
+            'categories' => ['name' => 'Categories', 'icon' => 'lucide-grid-3x3', 'description' => 'Browse by genre/category', 'has_layout' => true],
+            'search' => ['name' => 'Search', 'icon' => 'lucide-search', 'description' => 'Content search', 'has_layout' => false],
+            'watchlist' => ['name' => 'My List', 'icon' => 'lucide-bookmark', 'description' => 'User watchlist/favourites', 'has_layout' => false],
+            'settings' => ['name' => 'Settings', 'icon' => 'lucide-settings', 'description' => 'App settings & preferences', 'has_layout' => false],
+            'player' => ['name' => 'Player', 'icon' => 'lucide-play', 'description' => 'Media player page', 'has_layout' => false],
+            'details' => ['name' => 'Details', 'icon' => 'lucide-info', 'description' => 'Content detail view', 'has_layout' => false],
+            'custom' => ['name' => 'Custom Page', 'icon' => 'lucide-file-plus', 'description' => 'Custom user-defined page', 'has_layout' => true],
+        ];
+    }
+
+    /**
+     * Get pages for a platform
+     */
+    public function getPages(string $platform): array
+    {
+        return $this->db->fetchAll(
+            "SELECT p.*, l.name as layout_name, l.status as layout_status
+             FROM app_pages p
+             LEFT JOIN app_layouts l ON p.layout_id = l.id
+             WHERE p.platform = ?
+             ORDER BY p.sort_order ASC",
+            [$platform]
+        );
+    }
+
+    /**
+     * Get a single page
+     */
+    public function getPage(int $id): ?array
+    {
+        $page = $this->db->fetch(
+            "SELECT p.*, l.name as layout_name, l.status as layout_status
+             FROM app_pages p
+             LEFT JOIN app_layouts l ON p.layout_id = l.id
+             WHERE p.id = ?",
+            [$id]
+        );
+
+        if ($page && $page['settings']) {
+            $page['settings'] = json_decode($page['settings'], true) ?? [];
+        }
+
+        return $page;
+    }
+
+    /**
+     * Create a page
+     */
+    public function createPage(array $data): int
+    {
+        $settings = $data['settings'] ?? null;
+        if (is_array($settings)) {
+            $settings = json_encode($settings);
+        }
+
+        return $this->db->insert('app_pages', [
+            'name' => $data['name'],
+            'slug' => $data['slug'],
+            'page_type' => $data['page_type'],
+            'platform' => $data['platform'],
+            'layout_id' => $data['layout_id'] ?? null,
+            'icon' => $data['icon'] ?? null,
+            'is_active' => $data['is_active'] ?? 1,
+            'is_system' => $data['is_system'] ?? 0,
+            'sort_order' => $data['sort_order'] ?? $this->getNextPageSortOrder($data['platform']),
+            'settings' => $settings,
+        ]);
+    }
+
+    /**
+     * Update a page
+     */
+    public function updatePage(int $id, array $data): void
+    {
+        $fields = [];
+        if (isset($data['name'])) $fields['name'] = $data['name'];
+        if (isset($data['slug'])) $fields['slug'] = $data['slug'];
+        if (isset($data['icon'])) $fields['icon'] = $data['icon'];
+        if (array_key_exists('layout_id', $data)) $fields['layout_id'] = $data['layout_id'];
+        if (array_key_exists('is_active', $data)) $fields['is_active'] = (int) $data['is_active'];
+        if (isset($data['sort_order'])) $fields['sort_order'] = $data['sort_order'];
+
+        if (isset($data['settings'])) {
+            $fields['settings'] = is_array($data['settings'])
+                ? json_encode($data['settings'])
+                : $data['settings'];
+        }
+
+        if (!empty($fields)) {
+            $this->db->update('app_pages', $fields, 'id = ?', [$id]);
+        }
+    }
+
+    /**
+     * Delete a page (only non-system pages)
+     */
+    public function deletePage(int $id): bool
+    {
+        $page = $this->getPage($id);
+        if (!$page || $page['is_system']) return false;
+
+        $this->db->delete('app_pages', 'id = ?', [$id]);
+        return true;
+    }
+
+    /**
+     * Reorder pages
+     */
+    public function reorderPages(string $platform, array $pageIds): void
+    {
+        foreach ($pageIds as $order => $pageId) {
+            $this->db->update(
+                'app_pages',
+                ['sort_order' => $order],
+                'id = ? AND platform = ?',
+                [(int) $pageId, $platform]
+            );
+        }
+    }
+
+    // ========================================================================
+    // NAVIGATION
+    // ========================================================================
+
+    /**
+     * Get navigation menu for a platform and position
+     */
+    public function getNavigation(string $platform, string $position = 'main'): ?array
+    {
+        $nav = $this->db->fetch(
+            "SELECT * FROM app_navigation WHERE platform = ? AND position = ?",
+            [$platform, $position]
+        );
+
+        if ($nav) {
+            $nav['settings'] = json_decode($nav['settings'] ?? '{}', true) ?? [];
+            $nav['items'] = $this->getNavigationItems($nav['id']);
+        }
+
+        return $nav;
+    }
+
+    /**
+     * Get navigation by ID
+     */
+    public function getNavigationById(int $id): ?array
+    {
+        $nav = $this->db->fetch(
+            "SELECT * FROM app_navigation WHERE id = ?",
+            [$id]
+        );
+
+        if ($nav) {
+            $nav['settings'] = json_decode($nav['settings'] ?? '{}', true) ?? [];
+            $nav['items'] = $this->getNavigationItems($nav['id']);
+        }
+
+        return $nav;
+    }
+
+    /**
+     * Get all navigation menus for a platform
+     */
+    public function getNavigationMenus(string $platform): array
+    {
+        $menus = $this->db->fetchAll(
+            "SELECT * FROM app_navigation WHERE platform = ? ORDER BY position",
+            [$platform]
+        );
+
+        foreach ($menus as &$menu) {
+            $menu['settings'] = json_decode($menu['settings'] ?? '{}', true) ?? [];
+            $menu['items'] = $this->getNavigationItems($menu['id']);
+        }
+
+        return $menus;
+    }
+
+    /**
+     * Create or update a navigation menu
+     */
+    public function saveNavigation(string $platform, string $position, array $data): int
+    {
+        $existing = $this->db->fetch(
+            "SELECT id FROM app_navigation WHERE platform = ? AND position = ?",
+            [$platform, $position]
+        );
+
+        $settings = $data['settings'] ?? [];
+        if (is_array($settings)) {
+            $settings = json_encode($settings);
+        }
+
+        if ($existing) {
+            $this->db->update('app_navigation', [
+                'name' => $data['name'] ?? 'Main Navigation',
+                'settings' => $settings,
+                'is_active' => $data['is_active'] ?? 1,
+            ], 'id = ?', [$existing['id']]);
+            return (int) $existing['id'];
+        }
+
+        return $this->db->insert('app_navigation', [
+            'name' => $data['name'] ?? 'Main Navigation',
+            'platform' => $platform,
+            'position' => $position,
+            'settings' => $settings,
+            'is_active' => $data['is_active'] ?? 1,
+        ]);
+    }
+
+    /**
+     * Get navigation items
+     */
+    public function getNavigationItems(int $navigationId): array
+    {
+        $items = $this->db->fetchAll(
+            "SELECT ni.*, p.name as page_name, p.slug as page_slug, p.page_type, p.is_active as page_active
+             FROM app_navigation_items ni
+             LEFT JOIN app_pages p ON ni.page_id = p.id
+             WHERE ni.navigation_id = ?
+             ORDER BY ni.sort_order ASC",
+            [$navigationId]
+        );
+
+        foreach ($items as &$item) {
+            $item['settings'] = json_decode($item['settings'] ?? '{}', true) ?? [];
+        }
+
+        return $items;
+    }
+
+    /**
+     * Add a navigation item
+     */
+    public function addNavigationItem(int $navigationId, array $data): int
+    {
+        $settings = $data['settings'] ?? null;
+        if (is_array($settings)) {
+            $settings = json_encode($settings);
+        }
+
+        $sortOrder = $data['sort_order'] ?? $this->getNextNavItemSortOrder($navigationId);
+
+        return $this->db->insert('app_navigation_items', [
+            'navigation_id' => $navigationId,
+            'page_id' => $data['page_id'] ?? null,
+            'label' => $data['label'],
+            'icon' => $data['icon'] ?? null,
+            'url' => $data['url'] ?? null,
+            'target' => $data['target'] ?? 'page',
+            'sort_order' => $sortOrder,
+            'is_active' => $data['is_active'] ?? 1,
+            'settings' => $settings,
+        ]);
+    }
+
+    /**
+     * Update a navigation item
+     */
+    public function updateNavigationItem(int $id, array $data): void
+    {
+        $fields = [];
+        if (isset($data['label'])) $fields['label'] = $data['label'];
+        if (isset($data['icon'])) $fields['icon'] = $data['icon'];
+        if (array_key_exists('page_id', $data)) $fields['page_id'] = $data['page_id'];
+        if (array_key_exists('url', $data)) $fields['url'] = $data['url'];
+        if (isset($data['target'])) $fields['target'] = $data['target'];
+        if (array_key_exists('is_active', $data)) $fields['is_active'] = (int) $data['is_active'];
+
+        if (isset($data['settings'])) {
+            $fields['settings'] = is_array($data['settings'])
+                ? json_encode($data['settings'])
+                : $data['settings'];
+        }
+
+        if (!empty($fields)) {
+            $this->db->update('app_navigation_items', $fields, 'id = ?', [$id]);
+        }
+    }
+
+    /**
+     * Remove a navigation item
+     */
+    public function removeNavigationItem(int $id): void
+    {
+        $this->db->delete('app_navigation_items', 'id = ?', [$id]);
+    }
+
+    /**
+     * Reorder navigation items
+     */
+    public function reorderNavigationItems(int $navigationId, array $itemIds): void
+    {
+        foreach ($itemIds as $order => $itemId) {
+            $this->db->update(
+                'app_navigation_items',
+                ['sort_order' => $order],
+                'id = ? AND navigation_id = ?',
+                [(int) $itemId, $navigationId]
+            );
+        }
+    }
+
+    // ========================================================================
     // STATISTICS
     // ========================================================================
 
@@ -671,6 +989,24 @@ class AppLayoutService
         $max = $this->db->fetchColumn(
             "SELECT COALESCE(MAX(sort_order), -1) FROM app_layout_items WHERE section_id = ?",
             [$sectionId]
+        );
+        return ((int) $max) + 1;
+    }
+
+    private function getNextPageSortOrder(string $platform): int
+    {
+        $max = $this->db->fetchColumn(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM app_pages WHERE platform = ?",
+            [$platform]
+        );
+        return ((int) $max) + 1;
+    }
+
+    private function getNextNavItemSortOrder(int $navigationId): int
+    {
+        $max = $this->db->fetchColumn(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM app_navigation_items WHERE navigation_id = ?",
+            [$navigationId]
         );
         return ((int) $max) + 1;
     }
