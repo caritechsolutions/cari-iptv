@@ -807,7 +807,7 @@ class AppLayoutController
         if ($contentType === 'series') {
             // Check if already imported
             $existing = $this->db->fetch(
-                "SELECT id FROM tv_shows WHERE tmdb_id = ?",
+                "SELECT id FROM series WHERE tmdb_id = ?",
                 [$tmdbId]
             );
 
@@ -821,15 +821,25 @@ class AppLayoutController
                     return;
                 }
 
-                $contentId = $this->db->insert('tv_shows', [
+                $title = $details['name'] ?? 'Untitled';
+                $slug = $this->generateSlug($title, 'series');
+
+                $contentId = $this->db->insert('series', [
                     'tmdb_id' => $tmdbId,
-                    'title' => $details['name'] ?? 'Untitled',
+                    'title' => $title,
+                    'slug' => $slug,
                     'original_title' => $details['original_name'] ?? null,
+                    'tagline' => $details['tagline'] ?? null,
                     'synopsis' => $details['overview'] ?? null,
-                    'first_air_year' => !empty($details['first_air_date']) ? (int) substr($details['first_air_date'], 0, 4) : null,
+                    'year' => !empty($details['first_air_date']) ? (int) substr($details['first_air_date'], 0, 4) : null,
+                    'first_air_date' => $details['first_air_date'] ?: null,
+                    'show_status' => $details['status'] ?? null,
+                    'vote_average' => $details['vote_average'] ?? 0,
+                    'number_of_seasons' => $details['number_of_seasons'] ?? 0,
+                    'number_of_episodes' => $details['number_of_episodes'] ?? 0,
                     'poster_url' => $details['poster'] ?? null,
                     'backdrop_url' => $details['backdrop'] ?? null,
-                    'vote_average' => $details['vote_average'] ?? 0,
+                    'genres' => !empty($details['genres']) ? json_encode($details['genres']) : null,
                     'status' => 'draft',
                     'source' => 'tmdb',
                 ]);
@@ -850,9 +860,13 @@ class AppLayoutController
                     return;
                 }
 
+                $title = $details['title'] ?? 'Untitled';
+                $slug = $this->generateSlug($title, 'movies');
+
                 $contentId = $this->db->insert('movies', [
                     'tmdb_id' => $tmdbId,
-                    'title' => $details['title'] ?? 'Untitled',
+                    'title' => $title,
+                    'slug' => $slug,
                     'original_title' => $details['original_title'] ?? null,
                     'tagline' => $details['tagline'] ?? null,
                     'synopsis' => $details['overview'] ?? null,
@@ -862,6 +876,7 @@ class AppLayoutController
                     'vote_average' => $details['vote_average'] ?? 0,
                     'poster_url' => $details['poster'] ?? null,
                     'backdrop_url' => $details['backdrop'] ?? null,
+                    'genres' => !empty($details['genres']) ? json_encode($details['genres']) : null,
                     'status' => 'draft',
                     'source' => 'tmdb',
                 ]);
@@ -948,5 +963,25 @@ class AppLayoutController
         header('Content-Type: application/json');
         echo json_encode($data);
         exit;
+    }
+
+    private function generateSlug(string $title, string $table): string
+    {
+        $slug = strtolower(trim($title));
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+        $slug = trim($slug, '-');
+
+        if (empty($slug)) {
+            $slug = 'untitled';
+        }
+
+        $base = $slug;
+        $counter = 1;
+        while ($this->db->fetch("SELECT id FROM `{$table}` WHERE slug = ?", [$slug])) {
+            $slug = $base . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
     }
 }

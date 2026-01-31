@@ -546,8 +546,8 @@ class AppLayoutService
                 break;
 
             case 'series':
-                $sql = "SELECT id, title as name, first_air_year as year, poster_url as image
-                        FROM tv_shows WHERE status = 'published'";
+                $sql = "SELECT id, title as name, year, poster_url as image
+                        FROM series WHERE status = 'published'";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (title LIKE ? OR original_title LIKE ?)";
@@ -601,15 +601,15 @@ class AppLayoutService
             switch ($item['content_type']) {
                 case 'movie':
                     $item['content'] = $this->db->fetch(
-                        "SELECT id, title, year, poster_url, backdrop_url, overview, vote_average
+                        "SELECT id, title, year, poster_url, backdrop_url, synopsis as overview, vote_average
                          FROM movies WHERE id = ?",
                         [$item['content_id']]
                     );
                     break;
                 case 'series':
                     $item['content'] = $this->db->fetch(
-                        "SELECT id, title, first_air_year as year, poster_url, backdrop_url, overview, vote_average
-                         FROM tv_shows WHERE id = ?",
+                        "SELECT id, title, year, poster_url, backdrop_url, synopsis as overview, vote_average
+                         FROM series WHERE id = ?",
                         [$item['content_id']]
                     );
                     break;
