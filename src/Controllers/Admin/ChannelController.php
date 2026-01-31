@@ -194,6 +194,29 @@ class ChannelController
         $servers = $this->channelService->getStreamingServers();
         $contentOwners = $this->channelService->getContentOwners();
 
+        // Fetch EPG mapping and programme data for this channel
+        $epgMappings = $this->db->fetchAll(
+            "SELECT m.epg_channel_id, m.epg_channel_name, m.programme_count,
+                    s.name as source_name, s.type as source_type, s.id as source_id
+             FROM epg_channel_map m
+             INNER JOIN epg_sources s ON m.epg_source_id = s.id
+             WHERE m.channel_id = ? AND m.is_mapped = 1
+             ORDER BY s.name",
+            [$id]
+        );
+
+        $epgNowNext = [];
+        if (!empty($epgMappings)) {
+            $epgNowNext = $this->db->fetchAll(
+                "SELECT title, subtitle, description, start_time, end_time, category
+                 FROM epg_programs
+                 WHERE channel_id = ? AND end_time > NOW()
+                 ORDER BY start_time ASC
+                 LIMIT 5",
+                [$id]
+            );
+        }
+
         Response::view('admin/channels/form', [
             'pageTitle' => 'Edit Channel',
             'channel' => $channel,
@@ -201,6 +224,8 @@ class ChannelController
             'packages' => $packages,
             'servers' => $servers,
             'contentOwners' => $contentOwners,
+            'epgMappings' => $epgMappings,
+            'epgNowNext' => $epgNowNext,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -499,8 +524,11 @@ class ChannelController
         // Content owner
         $validated['content_owner_id'] = !empty($data['content_owner_id']) ? (int) $data['content_owner_id'] : null;
 
-        // EPG channel ID
-        $validated['epg_channel_id'] = trim($data['epg_channel_id'] ?? '') ?: null;
+        // EPG channel ID — only set if explicitly provided (e.g. IPTV.org import)
+        // The channel form no longer has this field; mapping is managed via EPG Management
+        if (isset($data['epg_channel_id'])) {
+            $validated['epg_channel_id'] = trim($data['epg_channel_id']) ?: null;
+        }
 
         // External ID
         $validated['external_id'] = trim($data['external_id'] ?? '') ?: null;
