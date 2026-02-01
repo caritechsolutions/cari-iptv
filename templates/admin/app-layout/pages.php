@@ -42,12 +42,12 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 .page-item .page-info { flex: 1; min-width: 0; }
 .page-item .page-name { font-weight: 500; font-size: 14px; }
 .page-item .page-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
-.page-item .page-actions { display: flex; gap: 4px; }
+.page-item .page-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .page-item .page-actions button {
     width: 28px; height: 28px; border-radius: 6px; border: none; cursor: pointer;
-    background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
 }
-.page-item .page-actions button:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+.page-item .page-actions button:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
 .page-item .page-actions button.delete-btn:hover { color: var(--danger); }
 
 .page-item.inactive { opacity: 0.5; }
@@ -76,12 +76,12 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 }
 .nav-item-row .nav-label { flex: 1; font-size: 14px; font-weight: 500; }
 .nav-item-row .nav-target { font-size: 12px; color: var(--text-muted); }
-.nav-item-row .nav-actions { display: flex; gap: 4px; }
+.nav-item-row .nav-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .nav-item-row .nav-actions button {
     width: 26px; height: 26px; border-radius: 6px; border: none; cursor: pointer;
-    background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
 }
-.nav-item-row .nav-actions button:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+.nav-item-row .nav-actions button:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
 .nav-item-row .nav-actions button.delete-btn:hover { color: var(--danger); }
 .nav-item-row.inactive { opacity: 0.5; }
 
@@ -119,6 +119,17 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 }
 .preview-sidebar-item.active { background: rgba(99,102,241,0.15); color: var(--primary); }
 .preview-sidebar-item i { font-size: 14px; }
+.preview-top-bar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 10px 12px; border-bottom: 2px solid var(--border-color);
+    background: rgba(255,255,255,0.03); border-radius: 6px 6px 0 0;
+    overflow-x: auto;
+}
+.preview-top-item {
+    padding: 6px 14px; font-size: 12px; color: var(--text-muted);
+    border-radius: 6px; white-space: nowrap; display: flex; align-items: center; gap: 4px;
+}
+.preview-top-item.active { background: rgba(99,102,241,0.15); color: var(--primary); }
 
 /* Empty state */
 .empty-state { text-align: center; padding: 32px 16px; color: var(--text-muted); }
@@ -347,12 +358,23 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                 <!-- Preview -->
                 <div class="nav-preview">
                     <div class="nav-preview-label">Preview</div>
-                    <?php if (($mainNav['settings']['style'] ?? 'sidebar') === 'bottom_tab'): ?>
+                    <?php $previewStyle = $mainNav['settings']['style'] ?? 'sidebar'; ?>
+                    <?php if ($previewStyle === 'bottom_tab'): ?>
                         <div class="preview-bottom-bar">
                             <?php foreach ($mainNav['items'] as $i => $item):
                                 if (!$item['is_active']) continue; ?>
                                 <div class="preview-bottom-item <?= $i === 0 ? 'active' : '' ?>">
                                     <i class="<?= htmlspecialchars($item['icon'] ?? 'lucide-circle') ?>" style="width:16px;height:16px;"></i>
+                                    <span><?= htmlspecialchars($item['label']) ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php elseif ($previewStyle === 'top_bar'): ?>
+                        <div class="preview-top-bar">
+                            <?php foreach ($mainNav['items'] as $i => $item):
+                                if (!$item['is_active']) continue; ?>
+                                <div class="preview-top-item <?= $i === 0 ? 'active' : '' ?>">
+                                    <i class="<?= htmlspecialchars($item['icon'] ?? 'lucide-circle') ?>" style="width:12px;height:12px;"></i>
                                     <span><?= htmlspecialchars($item['label']) ?></span>
                                 </div>
                             <?php endforeach; ?>
