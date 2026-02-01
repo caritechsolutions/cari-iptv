@@ -128,29 +128,30 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 
 /* Modal styles */
 .modal-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-    z-index: 1000; align-items: center; justify-content: center;
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 1000; display: none; align-items: center; justify-content: center;
+    padding: 1rem;
 }
 .modal-overlay.active { display: flex; }
 .modal-box {
-    background: var(--card-bg); border-radius: 12px; width: 480px; max-width: 90vw;
-    border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto;
+    background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
+    width: 90%; max-width: 540px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 .modal-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid var(--border-color);
+    padding: 1.25rem; border-bottom: 1px solid var(--border-color);
 }
-.modal-header h3 { font-size: 16px; font-weight: 600; }
+.modal-header h3 { font-size: 1rem; font-weight: 600; }
 .modal-close {
-    width: 32px; height: 32px; border-radius: 8px; border: none;
-    background: transparent; color: var(--text-muted); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 1.25rem; padding: 0.25rem;
 }
-.modal-close:hover { background: rgba(255,255,255,0.1); }
-.modal-body { padding: 20px; }
+.modal-close:hover { color: var(--text-primary); }
+.modal-body { padding: 1.25rem; }
 .modal-footer {
-    display: flex; justify-content: flex-end; gap: 8px;
-    padding: 16px 20px; border-top: 1px solid var(--border-color);
+    display: flex; justify-content: flex-end; gap: 0.5rem;
+    padding: 1rem 1.25rem; border-top: 1px solid var(--border-color);
 }
 
 .form-group { margin-bottom: 16px; }
