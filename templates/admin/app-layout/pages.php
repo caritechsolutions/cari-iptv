@@ -42,21 +42,8 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 .page-item .page-info { flex: 1; min-width: 0; }
 .page-item .page-name { font-weight: 500; font-size: 14px; }
 .page-item .page-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
-.page-item .page-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.page-item .page-actions .action-icon {
-    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
-    background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
-    font-size: 14px; transition: all 0.2s;
-}
-.page-item .page-actions .action-icon i,
-.nav-item-row .nav-actions .action-icon i {
-    font-family: 'lucide' !important;
-    font-style: normal;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-}
-.page-item .page-actions .action-icon:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
-.page-item .page-actions .action-icon.delete-btn:hover { color: var(--danger); }
+.page-item .page-actions { display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; }
+.page-item .page-actions .btn { white-space: nowrap; font-size: 0.7rem; padding: 0.2rem 0.5rem; }
 
 .page-item.inactive { opacity: 0.5; }
 .page-item .system-badge {
@@ -84,14 +71,8 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 }
 .nav-item-row .nav-label { flex: 1; font-size: 14px; font-weight: 500; }
 .nav-item-row .nav-target { font-size: 12px; color: var(--text-muted); }
-.nav-item-row .nav-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.nav-item-row .nav-actions .action-icon {
-    width: 26px; height: 26px; border-radius: 6px; cursor: pointer;
-    background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
-    font-size: 12px; transition: all 0.2s;
-}
-.nav-item-row .nav-actions .action-icon:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
-.nav-item-row .nav-actions .action-icon.delete-btn:hover { color: var(--danger); }
+.nav-item-row .nav-actions { display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; }
+.nav-item-row .nav-actions .btn { white-space: nowrap; font-size: 0.7rem; padding: 0.2rem 0.5rem; }
 .nav-item-row.inactive { opacity: 0.5; }
 
 /* Nav style selector */
@@ -268,16 +249,10 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                                 </div>
                             </div>
                             <div class="page-actions">
-                                <span class="action-icon" onclick="openEditPageModal(<?= htmlspecialchars(json_encode($pg)) ?>)" title="Edit">
-                                    <i class="lucide-pencil"></i>
-                                </span>
-                                <span class="action-icon" onclick="togglePage(<?= $pg['id'] ?>, <?= $pg['is_active'] ? 0 : 1 ?>)" title="<?= $pg['is_active'] ? 'Disable' : 'Enable' ?>">
-                                    <i class="lucide-<?= $pg['is_active'] ? 'eye-off' : 'eye' ?>"></i>
-                                </span>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="openEditPageModal(<?= htmlspecialchars(json_encode($pg)) ?>)">Edit</button>
+                                <button type="button" class="btn btn-<?= $pg['is_active'] ? 'warning' : 'success' ?> btn-sm" onclick="togglePage(<?= $pg['id'] ?>, <?= $pg['is_active'] ? 0 : 1 ?>)"><?= $pg['is_active'] ? 'Disable' : 'Enable' ?></button>
                                 <?php if (!$pg['is_system']): ?>
-                                    <span class="action-icon delete-btn" onclick="deletePage(<?= $pg['id'] ?>, '<?= htmlspecialchars($pg['name'], ENT_QUOTES) ?>')" title="Delete">
-                                        <i class="lucide-trash-2"></i>
-                                    </span>
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="deletePage(<?= $pg['id'] ?>, '<?= htmlspecialchars($pg['name'], ENT_QUOTES) ?>')">Delete</button>
                                 <?php endif; ?>
                             </div>
                         </li>
@@ -349,15 +324,9 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                                     <?php endif; ?>
                                 </div>
                                 <div class="nav-actions">
-                                    <span class="action-icon" onclick='openEditNavItemModal(<?= htmlspecialchars(json_encode($item)) ?>)' title="Edit">
-                                        <i class="lucide-pencil"></i>
-                                    </span>
-                                    <span class="action-icon" onclick="toggleNavItem(<?= $item['id'] ?>, <?= $item['is_active'] ? 0 : 1 ?>)" title="<?= $item['is_active'] ? 'Hide' : 'Show' ?>">
-                                        <i class="lucide-<?= $item['is_active'] ? 'eye-off' : 'eye' ?>"></i>
-                                    </span>
-                                    <span class="action-icon delete-btn" onclick="removeNavItem(<?= $item['id'] ?>)" title="Remove">
-                                        <i class="lucide-trash-2"></i>
-                                    </span>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick='openEditNavItemModal(<?= htmlspecialchars(json_encode($item)) ?>)'>Edit</button>
+                                    <button type="button" class="btn btn-<?= $item['is_active'] ? 'warning' : 'success' ?> btn-sm" onclick="toggleNavItem(<?= $item['id'] ?>, <?= $item['is_active'] ? 0 : 1 ?>)"><?= $item['is_active'] ? 'Hide' : 'Show' ?></button>
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="removeNavItem(<?= $item['id'] ?>)">Remove</button>
                                 </div>
                             </div>
                         <?php endforeach; ?>
