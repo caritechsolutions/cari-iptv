@@ -46,6 +46,7 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 .page-item .page-actions button {
     width: 28px; height: 28px; border-radius: 6px; border: none; cursor: pointer;
     background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
 }
 .page-item .page-actions button:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
 .page-item .page-actions button.delete-btn:hover { color: var(--danger); }
@@ -80,6 +81,7 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 .nav-item-row .nav-actions button {
     width: 26px; height: 26px; border-radius: 6px; border: none; cursor: pointer;
     background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
 }
 .nav-item-row .nav-actions button:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
 .nav-item-row .nav-actions button.delete-btn:hover { color: var(--danger); }
@@ -260,14 +262,14 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                             </div>
                             <div class="page-actions">
                                 <button onclick="openEditPageModal(<?= htmlspecialchars(json_encode($pg)) ?>)" title="Edit">
-                                    <i class="lucide-pencil" style="width:14px;height:14px;"></i>
+                                    <i class="lucide-pencil"></i>
                                 </button>
                                 <button onclick="togglePage(<?= $pg['id'] ?>, <?= $pg['is_active'] ? 0 : 1 ?>)" title="<?= $pg['is_active'] ? 'Disable' : 'Enable' ?>">
-                                    <i class="lucide-<?= $pg['is_active'] ? 'eye-off' : 'eye' ?>" style="width:14px;height:14px;"></i>
+                                    <i class="lucide-<?= $pg['is_active'] ? 'eye-off' : 'eye' ?>"></i>
                                 </button>
                                 <?php if (!$pg['is_system']): ?>
                                     <button class="delete-btn" onclick="deletePage(<?= $pg['id'] ?>, '<?= htmlspecialchars($pg['name'], ENT_QUOTES) ?>')" title="Delete">
-                                        <i class="lucide-trash-2" style="width:14px;height:14px;"></i>
+                                        <i class="lucide-trash-2"></i>
                                     </button>
                                 <?php endif; ?>
                             </div>
@@ -341,13 +343,13 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                                 </div>
                                 <div class="nav-actions">
                                     <button onclick='openEditNavItemModal(<?= htmlspecialchars(json_encode($item)) ?>)' title="Edit">
-                                        <i class="lucide-pencil" style="width:12px;height:12px;"></i>
+                                        <i class="lucide-pencil"></i>
                                     </button>
                                     <button onclick="toggleNavItem(<?= $item['id'] ?>, <?= $item['is_active'] ? 0 : 1 ?>)" title="<?= $item['is_active'] ? 'Hide' : 'Show' ?>">
-                                        <i class="lucide-<?= $item['is_active'] ? 'eye-off' : 'eye' ?>" style="width:12px;height:12px;"></i>
+                                        <i class="lucide-<?= $item['is_active'] ? 'eye-off' : 'eye' ?>"></i>
                                     </button>
                                     <button class="delete-btn" onclick="removeNavItem(<?= $item['id'] ?>)" title="Remove">
-                                        <i class="lucide-trash-2" style="width:12px;height:12px;"></i>
+                                        <i class="lucide-trash-2"></i>
                                     </button>
                                 </div>
                             </div>
