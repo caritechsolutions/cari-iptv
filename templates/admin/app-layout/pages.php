@@ -43,13 +43,20 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 .page-item .page-name { font-weight: 500; font-size: 14px; }
 .page-item .page-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
 .page-item .page-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.page-item .page-actions button {
-    width: 28px; height: 28px; border-radius: 6px; border: none; cursor: pointer;
+.page-item .page-actions .action-icon {
+    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
     background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
+    font-size: 14px; transition: all 0.2s;
 }
-.page-item .page-actions button:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
-.page-item .page-actions button.delete-btn:hover { color: var(--danger); }
+.page-item .page-actions .action-icon i,
+.nav-item-row .nav-actions .action-icon i {
+    font-family: 'lucide' !important;
+    font-style: normal;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.page-item .page-actions .action-icon:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+.page-item .page-actions .action-icon.delete-btn:hover { color: var(--danger); }
 
 .page-item.inactive { opacity: 0.5; }
 .page-item .system-badge {
@@ -78,13 +85,13 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 .nav-item-row .nav-label { flex: 1; font-size: 14px; font-weight: 500; }
 .nav-item-row .nav-target { font-size: 12px; color: var(--text-muted); }
 .nav-item-row .nav-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.nav-item-row .nav-actions button {
-    width: 26px; height: 26px; border-radius: 6px; border: none; cursor: pointer;
+.nav-item-row .nav-actions .action-icon {
+    width: 26px; height: 26px; border-radius: 6px; cursor: pointer;
     background: rgba(255,255,255,0.06); color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
-    font-size: 12px;
+    font-size: 12px; transition: all 0.2s;
 }
-.nav-item-row .nav-actions button:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
-.nav-item-row .nav-actions button.delete-btn:hover { color: var(--danger); }
+.nav-item-row .nav-actions .action-icon:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+.nav-item-row .nav-actions .action-icon.delete-btn:hover { color: var(--danger); }
 .nav-item-row.inactive { opacity: 0.5; }
 
 /* Nav style selector */
@@ -261,16 +268,16 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                                 </div>
                             </div>
                             <div class="page-actions">
-                                <button onclick="openEditPageModal(<?= htmlspecialchars(json_encode($pg)) ?>)" title="Edit">
+                                <span class="action-icon" onclick="openEditPageModal(<?= htmlspecialchars(json_encode($pg)) ?>)" title="Edit">
                                     <i class="lucide-pencil"></i>
-                                </button>
-                                <button onclick="togglePage(<?= $pg['id'] ?>, <?= $pg['is_active'] ? 0 : 1 ?>)" title="<?= $pg['is_active'] ? 'Disable' : 'Enable' ?>">
+                                </span>
+                                <span class="action-icon" onclick="togglePage(<?= $pg['id'] ?>, <?= $pg['is_active'] ? 0 : 1 ?>)" title="<?= $pg['is_active'] ? 'Disable' : 'Enable' ?>">
                                     <i class="lucide-<?= $pg['is_active'] ? 'eye-off' : 'eye' ?>"></i>
-                                </button>
+                                </span>
                                 <?php if (!$pg['is_system']): ?>
-                                    <button class="delete-btn" onclick="deletePage(<?= $pg['id'] ?>, '<?= htmlspecialchars($pg['name'], ENT_QUOTES) ?>')" title="Delete">
+                                    <span class="action-icon delete-btn" onclick="deletePage(<?= $pg['id'] ?>, '<?= htmlspecialchars($pg['name'], ENT_QUOTES) ?>')" title="Delete">
                                         <i class="lucide-trash-2"></i>
-                                    </button>
+                                    </span>
                                 <?php endif; ?>
                             </div>
                         </li>
@@ -342,15 +349,15 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                                     <?php endif; ?>
                                 </div>
                                 <div class="nav-actions">
-                                    <button onclick='openEditNavItemModal(<?= htmlspecialchars(json_encode($item)) ?>)' title="Edit">
+                                    <span class="action-icon" onclick='openEditNavItemModal(<?= htmlspecialchars(json_encode($item)) ?>)' title="Edit">
                                         <i class="lucide-pencil"></i>
-                                    </button>
-                                    <button onclick="toggleNavItem(<?= $item['id'] ?>, <?= $item['is_active'] ? 0 : 1 ?>)" title="<?= $item['is_active'] ? 'Hide' : 'Show' ?>">
+                                    </span>
+                                    <span class="action-icon" onclick="toggleNavItem(<?= $item['id'] ?>, <?= $item['is_active'] ? 0 : 1 ?>)" title="<?= $item['is_active'] ? 'Hide' : 'Show' ?>">
                                         <i class="lucide-<?= $item['is_active'] ? 'eye-off' : 'eye' ?>"></i>
-                                    </button>
-                                    <button class="delete-btn" onclick="removeNavItem(<?= $item['id'] ?>)" title="Remove">
+                                    </span>
+                                    <span class="action-icon delete-btn" onclick="removeNavItem(<?= $item['id'] ?>)" title="Remove">
                                         <i class="lucide-trash-2"></i>
-                                    </button>
+                                    </span>
                                 </div>
                             </div>
                         <?php endforeach; ?>
