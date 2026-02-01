@@ -128,16 +128,21 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 
 /* Modal styles */
 .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
     z-index: 1000; display: none; align-items: center; justify-content: center;
     padding: 1rem;
 }
 .modal-overlay.active { display: flex; }
 .modal-box {
-    background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
+    background: #1e293b; border: 1px solid #475569; border-radius: 12px;
     width: 90%; max-width: 540px; max-height: 90vh; overflow-y: auto;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
 }
+.modal-body, .modal-header, .modal-footer {
+    background: #1e293b;
+}
+.modal-header { border-radius: 12px 12px 0 0; }
+.modal-footer { border-radius: 0 0 12px 12px; }
 .modal-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 1.25rem; border-bottom: 1px solid var(--border-color);
