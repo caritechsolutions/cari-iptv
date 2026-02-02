@@ -564,12 +564,23 @@ asort($countries);
 <script>
 const csrfToken = '<?= $csrf ?>';
 
+// ========== TOAST NOTIFICATION ==========
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.style.cssText = `position:fixed;top:1.5rem;right:1.5rem;z-index:9999;padding:0.75rem 1.25rem;border-radius:8px;color:#fff;font-size:0.875rem;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.4);transition:opacity 0.3s;max-width:400px;`;
+    toast.style.background = type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : '#3b82f6';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
 // ========== SUBSCRIBER MODAL ==========
 
 function openSubscriberModal(id = null) {
     document.getElementById('subId').value = '';
     document.getElementById('subscriberModalTitle').textContent = 'Create Subscriber';
     document.getElementById('subscriberSaveBtn').textContent = 'Create Subscriber';
+    document.getElementById('subscriberSaveBtn').disabled = false;
 
     // Reset all fields
     document.getElementById('subFirstName').value = '';
@@ -617,6 +628,7 @@ function editSubscriber(id) {
             document.getElementById('subId').value = s.id;
             document.getElementById('subscriberModalTitle').textContent = 'Edit Subscriber';
             document.getElementById('subscriberSaveBtn').textContent = 'Save Changes';
+            document.getElementById('subscriberSaveBtn').disabled = false;
 
             document.getElementById('subFirstName').value = s.first_name || '';
             document.getElementById('subLastName').value = s.last_name || '';
@@ -656,6 +668,10 @@ function saveSubscriber() {
     const url = id ? `/admin/subscribers/${id}/update` : '/admin/subscribers/store';
     const btn = document.getElementById('subscriberSaveBtn');
 
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
     const formData = new URLSearchParams();
     formData.append('_token', csrfToken);
     formData.append('first_name', document.getElementById('subFirstName').value);
@@ -688,9 +704,6 @@ function saveSubscriber() {
         formData.append('groups[]', o.value);
     });
 
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -700,14 +713,15 @@ function saveSubscriber() {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            closeSubscriberModal();
-            setTimeout(() => location.reload(), 500);
+            location.reload();
         } else {
             showToast(data.message || 'Error saving subscriber', 'error');
+            btn.disabled = false;
+            btn.textContent = id ? 'Save Changes' : 'Create Subscriber';
         }
     })
-    .catch(() => showToast('Error saving subscriber', 'error'))
-    .finally(() => {
+    .catch(() => {
+        showToast('Error saving subscriber', 'error');
         btn.disabled = false;
         btn.textContent = id ? 'Save Changes' : 'Create Subscriber';
     });
@@ -725,7 +739,7 @@ function deleteSubscriber(id, name) {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 500);
+            location.reload();
         } else {
             showToast(data.message || 'Error deleting subscriber', 'error');
         }
@@ -743,7 +757,7 @@ function toggleSubscriberStatus(id) {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 300);
+            location.reload();
         } else {
             showToast(data.message || 'Error', 'error');
         }
@@ -788,7 +802,7 @@ function bulkAction(action) {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 500);
+            location.reload();
         } else {
             showToast(data.message || 'Error', 'error');
         }
@@ -802,6 +816,7 @@ function openGroupModal() {
     document.getElementById('groupId').value = '';
     document.getElementById('groupModalTitle').textContent = 'Create Group';
     document.getElementById('groupSaveBtn').textContent = 'Create Group';
+    document.getElementById('groupSaveBtn').disabled = false;
     document.getElementById('groupName').value = '';
     document.getElementById('groupDescription').value = '';
     document.getElementById('groupColor').value = '#6366f1';
@@ -822,6 +837,7 @@ function editGroup(id, group) {
     document.getElementById('groupId').value = id;
     document.getElementById('groupModalTitle').textContent = 'Edit Group';
     document.getElementById('groupSaveBtn').textContent = 'Save Changes';
+    document.getElementById('groupSaveBtn').disabled = false;
     document.getElementById('groupName').value = group.name || '';
     document.getElementById('groupDescription').value = group.description || '';
     document.getElementById('groupColor').value = group.color || '#6366f1';
@@ -845,20 +861,22 @@ function saveGroup() {
     const url = id ? `/admin/subscribers/groups/${id}/update` : '/admin/subscribers/groups/store';
     const btn = document.getElementById('groupSaveBtn');
 
+    if (btn.disabled) return;
+
     const name = document.getElementById('groupName').value.trim();
     if (!name) {
         showToast('Group name is required', 'error');
         return;
     }
 
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
     const formData = new URLSearchParams();
     formData.append('_token', csrfToken);
     formData.append('name', name);
     formData.append('description', document.getElementById('groupDescription').value);
     formData.append('color', document.getElementById('groupColor').value);
-
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
 
     fetch(url, {
         method: 'POST',
@@ -869,14 +887,15 @@ function saveGroup() {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            closeGroupModal();
-            setTimeout(() => location.reload(), 500);
+            location.reload();
         } else {
             showToast(data.message || 'Error saving group', 'error');
+            btn.disabled = false;
+            btn.textContent = id ? 'Save Changes' : 'Create Group';
         }
     })
-    .catch(() => showToast('Error saving group', 'error'))
-    .finally(() => {
+    .catch(() => {
+        showToast('Error saving group', 'error');
         btn.disabled = false;
         btn.textContent = id ? 'Save Changes' : 'Create Group';
     });
@@ -894,7 +913,7 @@ function deleteGroup(id, name) {
     .then(data => {
         if (data.success) {
             showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 500);
+            location.reload();
         } else {
             showToast(data.message || 'Error deleting group', 'error');
         }

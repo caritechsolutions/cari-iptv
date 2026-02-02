@@ -254,13 +254,24 @@ class SubscriberController
                 return;
             }
 
-            if (empty($_POST['name'])) {
+            $name = trim($_POST['name'] ?? '');
+            if (empty($name)) {
                 Response::json(['success' => false, 'message' => 'Group name is required'], 422);
                 return;
             }
 
+            // Check uniqueness
+            $existing = \CariIPTV\Core\Database::getInstance()->fetch(
+                "SELECT id FROM subscriber_groups WHERE name = ?",
+                [$name]
+            );
+            if ($existing) {
+                Response::json(['success' => false, 'message' => 'A group with this name already exists'], 422);
+                return;
+            }
+
             $id = $this->subscriberService->createGroup([
-                'name' => $_POST['name'],
+                'name' => $name,
                 'description' => $_POST['description'] ?? '',
                 'color' => $_POST['color'] ?? '#6366f1',
                 'icon' => $_POST['icon'] ?? 'lucide-users',
@@ -288,13 +299,24 @@ class SubscriberController
                 return;
             }
 
-            if (empty($_POST['name'])) {
+            $name = trim($_POST['name'] ?? '');
+            if (empty($name)) {
                 Response::json(['success' => false, 'message' => 'Group name is required'], 422);
                 return;
             }
 
+            // Check uniqueness (excluding current)
+            $existing = \CariIPTV\Core\Database::getInstance()->fetch(
+                "SELECT id FROM subscriber_groups WHERE name = ? AND id != ?",
+                [$name, $id]
+            );
+            if ($existing) {
+                Response::json(['success' => false, 'message' => 'A group with this name already exists'], 422);
+                return;
+            }
+
             $this->subscriberService->updateGroup($id, [
-                'name' => $_POST['name'],
+                'name' => $name,
                 'description' => $_POST['description'] ?? '',
                 'color' => $_POST['color'] ?? '#6366f1',
                 'icon' => $_POST['icon'] ?? 'lucide-users',
