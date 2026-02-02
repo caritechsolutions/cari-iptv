@@ -184,11 +184,11 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
 }
 
 /* Icon picker grid */
-.icon-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.icon-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-height: 200px; overflow-y: auto; }
 .icon-option {
     width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
     background: rgba(255,255,255,0.03); cursor: pointer; display: flex; align-items: center;
-    justify-content: center; font-size: 18px; color: var(--text-muted); transition: all 0.2s;
+    justify-content: center; font-size: 20px; color: var(--text-muted); transition: all 0.2s;
 }
 .icon-option:hover { border-color: rgba(99,102,241,0.5); color: var(--text-primary); }
 .icon-option.selected { border-color: var(--primary); background: rgba(99,102,241,0.15); color: var(--primary); }
@@ -435,7 +435,7 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                 <label>Icon</label>
                 <div class="icon-grid" id="pageIconGrid">
                     <?php foreach ($icons as $icon): ?>
-                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'pageIcon')">
+                        <div class="icon-option" data-value="<?= $icon ?>" title="<?= ucwords(str_replace(['lucide-', '-'], ['', ' '], $icon)) ?>" onclick="selectIcon(this, 'pageIcon')">
                             <i class="<?= $icon ?>"></i>
                         </div>
                     <?php endforeach; ?>
@@ -488,7 +488,7 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                 <label>Icon</label>
                 <div class="icon-grid" id="editPageIconGrid">
                     <?php foreach ($icons as $icon): ?>
-                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'editPageIcon')">
+                        <div class="icon-option" data-value="<?= $icon ?>" title="<?= ucwords(str_replace(['lucide-', '-'], ['', ' '], $icon)) ?>" onclick="selectIcon(this, 'editPageIcon')">
                             <i class="<?= $icon ?>"></i>
                         </div>
                     <?php endforeach; ?>
@@ -540,7 +540,7 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                 <label>Icon</label>
                 <div class="icon-grid" id="navItemIconGrid">
                     <?php foreach ($icons as $icon): ?>
-                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'navItemIcon')">
+                        <div class="icon-option" data-value="<?= $icon ?>" title="<?= ucwords(str_replace(['lucide-', '-'], ['', ' '], $icon)) ?>" onclick="selectIcon(this, 'navItemIcon')">
                             <i class="<?= $icon ?>"></i>
                         </div>
                     <?php endforeach; ?>
@@ -593,7 +593,7 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                 <label>Icon</label>
                 <div class="icon-grid" id="editNavItemIconGrid">
                     <?php foreach ($icons as $icon): ?>
-                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'editNavItemIcon')">
+                        <div class="icon-option" data-value="<?= $icon ?>" title="<?= ucwords(str_replace(['lucide-', '-'], ['', ' '], $icon)) ?>" onclick="selectIcon(this, 'editNavItemIcon')">
                             <i class="<?= $icon ?>"></i>
                         </div>
                     <?php endforeach; ?>
@@ -622,7 +622,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('active')
 function selectIcon(el, hiddenId) {
     el.closest('.icon-grid').querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
-    document.getElementById(hiddenId).value = el.dataset.icon;
+    document.getElementById(hiddenId).value = el.dataset.value;
 }
 
 // ============================================================
@@ -635,7 +635,7 @@ function openAddPageModal() {
     document.getElementById('pageLayout').value = '';
     document.getElementById('pageIcon').value = 'lucide-home';
     document.querySelectorAll('#pageIconGrid .icon-option').forEach(o => {
-        o.classList.toggle('selected', o.dataset.icon === 'lucide-home');
+        o.classList.toggle('selected', o.dataset.value === 'lucide-home');
     });
     openModal('addPageModal');
 }
@@ -683,7 +683,7 @@ function openEditPageModal(page) {
     const editIcon = page.icon || 'lucide-home';
     document.getElementById('editPageIcon').value = editIcon;
     document.querySelectorAll('#editPageIconGrid .icon-option').forEach(o => {
-        o.classList.toggle('selected', o.dataset.icon === editIcon);
+        o.classList.toggle('selected', o.dataset.value === editIcon);
     });
     openModal('editPageModal');
 }
@@ -839,7 +839,7 @@ function openEditNavItemModal(item) {
     const navIcon = item.icon || 'lucide-home';
     document.getElementById('editNavItemIcon').value = navIcon;
     document.querySelectorAll('#editNavItemIconGrid .icon-option').forEach(o => {
-        o.classList.toggle('selected', o.dataset.icon === navIcon);
+        o.classList.toggle('selected', o.dataset.value === navIcon);
     });
     toggleEditNavTarget();
     openModal('editNavItemModal');
