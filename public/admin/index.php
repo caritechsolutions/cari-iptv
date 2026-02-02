@@ -62,6 +62,7 @@ use CariIPTV\Controllers\Admin\EpgController;
 use CariIPTV\Controllers\Admin\AppLayoutController;
 use CariIPTV\Controllers\Admin\AdController;
 use CariIPTV\Controllers\Admin\SubscriberController;
+use CariIPTV\Controllers\Admin\PackageController;
 
 // Initialize session
 Session::start();
@@ -322,6 +323,22 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/subscribers/groups/store', [SubscriberController::class, 'storeGroup']);
     $router->post('/subscribers/groups/{id}/update', [SubscriberController::class, 'updateGroup']);
     $router->post('/subscribers/groups/{id}/delete', [SubscriberController::class, 'deleteGroup']);
+
+    // Packages & Content Groups
+    $router->get('/packages', [PackageController::class, 'index']);
+    $router->get('/packages/search-content', [PackageController::class, 'searchContent']);
+    $router->post('/packages/store', [PackageController::class, 'storePackage']);
+    $router->get('/packages/{id}/show', [PackageController::class, 'showPackage']);
+    $router->post('/packages/{id}/update', [PackageController::class, 'updatePackage']);
+    $router->post('/packages/{id}/delete', [PackageController::class, 'deletePackage']);
+
+    // Content Groups
+    $router->post('/packages/groups/store', [PackageController::class, 'storeGroup']);
+    $router->get('/packages/groups/{id}/show', [PackageController::class, 'showGroup']);
+    $router->post('/packages/groups/{id}/update', [PackageController::class, 'updateGroup']);
+    $router->post('/packages/groups/{id}/delete', [PackageController::class, 'deleteGroup']);
+    $router->post('/packages/groups/{id}/content/add', [PackageController::class, 'addGroupContent']);
+    $router->post('/packages/groups/{id}/content/{iid}/remove', [PackageController::class, 'removeGroupContent']);
 });
 
 // Dispatch the request

@@ -731,11 +731,7 @@
                         <i class="lucide-users"></i>
                         <span>Subscribers</span>
                     </a>
-                    <a href="/admin/subscriptions" class="nav-item">
-                        <i class="lucide-credit-card"></i>
-                        <span>Subscriptions</span>
-                    </a>
-                    <a href="/admin/packages" class="nav-item">
+                    <a href="/admin/packages" class="nav-item <?= ($pageTitle ?? '') === 'Packages' ? 'active' : '' ?>">
                         <i class="lucide-package"></i>
                         <span>Packages</span>
                     </a>
