@@ -89,6 +89,10 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     // Dashboard
     $router->get('/', [DashboardController::class, 'index']);
     $router->get('/dashboard', [DashboardController::class, 'index']);
+    $router->post('/dashboard/widgets/add', [DashboardController::class, 'addWidget']);
+    $router->post('/dashboard/widgets/remove', [DashboardController::class, 'removeWidget']);
+    $router->post('/dashboard/widgets/reorder', [DashboardController::class, 'reorderWidgets']);
+    $router->get('/dashboard/widgets/data', [DashboardController::class, 'widgetData']);
 
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
