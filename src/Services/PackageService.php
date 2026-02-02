@@ -20,8 +20,7 @@ class PackageService
     public function getContentGroups(): array
     {
         return $this->db->fetchAll(
-            "SELECT cg.*,
-                    (SELECT COUNT(*) FROM content_group_items WHERE group_id = cg.id) as item_count
+            "SELECT cg.*, cg.content_count as item_count
              FROM content_groups cg
              ORDER BY cg.sort_order ASC, cg.name ASC"
         );

@@ -25,17 +25,26 @@ class PackageController
     public function index(): void
     {
         $tab = $_GET['tab'] ?? 'packages';
+        $contentGroups = [];
+        $packages = [];
+        $stats = ['packages_total' => 0, 'packages_active' => 0, 'packages_free' => 0, 'groups_total' => 0];
 
         try {
             $contentGroups = $this->packageService->getContentGroups();
+        } catch (\Throwable $e) {
+            error_log('PackageController: getContentGroups() failed: ' . $e->getMessage());
+        }
+
+        try {
             $packages = $this->packageService->getPackages();
+        } catch (\Throwable $e) {
+            error_log('PackageController: getPackages() failed: ' . $e->getMessage());
+        }
+
+        try {
             $stats = $this->packageService->getStatistics();
         } catch (\Throwable $e) {
-            // Tables may not exist yet - run migration 014
-            $contentGroups = [];
-            $packages = [];
-            $stats = ['packages_total' => 0, 'packages_active' => 0, 'packages_free' => 0, 'groups_total' => 0];
-            error_log('PackageController::index() error (migration 014 may need to be run): ' . $e->getMessage());
+            error_log('PackageController: getStatistics() failed: ' . $e->getMessage());
         }
 
         Response::view('admin/packages/index', [
