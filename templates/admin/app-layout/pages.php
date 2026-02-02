@@ -183,7 +183,15 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
     display: inline-flex; align-items: center; gap: 6px;
 }
 
-/* Icon picker - no extra styles needed, uses standard form-group select */
+/* Icon picker grid */
+.icon-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.icon-option {
+    width: 100%; aspect-ratio: 1; border-radius: 8px; border: 2px solid transparent;
+    background: rgba(255,255,255,0.03); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 18px; color: var(--text-muted); transition: all 0.2s;
+}
+.icon-option:hover { border-color: rgba(99,102,241,0.5); color: var(--text-primary); }
+.icon-option.selected { border-color: var(--primary); background: rgba(99,102,241,0.15); color: var(--primary); }
 </style>
 
 <!-- Platform Tabs -->
@@ -418,24 +426,21 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
                 </div>
             </div>
             <?php
-            $icons = [
-                'lucide-home' => 'Home', 'lucide-film' => 'Film', 'lucide-clapperboard' => 'Clapperboard',
-                'lucide-radio' => 'Radio', 'lucide-tv' => 'TV', 'lucide-grid-3x3' => 'Grid',
-                'lucide-search' => 'Search', 'lucide-bookmark' => 'Bookmark', 'lucide-settings' => 'Settings',
-                'lucide-play' => 'Play', 'lucide-star' => 'Star', 'lucide-heart' => 'Heart',
-                'lucide-music' => 'Music', 'lucide-gamepad-2' => 'Gamepad', 'lucide-baby' => 'Kids',
-                'lucide-trophy' => 'Trophy', 'lucide-globe' => 'Globe', 'lucide-newspaper' => 'News',
-                'lucide-video' => 'Video', 'lucide-podcast' => 'Podcast', 'lucide-compass' => 'Compass',
-                'lucide-sparkles' => 'Sparkles', 'lucide-zap' => 'Zap', 'lucide-flame' => 'Flame',
-            ];
+            $icons = ['lucide-home','lucide-film','lucide-clapperboard','lucide-radio','lucide-tv','lucide-grid-3x3',
+                      'lucide-search','lucide-bookmark','lucide-settings','lucide-play','lucide-star','lucide-heart',
+                      'lucide-music','lucide-gamepad-2','lucide-baby','lucide-trophy','lucide-globe','lucide-newspaper',
+                      'lucide-video','lucide-podcast','lucide-compass','lucide-sparkles','lucide-zap','lucide-flame'];
             ?>
             <div class="form-group">
                 <label>Icon</label>
-                <select id="pageIcon">
-                    <?php foreach ($icons as $val => $label): ?>
-                        <option value="<?= $val ?>"><?= $label ?></option>
+                <div class="icon-grid" id="pageIconGrid">
+                    <?php foreach ($icons as $icon): ?>
+                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'pageIcon')">
+                            <i class="<?= $icon ?>"></i>
+                        </div>
                     <?php endforeach; ?>
-                </select>
+                </div>
+                <input type="hidden" id="pageIcon" value="lucide-home">
             </div>
         </div>
         <div class="modal-footer">
@@ -481,11 +486,14 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
             </div>
             <div class="form-group">
                 <label>Icon</label>
-                <select id="editPageIcon">
-                    <?php foreach ($icons as $val => $label): ?>
-                        <option value="<?= $val ?>"><?= $label ?></option>
+                <div class="icon-grid" id="editPageIconGrid">
+                    <?php foreach ($icons as $icon): ?>
+                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'editPageIcon')">
+                            <i class="<?= $icon ?>"></i>
+                        </div>
                     <?php endforeach; ?>
-                </select>
+                </div>
+                <input type="hidden" id="editPageIcon">
             </div>
         </div>
         <div class="modal-footer">
@@ -530,11 +538,14 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
             </div>
             <div class="form-group">
                 <label>Icon</label>
-                <select id="navItemIcon">
-                    <?php foreach ($icons as $val => $label): ?>
-                        <option value="<?= $val ?>"><?= $label ?></option>
+                <div class="icon-grid" id="navItemIconGrid">
+                    <?php foreach ($icons as $icon): ?>
+                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'navItemIcon')">
+                            <i class="<?= $icon ?>"></i>
+                        </div>
                     <?php endforeach; ?>
-                </select>
+                </div>
+                <input type="hidden" id="navItemIcon" value="lucide-home">
             </div>
         </div>
         <div class="modal-footer">
@@ -580,11 +591,14 @@ $platforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'TV', 'stb' => 'STB'
             </div>
             <div class="form-group">
                 <label>Icon</label>
-                <select id="editNavItemIcon">
-                    <?php foreach ($icons as $val => $label): ?>
-                        <option value="<?= $val ?>"><?= $label ?></option>
+                <div class="icon-grid" id="editNavItemIconGrid">
+                    <?php foreach ($icons as $icon): ?>
+                        <div class="icon-option" data-icon="<?= $icon ?>" onclick="selectIcon(this, 'editNavItemIcon')">
+                            <i class="<?= $icon ?>"></i>
+                        </div>
                     <?php endforeach; ?>
-                </select>
+                </div>
+                <input type="hidden" id="editNavItemIcon">
             </div>
         </div>
         <div class="modal-footer">
@@ -605,6 +619,12 @@ const NAV_ID = <?= $mainNav ? (int) $mainNav['id'] : 0 ?>;
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
+function selectIcon(el, hiddenId) {
+    el.closest('.icon-grid').querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById(hiddenId).value = el.dataset.icon;
+}
+
 // ============================================================
 // Pages
 // ============================================================
@@ -614,6 +634,9 @@ function openAddPageModal() {
     document.getElementById('pageType').value = 'custom';
     document.getElementById('pageLayout').value = '';
     document.getElementById('pageIcon').value = 'lucide-home';
+    document.querySelectorAll('#pageIconGrid .icon-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.icon === 'lucide-home');
+    });
     openModal('addPageModal');
 }
 
@@ -657,7 +680,11 @@ function openEditPageModal(page) {
     document.getElementById('editPageSlug').value = page.slug;
     document.getElementById('editPageType').value = page.page_type;
     document.getElementById('editPageLayout').value = page.layout_id || '';
-    document.getElementById('editPageIcon').value = page.icon || 'lucide-home';
+    const editIcon = page.icon || 'lucide-home';
+    document.getElementById('editPageIcon').value = editIcon;
+    document.querySelectorAll('#editPageIconGrid .icon-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.icon === editIcon);
+    });
     openModal('editPageModal');
 }
 
@@ -809,7 +836,11 @@ function openEditNavItemModal(item) {
     document.getElementById('editNavItemTarget').value = item.target;
     document.getElementById('editNavItemPage').value = item.page_id || '';
     document.getElementById('editNavItemUrl').value = item.url || '';
-    document.getElementById('editNavItemIcon').value = item.icon || 'lucide-home';
+    const navIcon = item.icon || 'lucide-home';
+    document.getElementById('editNavItemIcon').value = navIcon;
+    document.querySelectorAll('#editNavItemIconGrid .icon-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.icon === navIcon);
+    });
     toggleEditNavTarget();
     openModal('editNavItemModal');
 }
