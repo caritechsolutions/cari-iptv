@@ -68,7 +68,8 @@ cari-iptv/
 │   │   ├── SettingsService.php    # Database KV store for settings
 │   │   ├── EmailService.php       # Pure PHP SMTP (no PHPMailer)
 │   │   ├── ImageService.php       # Image processing (resize, WebP conversion)
-│   │   ├── AIService.php          # AI integration (Ollama, OpenAI, Anthropic)
+│   │   ├── AIService.php          # AI integration (Ollama, OpenAI, Anthropic, DALL-E 3)
+│   │   ├── AdService.php          # Ad business logic, targeting engine, reporting
 │   │   └── MetadataService.php    # TMDB, Fanart.tv, YouTube API integration
 │   │
 │   ├── Controllers/Admin/  # Admin panel controllers
@@ -77,6 +78,7 @@ cari-iptv/
 │   │   ├── AdminUserController.php
 │   │   ├── ChannelController.php
 │   │   ├── MovieController.php
+│   │   ├── AdController.php
 │   │   ├── ProfileController.php
 │   │   └── SettingsController.php
 │   │
@@ -143,6 +145,7 @@ $result = $imageService->processFromUrl(
 - `vod`: thumb (150x225), poster (342x513), backdrop (780x439)
 - `avatar`: thumb (64x64), medium (200x200)
 - `logo`: small (120x60), medium (200x100)
+- `ad`: banner_large (728x90), banner_medium (468x60), banner_leaderboard (970x250), banner_square (300x250), full (1920x1080)
 
 **IMPORTANT:** When saving movies or channels with remote image URLs (from TMDB, Fanart.tv, etc.), always call `processImages()` to download and convert to local WebP files. This improves performance and reduces external dependencies.
 
@@ -791,7 +794,7 @@ The player/app calls these endpoints to get and track ads:
 
 **VAST XML support:** The `/admin/ads/api/vast` endpoint generates VAST 4.2 XML for video player integration. It supports InLine ads with MediaFiles, TrackingEvents (start, quartiles, complete), VideoClicks, companion banners, and skip offsets.
 
-### Admin Routes (34 routes)
+### Admin Routes (38 routes)
 
 ```
 # Campaigns
@@ -830,6 +833,12 @@ GET  /admin/ads/api/serve                    → get ads for context
 POST /admin/ads/api/impression               → record impression
 POST /admin/ads/api/event                    → record event
 GET  /admin/ads/api/vast                     → VAST 4.2 XML
+
+# AI Generation & File Uploads
+POST /admin/ads/ai/generate-text             → AI text generation
+POST /admin/ads/ai/generate-image            → DALL-E 3 image generation
+POST /admin/ads/upload/image                 → banner image upload + WebP
+POST /admin/ads/upload/video                 → video file upload
 ```
 
 ### Building a Player with Ads
@@ -843,6 +852,85 @@ To integrate ads in a player/frontend:
 5. **Track impressions** — POST to `/admin/ads/api/impression` when ad is displayed
 6. **Track events** — POST to `/admin/ads/api/event` for clicks, completions, skips
 7. **Respect targeting** — Pass `package_id` so free-tier users see ads while premium users don't
+
+### AI-Powered Ad Content Generation & File Uploads
+
+The ad system integrates with `AIService` and `ImageService` to provide AI text generation, AI image generation (DALL-E 3), banner image upload with WebP compression, and video file upload.
+
+#### AI Text Generation
+
+Uses the existing multi-provider `AIService` (Ollama/OpenAI/Anthropic) to generate ad copy. Each ad type gets a tailored prompt:
+
+```php
+$aiService = new AIService();
+$text = $aiService->generateAdText($userPrompt, $adType, $context);
+```
+
+- **text_scroller**: Short ticker text, under 120 characters
+- **banner**: HEADLINE | TAGLINE format
+- **pre_roll/mid_roll**: HOOK, BODY, CTA script format
+
+Context parameters (advertiser name, campaign name) are injected into the prompt for relevance.
+
+#### AI Image Generation (DALL-E 3)
+
+Generates banner images via OpenAI's DALL-E 3 API. Requires an OpenAI API key configured in Settings > AI.
+
+```php
+$aiService = new AIService();
+$result = $aiService->generateImage($prompt, [
+    'size' => '1792x1024',    // landscape (1792x1024), square (1024x1024), portrait (1024x1792)
+    'quality' => 'standard',   // standard or hd
+]);
+// Returns: ['success' => true, 'url' => 'https://...', 'revised_prompt' => '...']
+```
+
+The controller (`AdController::generateAdImage()`) downloads the DALL-E URL and processes it through `ImageService` with context `ad` for local WebP storage. The final image path is returned to the frontend.
+
+#### Banner Image Upload
+
+File uploads are processed through `ImageService` with the `ad` context:
+
+```php
+$imageService = new ImageService();
+$result = $imageService->processUpload($uploadedFile, 'ad', $entityId, 'banner');
+// Creates WebP variants: banner_large (728x90), banner_medium (468x60), etc.
+```
+
+The `AdController::uploadAdImage()` endpoint accepts multipart file uploads, validates the image, processes it through ImageService, and returns the full-size image path along with dimensions.
+
+#### Video File Upload
+
+Video ads (pre-roll/mid-roll) support direct file upload:
+
+- **Allowed formats**: MP4, WebM, OGG, MOV
+- **Max size**: 100MB
+- **Storage**: `/uploads/ad/{entityId}/video_{timestamp}.{ext}`
+- **Endpoint**: `POST /admin/ads/upload/video`
+
+Videos are stored as-is (no transcoding). For VAST-compatible players, the `vast_tag_url` field can be used instead of direct video upload.
+
+#### Ad Content API Routes (4 endpoints)
+
+```
+POST /admin/ads/ai/generate-text     → AI text generation (AIService)
+POST /admin/ads/ai/generate-image    → DALL-E 3 image generation + WebP
+POST /admin/ads/upload/image         → Banner image upload + WebP compression
+POST /admin/ads/upload/video         → Video file upload (MP4/WebM/OGG/MOV)
+```
+
+All endpoints return JSON and require auth middleware.
+
+#### Frontend Integration (form.php)
+
+The ad creation/edit modal provides:
+- **Text scroller**: AI generate button with prompt input field
+- **Banner**: Three image source options — Upload file, Enter URL, or AI Generate (DALL-E 3) with size picker (landscape/square/portrait)
+- **Pre-roll/Mid-roll**: Upload video button with progress indicator, or enter video URL / VAST tag URL
+
+#### Future: Sora 2 Video Generation
+
+OpenAI's Sora 2 API integration is planned for AI-generated video ads. This would allow generating short video ad clips from text prompts, similar to how DALL-E 3 generates images. Implementation is pending Sora 2 API availability and cost evaluation.
 
 ## Project Status
 
@@ -861,12 +949,15 @@ To integrate ads in a player/frontend:
 - App Layout builder (sections, items, TMDB import, image upload)
 - Pages & Navigation system (per-platform pages, navigation menus, icon picker)
 - Advertising system (campaigns, creatives, zones, placements, targeting, reporting, VAST)
+- AI-powered ad content generation (text via Ollama/OpenAI/Anthropic, images via DALL-E 3)
+- Ad file uploads (banner images with WebP compression, video files for pre-roll/mid-roll)
 
 ### In Progress (Phase 6)
 - Player integration
 - Frontend app rendering
 
 ### Future Phases
+- Sora 2 AI video generation for video ads
 - User profiles with parental controls
 - Package/subscription management
 - Analytics dashboard
