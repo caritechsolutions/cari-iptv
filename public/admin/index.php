@@ -296,6 +296,12 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->get('/ads/reports', [AdController::class, 'reports']);
     $router->get('/ads/{id}/report', [AdController::class, 'campaignReport']);
 
+    // Advertising - AI & Uploads
+    $router->post('/ads/ai/generate-text', [AdController::class, 'generateAdText']);
+    $router->post('/ads/ai/generate-image', [AdController::class, 'generateAdImage']);
+    $router->post('/ads/upload/image', [AdController::class, 'uploadAdImage']);
+    $router->post('/ads/upload/video', [AdController::class, 'uploadAdVideo']);
+
     // Advertising - Ad Serving API
     $router->get('/ads/api/serve', [AdController::class, 'serve']);
     $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);

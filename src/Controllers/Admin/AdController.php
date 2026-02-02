@@ -885,6 +885,234 @@ class AdController
     }
 
     // =========================================
+    // AI Generation & File Uploads
+    // =========================================
+
+    /**
+     * Generate ad text with AI (AJAX)
+     */
+    public function generateAdText(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $prompt = trim($_POST['prompt'] ?? '');
+        $adType = $_POST['ad_type'] ?? 'text_scroller';
+        $context = [
+            'advertiser' => $_POST['advertiser'] ?? '',
+            'campaign_name' => $_POST['campaign_name'] ?? '',
+        ];
+
+        if (empty($prompt)) {
+            Response::json(['success' => false, 'message' => 'Please enter a prompt']);
+            return;
+        }
+
+        $aiService = new \CariIPTV\Services\AIService();
+
+        if (!$aiService->isAvailable()) {
+            Response::json(['success' => false, 'message' => 'AI is not configured. Go to Settings > AI to set up a provider.']);
+            return;
+        }
+
+        $text = $aiService->generateAdText($prompt, $adType, $context);
+
+        if ($text) {
+            Response::json(['success' => true, 'text' => trim($text)]);
+        } else {
+            Response::json(['success' => false, 'message' => 'AI generation failed. Check your AI provider settings.']);
+        }
+    }
+
+    /**
+     * Generate banner image with AI / DALL-E 3 (AJAX)
+     */
+    public function generateAdImage(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $prompt = trim($_POST['prompt'] ?? '');
+        $size = $_POST['size'] ?? '1792x1024';
+        $campaignId = (int) ($_POST['campaign_id'] ?? 0);
+
+        if (empty($prompt)) {
+            Response::json(['success' => false, 'message' => 'Please enter an image description']);
+            return;
+        }
+
+        $aiService = new \CariIPTV\Services\AIService();
+        $result = $aiService->generateImage($prompt, ['size' => $size, 'quality' => 'standard']);
+
+        if (!$result || !$result['success']) {
+            Response::json(['success' => false, 'message' => $result['error'] ?? 'Image generation failed']);
+            return;
+        }
+
+        // Download and process through ImageService for WebP conversion
+        $imageService = new \CariIPTV\Services\ImageService();
+        $entityId = $campaignId ?: ('ai_' . time());
+        $processed = $imageService->processFromUrl($result['url'], 'ad', $entityId, 'banner');
+
+        if (!$processed['success']) {
+            // Return the raw DALL-E URL if processing fails
+            Response::json([
+                'success' => true,
+                'image_url' => $result['url'],
+                'revised_prompt' => $result['revised_prompt'],
+                'local' => false,
+            ]);
+            return;
+        }
+
+        $imageUrl = $processed['variants']['full']
+            ?? $processed['variants']['banner_leaderboard']
+            ?? $processed['variants']['banner_square']
+            ?? $processed['base_path'] . '_full.webp';
+
+        Response::json([
+            'success' => true,
+            'image_url' => $imageUrl,
+            'variants' => $processed['variants'],
+            'revised_prompt' => $result['revised_prompt'],
+            'local' => true,
+        ]);
+    }
+
+    /**
+     * Upload banner image (AJAX)
+     */
+    public function uploadAdImage(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        if (empty($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+            Response::json(['success' => false, 'message' => 'No image file uploaded']);
+            return;
+        }
+
+        $campaignId = (int) ($_POST['campaign_id'] ?? 0);
+        $entityId = $campaignId ?: ('upload_' . time());
+
+        $imageService = new \CariIPTV\Services\ImageService();
+        $result = $imageService->processUpload($_FILES['image'], 'ad', $entityId, 'banner');
+
+        if (!$result['success']) {
+            Response::json(['success' => false, 'message' => $result['error'] ?? 'Image processing failed']);
+            return;
+        }
+
+        $imageUrl = $result['variants']['full']
+            ?? $result['variants']['banner_leaderboard']
+            ?? $result['variants']['banner_square']
+            ?? $result['base_path'] . '_full.webp';
+
+        // Get dimensions of the processed image
+        $fullPath = defined('BASE_PATH') ? BASE_PATH . '/public' . $imageUrl : null;
+        $width = null;
+        $height = null;
+        if ($fullPath && file_exists($fullPath)) {
+            $info = getimagesize($fullPath);
+            if ($info) {
+                $width = $info[0];
+                $height = $info[1];
+            }
+        }
+
+        Response::json([
+            'success' => true,
+            'image_url' => $imageUrl,
+            'variants' => $result['variants'],
+            'width' => $width,
+            'height' => $height,
+        ]);
+    }
+
+    /**
+     * Upload video file for pre-roll/mid-roll ads (AJAX)
+     */
+    public function uploadAdVideo(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        if (empty($_FILES['video']) || $_FILES['video']['error'] !== UPLOAD_ERR_OK) {
+            Response::json(['success' => false, 'message' => 'No video file uploaded']);
+            return;
+        }
+
+        $file = $_FILES['video'];
+
+        // Validate file size (max 100MB)
+        $maxSize = 100 * 1024 * 1024;
+        if ($file['size'] > $maxSize) {
+            Response::json(['success' => false, 'message' => 'Video file exceeds maximum size of 100MB']);
+            return;
+        }
+
+        // Validate MIME type
+        $allowedTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'];
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+
+        if (!in_array($mimeType, $allowedTypes)) {
+            Response::json(['success' => false, 'message' => 'Invalid video format. Allowed: MP4, WebM, OGG, MOV']);
+            return;
+        }
+
+        $campaignId = (int) ($_POST['campaign_id'] ?? 0);
+        $entityId = $campaignId ?: ('video_' . time());
+
+        // Create upload directory
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 3);
+        $uploadDir = $basePath . '/public/uploads/ad/' . $entityId;
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0775, true);
+        }
+
+        // Determine extension
+        $ext = match ($mimeType) {
+            'video/mp4' => 'mp4',
+            'video/webm' => 'webm',
+            'video/ogg' => 'ogg',
+            'video/quicktime' => 'mov',
+            default => 'mp4',
+        };
+
+        $filename = 'video_' . time() . '.' . $ext;
+        $destPath = $uploadDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            Response::json(['success' => false, 'message' => 'Failed to save video file']);
+            return;
+        }
+
+        $videoUrl = '/uploads/ad/' . $entityId . '/' . $filename;
+
+        Response::json([
+            'success' => true,
+            'video_url' => $videoUrl,
+            'filename' => $filename,
+            'size' => $file['size'],
+            'mime_type' => $mimeType,
+        ]);
+    }
+
+    // =========================================
     // Validation
     // =========================================
 

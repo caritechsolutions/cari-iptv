@@ -328,6 +328,14 @@ $isEdit = !empty($campaign);
                     <label class="form-label">Scroll Text *</label>
                     <textarea id="scrollText" class="form-input" rows="2" placeholder="Enter scrolling text..."></textarea>
                 </div>
+                <div class="form-group" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:0.75rem;">
+                    <label class="form-label" style="color:var(--primary-light);"><i class="lucide-sparkles"></i> Generate with AI</label>
+                    <div style="display:flex;gap:0.5rem;">
+                        <input type="text" id="aiTextPrompt" class="form-input" placeholder="e.g. Holiday sale 50% off streaming packages" style="flex:1;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="generateAiText()" id="aiTextBtn">Generate</button>
+                    </div>
+                    <div class="help-text">Describe what the ad should say and AI will write it</div>
+                </div>
                 <div class="form-grid-3">
                     <div class="form-group">
                         <label class="form-label">Speed</label>
@@ -355,10 +363,45 @@ $isEdit = !empty($campaign);
             <!-- Banner Fields -->
             <div class="type-fields" id="fields-banner">
                 <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Banner Settings</h4>
+
+                <!-- Image Source -->
                 <div class="form-group">
-                    <label class="form-label">Image URL *</label>
-                    <input type="url" id="bannerImageUrl" class="form-input" placeholder="https://...">
+                    <label class="form-label">Banner Image *</label>
+                    <div id="bannerPreview" style="display:none;margin-bottom:0.75rem;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);max-width:100%;">
+                        <img id="bannerPreviewImg" src="" style="max-width:100%;max-height:200px;display:block;">
+                    </div>
+                    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('bannerFileInput').click()">
+                            <i class="lucide-upload"></i> Upload Image
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleBannerUrlInput()">
+                            <i class="lucide-link"></i> Use URL
+                        </button>
+                    </div>
+                    <input type="file" id="bannerFileInput" accept="image/*" style="display:none;" onchange="uploadBannerImage(this)">
+                    <input type="url" id="bannerImageUrl" class="form-input" placeholder="https://... or upload above" style="display:none;">
+                    <input type="hidden" id="bannerImageUrlHidden" value="">
+                    <div id="bannerUploadStatus" class="help-text"></div>
                 </div>
+
+                <!-- AI Image Generation -->
+                <div class="form-group" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:0.75rem;">
+                    <label class="form-label" style="color:var(--primary-light);"><i class="lucide-sparkles"></i> Generate Image with AI (DALL-E 3)</label>
+                    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+                        <input type="text" id="aiImagePrompt" class="form-input" placeholder="e.g. Tropical beach streaming advertisement banner, vibrant colors" style="flex:1;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="generateAiImage()" id="aiImageBtn">Generate</button>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;align-items:center;">
+                        <label class="form-label" style="margin:0;font-size:0.75rem;white-space:nowrap;">Size:</label>
+                        <select id="aiImageSize" class="form-input" style="font-size:0.75rem;padding:0.25rem 0.5rem;width:auto;">
+                            <option value="1792x1024">Landscape (1792x1024)</option>
+                            <option value="1024x1024">Square (1024x1024)</option>
+                            <option value="1024x1792">Portrait (1024x1792)</option>
+                        </select>
+                    </div>
+                    <div class="help-text">Uses OpenAI DALL-E 3. Requires OpenAI API key in Settings > AI.</div>
+                </div>
+
                 <div class="form-grid-3">
                     <div class="form-group">
                         <label class="form-label">Width (px)</label>
@@ -403,9 +446,16 @@ $isEdit = !empty($campaign);
             <div class="type-fields" id="fields-pre_roll">
                 <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Video Ad Settings</h4>
                 <div class="form-group">
-                    <label class="form-label">Video URL</label>
+                    <label class="form-label">Video Source</label>
+                    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('prerollFileInput').click()">
+                            <i class="lucide-upload"></i> Upload Video
+                        </button>
+                        <span id="prerollUploadStatus" class="help-text" style="line-height:2;"></span>
+                    </div>
+                    <input type="file" id="prerollFileInput" accept="video/mp4,video/webm,video/ogg" style="display:none;" onchange="uploadVideoFile(this, 'videoUrl', 'prerollUploadStatus')">
                     <input type="url" id="videoUrl" class="form-input" placeholder="https://cdn.example.com/ad.mp4">
-                    <div class="help-text">Direct MP4 video URL for self-hosted ads</div>
+                    <div class="help-text">Upload a video or enter a direct MP4 URL</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">VAST Tag URL</label>
@@ -438,8 +488,16 @@ $isEdit = !empty($campaign);
             <div class="type-fields" id="fields-mid_roll">
                 <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Video Ad Settings</h4>
                 <div class="form-group">
-                    <label class="form-label">Video URL</label>
+                    <label class="form-label">Video Source</label>
+                    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('midrollFileInput').click()">
+                            <i class="lucide-upload"></i> Upload Video
+                        </button>
+                        <span id="midrollUploadStatus" class="help-text" style="line-height:2;"></span>
+                    </div>
+                    <input type="file" id="midrollFileInput" accept="video/mp4,video/webm,video/ogg" style="display:none;" onchange="uploadVideoFile(this, 'midVideoUrl', 'midrollUploadStatus')">
                     <input type="url" id="midVideoUrl" class="form-input" placeholder="https://cdn.example.com/ad.mp4">
+                    <div class="help-text">Upload a video or enter a direct MP4 URL</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">VAST Tag URL</label>
@@ -579,6 +637,12 @@ function openCreativeModal() {
     document.getElementById('creativeStatus').value = 'draft';
     document.getElementById('creativeWeight').value = '100';
     document.querySelectorAll('.type-fields').forEach(f => f.classList.remove('active'));
+    // Reset banner preview
+    document.getElementById('bannerPreview').style.display = 'none';
+    document.getElementById('bannerImageUrlHidden').value = '';
+    document.getElementById('bannerImageUrl').value = '';
+    document.getElementById('bannerImageUrl').style.display = 'none';
+    document.getElementById('bannerUploadStatus').textContent = '';
     document.getElementById('creativeModalTitle').textContent = 'Add Ad';
     openModal('creativeModal');
 }
@@ -600,12 +664,17 @@ function editCreative(creative) {
         document.getElementById('bgOpacity').value = creative.bg_opacity || '0.80';
     } else if (creative.type === 'banner') {
         document.getElementById('bannerImageUrl').value = creative.image_url || '';
+        document.getElementById('bannerImageUrlHidden').value = creative.image_url || '';
         document.getElementById('imageWidth').value = creative.image_width || '';
         document.getElementById('imageHeight').value = creative.image_height || '';
         document.getElementById('bannerPosition').value = creative.banner_position || 'bottom';
         document.getElementById('bannerClickUrl').value = creative.click_url || '';
         document.getElementById('clickTarget').value = creative.click_target || '_blank';
         document.getElementById('bannerAltText').value = creative.alt_text || '';
+        if (creative.image_url) {
+            document.getElementById('bannerPreviewImg').src = creative.image_url;
+            document.getElementById('bannerPreview').style.display = 'block';
+        }
     } else if (creative.type === 'pre_roll') {
         document.getElementById('videoUrl').value = creative.video_url || '';
         document.getElementById('vastTagUrl').value = creative.vast_tag_url || '';
@@ -628,6 +697,148 @@ function editCreative(creative) {
     openModal('creativeModal');
 }
 
+// AI Text Generation
+function generateAiText() {
+    const prompt = document.getElementById('aiTextPrompt').value.trim();
+    if (!prompt) { alert('Enter a prompt first'); return; }
+
+    const btn = document.getElementById('aiTextBtn');
+    const type = document.getElementById('creativeType').value;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    const data = new URLSearchParams();
+    data.append('_token', csrf);
+    data.append('prompt', prompt);
+    data.append('ad_type', type);
+
+    fetch('/admin/ads/ai/generate-text', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                document.getElementById('scrollText').value = d.text;
+            } else {
+                alert(d.message || 'AI generation failed');
+            }
+        })
+        .catch(() => alert('Network error'))
+        .finally(() => { btn.disabled = false; btn.textContent = 'Generate'; });
+}
+
+// AI Image Generation (DALL-E 3)
+function generateAiImage() {
+    const prompt = document.getElementById('aiImagePrompt').value.trim();
+    if (!prompt) { alert('Enter an image description first'); return; }
+
+    const btn = document.getElementById('aiImageBtn');
+    const size = document.getElementById('aiImageSize').value;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    const data = new URLSearchParams();
+    data.append('_token', csrf);
+    data.append('prompt', prompt);
+    data.append('size', size);
+    data.append('campaign_id', campaignId || '');
+
+    fetch('/admin/ads/ai/generate-image', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                setBannerImage(d.image_url, d.revised_prompt);
+            } else {
+                alert(d.message || 'Image generation failed');
+            }
+        })
+        .catch(() => alert('Network error'))
+        .finally(() => { btn.disabled = false; btn.textContent = 'Generate'; });
+}
+
+// Banner Image Upload
+function uploadBannerImage(input) {
+    if (!input.files || !input.files[0]) return;
+
+    const status = document.getElementById('bannerUploadStatus');
+    status.textContent = 'Uploading...';
+    status.style.color = 'var(--primary-light)';
+
+    const formData = new FormData();
+    formData.append('_token', csrf);
+    formData.append('image', input.files[0]);
+    formData.append('campaign_id', campaignId || '');
+
+    fetch('/admin/ads/upload/image', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                setBannerImage(d.image_url);
+                if (d.width) document.getElementById('imageWidth').value = d.width;
+                if (d.height) document.getElementById('imageHeight').value = d.height;
+                status.textContent = 'Uploaded and converted to WebP';
+                status.style.color = 'var(--success)';
+            } else {
+                status.textContent = d.message || 'Upload failed';
+                status.style.color = 'var(--danger)';
+            }
+        })
+        .catch(() => { status.textContent = 'Network error'; status.style.color = 'var(--danger)'; });
+
+    input.value = '';
+}
+
+function setBannerImage(url, altText) {
+    document.getElementById('bannerImageUrlHidden').value = url;
+    document.getElementById('bannerImageUrl').value = url;
+    const preview = document.getElementById('bannerPreview');
+    const img = document.getElementById('bannerPreviewImg');
+    img.src = url;
+    preview.style.display = 'block';
+    if (altText) document.getElementById('bannerAltText').value = altText;
+}
+
+function toggleBannerUrlInput() {
+    const urlInput = document.getElementById('bannerImageUrl');
+    urlInput.style.display = urlInput.style.display === 'none' ? 'block' : 'none';
+}
+
+// Video Upload
+function uploadVideoFile(input, targetFieldId, statusId) {
+    if (!input.files || !input.files[0]) return;
+
+    const file = input.files[0];
+    const status = document.getElementById(statusId);
+
+    if (file.size > 100 * 1024 * 1024) {
+        status.textContent = 'File too large (max 100MB)';
+        status.style.color = 'var(--danger)';
+        return;
+    }
+
+    status.textContent = 'Uploading ' + (file.size / (1024*1024)).toFixed(1) + 'MB...';
+    status.style.color = 'var(--primary-light)';
+
+    const formData = new FormData();
+    formData.append('_token', csrf);
+    formData.append('video', file);
+    formData.append('campaign_id', campaignId || '');
+
+    fetch('/admin/ads/upload/video', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                document.getElementById(targetFieldId).value = d.video_url;
+                status.textContent = 'Uploaded: ' + d.filename;
+                status.style.color = 'var(--success)';
+            } else {
+                status.textContent = d.message || 'Upload failed';
+                status.style.color = 'var(--danger)';
+            }
+        })
+        .catch(() => { status.textContent = 'Network error'; status.style.color = 'var(--danger)'; });
+
+    input.value = '';
+}
+
 function saveCreative() {
     const id = document.getElementById('creativeId').value;
     const type = document.getElementById('creativeType').value;
@@ -647,7 +858,7 @@ function saveCreative() {
         data.append('bg_color', document.getElementById('bgColor').value);
         data.append('bg_opacity', document.getElementById('bgOpacity').value);
     } else if (type === 'banner') {
-        data.append('image_url', document.getElementById('bannerImageUrl').value);
+        data.append('image_url', document.getElementById('bannerImageUrlHidden').value || document.getElementById('bannerImageUrl').value);
         data.append('image_width', document.getElementById('imageWidth').value);
         data.append('image_height', document.getElementById('imageHeight').value);
         data.append('banner_position', document.getElementById('bannerPosition').value);
