@@ -126,34 +126,43 @@ $allPlatforms = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'Smart TV', 'stb'
 
 <!-- ==================== CONTENT GROUPS TAB ==================== -->
 <div class="tab-content <?= $tab === 'groups' ? 'active' : '' ?>" id="tab-groups">
-    <div class="cg-grid">
-        <div class="cg-card create-card" onclick="openGroupModal()">
-            <div style="text-align:center;color:#94a3b8;">
-                <i class="lucide-plus" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>
-                <span style="font-weight:600;">Create Content Group</span>
-            </div>
-        </div>
-
-        <?php foreach ($contentGroups as $cg): ?>
-            <div class="cg-card">
-                <div class="cg-card-header">
-                    <div class="cg-card-icon" style="background:<?= htmlspecialchars($cg['color']) ?>22;color:<?= htmlspecialchars($cg['color']) ?>;">
-                        <i class="lucide-layers"></i>
-                    </div>
-                    <div class="cg-card-actions">
-                        <button onclick="manageGroupContent(<?= $cg['id'] ?>)" title="Manage Content"><i class="lucide-list-plus"></i></button>
-                        <button onclick="editGroup(<?= $cg['id'] ?>, <?= htmlspecialchars(json_encode($cg), ENT_QUOTES) ?>)" title="Edit"><i class="lucide-pencil"></i></button>
-                        <button onclick="deleteGroup(<?= $cg['id'] ?>, '<?= htmlspecialchars($cg['name'], ENT_QUOTES) ?>')" title="Delete" style="color:#ef4444;"><i class="lucide-trash-2"></i></button>
-                    </div>
-                </div>
-                <div class="cg-card-name"><?= htmlspecialchars($cg['name']) ?></div>
-                <?php if (!empty($cg['description'])): ?>
-                    <div class="cg-card-desc"><?= htmlspecialchars($cg['description']) ?></div>
-                <?php endif; ?>
-                <div class="cg-card-count"><span><?= number_format($cg['item_count']) ?></span> content items</div>
-            </div>
-        <?php endforeach; ?>
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.8rem;color:#94a3b8;">
+        <strong style="color:#818cf8;">How it works:</strong> Create content groups to bundle channels, movies, series, and categories together. Then assign these groups to packages. Click <strong>Manage Content</strong> on a group to add items to it.
     </div>
+
+    <div style="margin-bottom:1rem;">
+        <button class="btn btn-primary" onclick="openGroupModal()">
+            <i class="lucide-plus"></i> Create Content Group
+        </button>
+    </div>
+
+    <?php if (empty($contentGroups)): ?>
+        <div class="card"><div class="empty-state"><i class="lucide-layers"></i>No content groups yet. Create your first content group to start bundling channels, movies, and more.</div></div>
+    <?php else: ?>
+        <div class="cg-grid">
+            <?php foreach ($contentGroups as $cg): ?>
+                <div class="cg-card">
+                    <div class="cg-card-header">
+                        <div class="cg-card-icon" style="background:<?= htmlspecialchars($cg['color']) ?>22;color:<?= htmlspecialchars($cg['color']) ?>;">
+                            <i class="lucide-layers"></i>
+                        </div>
+                        <div class="cg-card-actions">
+                            <button onclick="editGroup(<?= $cg['id'] ?>, <?= htmlspecialchars(json_encode($cg), ENT_QUOTES) ?>)" title="Edit"><i class="lucide-pencil"></i></button>
+                            <button onclick="deleteGroup(<?= $cg['id'] ?>, '<?= htmlspecialchars($cg['name'], ENT_QUOTES) ?>')" title="Delete" style="color:#ef4444;"><i class="lucide-trash-2"></i></button>
+                        </div>
+                    </div>
+                    <div class="cg-card-name"><?= htmlspecialchars($cg['name']) ?></div>
+                    <?php if (!empty($cg['description'])): ?>
+                        <div class="cg-card-desc"><?= htmlspecialchars($cg['description']) ?></div>
+                    <?php endif; ?>
+                    <div class="cg-card-count"><span><?= number_format($cg['item_count']) ?></span> content items</div>
+                    <button class="btn btn-sm btn-secondary" style="margin-top:0.75rem;width:100%;" onclick="manageGroupContent(<?= $cg['id'] ?>)">
+                        <i class="lucide-list-plus"></i> Manage Content
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 </div>
 
 <!-- ==================== PACKAGES TAB ==================== -->
@@ -469,6 +478,19 @@ function showToast(message, type = 'info') {
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
 }
 
+function jsonFetch(url, opts) {
+    return fetch(url, opts).then(r => {
+        if (!r.ok && r.status >= 500) {
+            throw new Error('Server error (migration may need to be run). Status: ' + r.status);
+        }
+        const ct = r.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. The database tables may not exist yet.');
+        }
+        return r.json();
+    });
+}
+
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
 function switchTab(tab) {
@@ -522,11 +544,11 @@ function saveGroup() {
     btn.disabled = true; btn.textContent = 'Saving...';
 
     const url = id ? `/admin/packages/groups/${id}/update` : '/admin/packages/groups/store';
-    fetch(url, {
+    jsonFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ _token: csrfToken, name, description: document.getElementById('cgDescription').value, color: document.getElementById('cgColor').value })
-    }).then(r => r.json()).then(data => {
+    }).then(data => {
         if (data.success) { showToast(data.message, 'success'); location.reload(); }
         else { showToast(data.message, 'error'); btn.disabled = false; btn.textContent = id ? 'Save Changes' : 'Create Group'; }
     }).catch(() => { showToast('Error saving group', 'error'); btn.disabled = false; btn.textContent = id ? 'Save Changes' : 'Create Group'; });
@@ -534,9 +556,9 @@ function saveGroup() {
 
 function deleteGroup(id, name) {
     if (!confirm(`Delete content group "${name}"? This will also remove it from any packages.`)) return;
-    fetch(`/admin/packages/groups/${id}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '_token=' + csrfToken })
-        .then(r => r.json()).then(data => { if (data.success) { showToast(data.message, 'success'); location.reload(); } else showToast(data.message, 'error'); })
-        .catch(() => showToast('Error deleting group', 'error'));
+    jsonFetch(`/admin/packages/groups/${id}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '_token=' + csrfToken })
+        .then(data => { if (data.success) { showToast(data.message, 'success'); location.reload(); } else showToast(data.message, 'error'); })
+        .catch(e => showToast(e.message || 'Error deleting group', 'error'));
 }
 
 // ==================== MANAGE GROUP CONTENT ====================
@@ -554,10 +576,10 @@ function loadGroupContent(groupId) {
     const list = document.getElementById('groupContentList');
     list.innerHTML = '<div class="empty-state" style="padding:1rem;">Loading...</div>';
 
-    fetch(`/admin/packages/groups/${groupId}/show`).then(r => r.json()).then(data => {
+    jsonFetch(`/admin/packages/groups/${groupId}/show`).then(data => {
         if (!data.success) { list.innerHTML = '<div class="empty-state" style="padding:1rem;">Error loading content</div>'; return; }
         const items = data.group.items || [];
-        if (items.length === 0) { list.innerHTML = '<div class="empty-state" style="padding:1rem;">No content yet. Search and add above.</div>'; return; }
+        if (items.length === 0) { list.innerHTML = '<div class="empty-state" style="padding:1rem;">No content yet. Use the search above to find and add channels, movies, series, or categories.</div>'; return; }
         list.innerHTML = items.map(item => `
             <div class="content-item" id="ci-${item.id}">
                 <div class="content-item-info">
@@ -567,7 +589,7 @@ function loadGroupContent(groupId) {
                 <button class="content-item-remove" onclick="removeContent(${groupId}, ${item.id})"><i class="lucide-x"></i></button>
             </div>
         `).join('');
-    }).catch(() => { list.innerHTML = '<div class="empty-state" style="padding:1rem;">Error loading</div>'; });
+    }).catch(e => { list.innerHTML = '<div class="empty-state" style="padding:1rem;">' + escHtml(e.message || 'Error loading') + '</div>'; });
 }
 
 function searchContentForGroup() {
@@ -579,7 +601,7 @@ function searchContentForGroup() {
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div style="padding:0.75rem;color:#94a3b8;">Searching...</div>';
 
-    fetch(`/admin/packages/search-content?type=${type}&q=${encodeURIComponent(q)}`).then(r => r.json()).then(data => {
+    jsonFetch(`/admin/packages/search-content?type=${type}&q=${encodeURIComponent(q)}`).then(data => {
         if (!data.results || data.results.length === 0) { resultsDiv.innerHTML = '<div style="padding:0.75rem;color:#64748b;">No results found</div>'; return; }
         const groupId = document.getElementById('contentGroupId').value;
         resultsDiv.innerHTML = data.results.map(r => `
@@ -588,29 +610,29 @@ function searchContentForGroup() {
                 <span>${escHtml(r.name)}</span>
             </div>
         `).join('');
-    }).catch(() => { resultsDiv.innerHTML = '<div style="padding:0.75rem;color:#ef4444;">Search error</div>'; });
+    }).catch(e => { resultsDiv.innerHTML = '<div style="padding:0.75rem;color:#ef4444;">' + escHtml(e.message || 'Search error') + '</div>'; });
 }
 
 function clearSearchResults() { document.getElementById('searchResults').style.display = 'none'; }
 
 function addContentToGroup(groupId, type, contentId, el) {
     if (el) el.style.opacity = '0.5';
-    fetch(`/admin/packages/groups/${groupId}/content/add`, {
+    jsonFetch(`/admin/packages/groups/${groupId}/content/add`, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ _token: csrfToken, content_type: type, content_id: contentId })
-    }).then(r => r.json()).then(data => {
+    }).then(data => {
         if (data.success) { if (el) el.remove(); loadGroupContent(groupId); showToast('Content added', 'success'); }
         else { showToast(data.message, 'error'); if (el) el.style.opacity = '1'; }
-    }).catch(() => { showToast('Error adding content', 'error'); if (el) el.style.opacity = '1'; });
+    }).catch(e => { showToast(e.message || 'Error adding content', 'error'); if (el) el.style.opacity = '1'; });
 }
 
 function removeContent(groupId, itemId) {
-    fetch(`/admin/packages/groups/${groupId}/content/${itemId}/remove`, {
+    jsonFetch(`/admin/packages/groups/${groupId}/content/${itemId}/remove`, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '_token=' + csrfToken
-    }).then(r => r.json()).then(data => {
+    }).then(data => {
         if (data.success) { const el = document.getElementById('ci-' + itemId); if (el) el.remove(); showToast('Removed', 'success'); }
         else showToast(data.message, 'error');
-    }).catch(() => showToast('Error removing content', 'error'));
+    }).catch(e => showToast(e.message || 'Error removing content', 'error'));
 }
 
 // ==================== PACKAGES ====================
@@ -647,7 +669,7 @@ function openPackageModal() {
 }
 
 function editPackage(id) {
-    fetch(`/admin/packages/${id}/show`).then(r => r.json()).then(data => {
+    jsonFetch(`/admin/packages/${id}/show`).then(data => {
         if (!data.success) { showToast(data.message, 'error'); return; }
         const p = data.package;
         document.getElementById('pkgId').value = p.id;
@@ -690,7 +712,7 @@ function editPackage(id) {
         Array.from(document.getElementById('pkgContentGroups').options).forEach(o => o.selected = gids.includes(o.value));
 
         document.getElementById('packageModal').classList.add('active');
-    }).catch(() => showToast('Error loading package', 'error'));
+    }).catch(e => showToast(e.message || 'Error loading package', 'error'));
 }
 
 function toggleFreePackage() {
@@ -738,18 +760,18 @@ function savePackage() {
     Array.from(document.getElementById('pkgContentGroups').selectedOptions).forEach(o => fd.append('content_group_ids[]', o.value));
 
     const url = id ? `/admin/packages/${id}/update` : '/admin/packages/store';
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString() })
-        .then(r => r.json()).then(data => {
+    jsonFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString() })
+        .then(data => {
             if (data.success) { showToast(data.message, 'success'); location.reload(); }
             else { showToast(data.message, 'error'); btn.disabled = false; btn.textContent = id ? 'Save Changes' : 'Create Package'; }
-        }).catch(() => { showToast('Error saving package', 'error'); btn.disabled = false; btn.textContent = id ? 'Save Changes' : 'Create Package'; });
+        }).catch(e => { showToast(e.message || 'Error saving package', 'error'); btn.disabled = false; btn.textContent = id ? 'Save Changes' : 'Create Package'; });
 }
 
 function deletePackage(id, name) {
     if (!confirm(`Delete package "${name}"? This cannot be undone.`)) return;
-    fetch(`/admin/packages/${id}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '_token=' + csrfToken })
-        .then(r => r.json()).then(data => { if (data.success) { showToast(data.message, 'success'); location.reload(); } else showToast(data.message, 'error'); })
-        .catch(() => showToast('Error deleting package', 'error'));
+    jsonFetch(`/admin/packages/${id}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '_token=' + csrfToken })
+        .then(data => { if (data.success) { showToast(data.message, 'success'); location.reload(); } else showToast(data.message, 'error'); })
+        .catch(e => showToast(e.message || 'Error deleting package', 'error'));
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }

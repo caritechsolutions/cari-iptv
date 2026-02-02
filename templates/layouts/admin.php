@@ -731,9 +731,13 @@
                         <i class="lucide-users"></i>
                         <span>Subscribers</span>
                     </a>
-                    <a href="/admin/packages" class="nav-item <?= ($pageTitle ?? '') === 'Packages' ? 'active' : '' ?>">
+                    <a href="/admin/packages" class="nav-item <?= ($pageTitle ?? '') === 'Packages' && ($tab ?? '') !== 'groups' ? 'active' : '' ?>">
                         <i class="lucide-package"></i>
                         <span>Packages</span>
+                    </a>
+                    <a href="/admin/packages?tab=groups" class="nav-item <?= ($pageTitle ?? '') === 'Packages' && ($tab ?? '') === 'groups' ? 'active' : '' ?>">
+                        <i class="lucide-layers"></i>
+                        <span>Content Groups</span>
                     </a>
                 </div>
 
