@@ -312,7 +312,7 @@ class AdController
     /**
      * Add creative to campaign (AJAX)
      */
-    public function addCreative(int $campaignId): void
+    public function addCreative(int $id): void
     {
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
@@ -328,7 +328,7 @@ class AdController
         unset($data['errors']);
 
         try {
-            $creativeId = $this->adService->createCreative($campaignId, $data);
+            $creativeId = $this->adService->createCreative($id, $data);
             Response::json(['success' => true, 'creative_id' => $creativeId]);
         } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
@@ -338,7 +338,7 @@ class AdController
     /**
      * Update creative (AJAX)
      */
-    public function updateCreative(int $campaignId, int $creativeId): void
+    public function updateCreative(int $id, int $creativeId): void
     {
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
@@ -364,7 +364,7 @@ class AdController
     /**
      * Delete creative (AJAX)
      */
-    public function deleteCreative(int $campaignId, int $creativeId): void
+    public function deleteCreative(int $id, int $creativeId): void
     {
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
@@ -387,7 +387,7 @@ class AdController
     /**
      * Add placement (AJAX)
      */
-    public function addPlacement(int $campaignId): void
+    public function addPlacement(int $id): void
     {
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
@@ -396,7 +396,7 @@ class AdController
         }
 
         $data = [
-            'campaign_id' => $campaignId,
+            'campaign_id' => $id,
             'creative_id' => (int) ($_POST['creative_id'] ?? 0),
             'zone_id' => (int) ($_POST['zone_id'] ?? 0),
             'status' => $_POST['status'] ?? 'active',
@@ -406,7 +406,7 @@ class AdController
         ];
 
         if (!$data['creative_id'] || !$data['zone_id']) {
-            Response::json(['success' => false, 'message' => 'Creative and zone are required']);
+            Response::json(['success' => false, 'message' => 'Ad and zone are required']);
             return;
         }
 
@@ -441,7 +441,7 @@ class AdController
     /**
      * Update placement (AJAX)
      */
-    public function updatePlacement(int $campaignId, int $placementId): void
+    public function updatePlacement(int $id, int $placementId): void
     {
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {
@@ -491,7 +491,7 @@ class AdController
     /**
      * Delete placement (AJAX)
      */
-    public function deletePlacement(int $campaignId, int $placementId): void
+    public function deletePlacement(int $id, int $placementId): void
     {
         $token = $_POST['_token'] ?? '';
         if (!Session::validateCsrf($token)) {

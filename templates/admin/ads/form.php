@@ -40,7 +40,7 @@ $isEdit = !empty($campaign);
 <div class="page-header flex justify-between items-center">
     <div>
         <h1 class="page-title"><?= $isEdit ? 'Edit Campaign' : 'Create Campaign' ?></h1>
-        <p class="page-subtitle"><?= $isEdit ? 'Update campaign settings, creatives, and placements.' : 'Set up a new advertising campaign.' ?></p>
+        <p class="page-subtitle"><?= $isEdit ? 'Update campaign settings, ads, and placements.' : 'Set up a new advertising campaign.' ?></p>
     </div>
     <div>
         <a href="/admin/ads" class="btn btn-secondary">Back to Campaigns</a>
@@ -51,7 +51,7 @@ $isEdit = !empty($campaign);
 <?php if ($isEdit): ?>
 <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('details')">Campaign Details</button>
-    <button class="tab-btn" onclick="switchTab('creatives')">Creatives (<?= count($campaign['creatives'] ?? []) ?>)</button>
+    <button class="tab-btn" onclick="switchTab('creatives')">Ads (<?= count($campaign['creatives'] ?? []) ?>)</button>
     <button class="tab-btn" onclick="switchTab('placements')">Placements (<?= count($campaign['placements'] ?? []) ?>)</button>
 </div>
 <?php endif; ?>
@@ -175,16 +175,16 @@ $isEdit = !empty($campaign);
 <div class="tab-content" id="tab-creatives">
     <div class="card">
         <div class="card-header">
-            <div class="card-title">Ad Creatives</div>
+            <div class="card-title">Ads</div>
             <button class="btn btn-primary btn-sm" onclick="openCreativeModal()">
-                <i class="lucide-plus"></i> Add Creative
+                <i class="lucide-plus"></i> Add Ad
             </button>
         </div>
         <div class="card-body">
             <?php if (empty($campaign['creatives'])): ?>
                 <div class="no-items">
                     <i class="lucide-image" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>
-                    No creatives yet. Add your first ad creative.
+                    No ads yet. Add your first ad.
                 </div>
             <?php else: ?>
                 <?php foreach ($campaign['creatives'] as $creative): ?>
@@ -241,7 +241,7 @@ $isEdit = !empty($campaign);
             <?php if (empty($campaign['placements'])): ?>
                 <div class="no-items">
                     <i class="lucide-target" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>
-                    No placements yet. Add a placement to link creatives to ad zones with targeting.
+                    No placements yet. Add a placement to link ads to zones with targeting.
                 </div>
             <?php else: ?>
                 <?php foreach ($campaign['placements'] as $placement): ?>
@@ -286,7 +286,7 @@ $isEdit = !empty($campaign);
 <div class="modal-overlay" id="creativeModal">
     <div class="modal-box">
         <div class="modal-header">
-            <h3 id="creativeModalTitle">Add Creative</h3>
+            <h3 id="creativeModalTitle">Add Ad</h3>
             <button class="modal-close" onclick="closeModal('creativeModal')">&times;</button>
         </div>
         <div class="modal-body">
@@ -483,7 +483,7 @@ $isEdit = !empty($campaign);
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal('creativeModal')">Cancel</button>
-            <button class="btn btn-primary" onclick="saveCreative()">Save Creative</button>
+            <button class="btn btn-primary" onclick="saveCreative()">Save Ad</button>
         </div>
     </div>
 </div>
@@ -500,9 +500,9 @@ $isEdit = !empty($campaign);
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label class="form-label">Creative *</label>
+                    <label class="form-label">Ad *</label>
                     <select id="placementCreative" class="form-input">
-                        <option value="">Select creative...</option>
+                        <option value="">Select ad...</option>
                         <?php foreach ($campaign['creatives'] as $c): ?>
                             <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['name']) ?> (<?= $adTypes[$c['type']]['name'] ?? $c['type'] ?>)</option>
                         <?php endforeach; ?>
@@ -579,7 +579,7 @@ function openCreativeModal() {
     document.getElementById('creativeStatus').value = 'draft';
     document.getElementById('creativeWeight').value = '100';
     document.querySelectorAll('.type-fields').forEach(f => f.classList.remove('active'));
-    document.getElementById('creativeModalTitle').textContent = 'Add Creative';
+    document.getElementById('creativeModalTitle').textContent = 'Add Ad';
     openModal('creativeModal');
 }
 
@@ -624,7 +624,7 @@ function editCreative(creative) {
         document.getElementById('midCompanionUrl').value = creative.companion_banner_url || '';
     }
 
-    document.getElementById('creativeModalTitle').textContent = 'Edit Creative';
+    document.getElementById('creativeModalTitle').textContent = 'Edit Ad';
     openModal('creativeModal');
 }
 
@@ -682,13 +682,13 @@ function saveCreative() {
             if (d.success) {
                 location.reload();
             } else {
-                alert(d.message || 'Error saving creative');
+                alert(d.message || 'Error saving ad');
             }
         });
 }
 
 function deleteCreative(id) {
-    if (!confirm('Delete this creative?')) return;
+    if (!confirm('Delete this ad?')) return;
 
     fetch(`/admin/ads/${campaignId}/creatives/${id}/delete`, {
         method: 'POST',
