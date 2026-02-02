@@ -119,7 +119,7 @@ class AdController
 
             Session::flash('success', 'Campaign created successfully.');
             Response::redirect('/admin/ads/' . $campaignId . '/edit');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Session::flash('error', 'Failed to create campaign: ' . $e->getMessage());
             Response::redirect('/admin/ads/create');
         }
@@ -195,7 +195,7 @@ class AdController
 
             Session::flash('success', 'Campaign updated successfully.');
             Response::redirect('/admin/ads/' . $id . '/edit');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Session::flash('error', 'Failed to update campaign: ' . $e->getMessage());
             Response::redirect('/admin/ads/' . $id . '/edit');
         }
@@ -233,7 +233,7 @@ class AdController
             );
 
             Session::flash('success', 'Campaign deleted successfully.');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Session::flash('error', 'Failed to delete campaign: ' . $e->getMessage());
         }
 
@@ -330,7 +330,7 @@ class AdController
         try {
             $creativeId = $this->adService->createCreative($campaignId, $data);
             Response::json(['success' => true, 'creative_id' => $creativeId]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -356,7 +356,7 @@ class AdController
         try {
             $this->adService->updateCreative($creativeId, $data);
             Response::json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -375,7 +375,7 @@ class AdController
         try {
             $this->adService->deleteCreative($creativeId);
             Response::json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -433,7 +433,7 @@ class AdController
         try {
             $placementId = $this->adService->createPlacement($data, $targetingRules);
             Response::json(['success' => true, 'placement_id' => $placementId]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -483,7 +483,7 @@ class AdController
             }
 
             Response::json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -502,7 +502,7 @@ class AdController
         try {
             $this->adService->deletePlacement($placementId);
             Response::json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -554,7 +554,7 @@ class AdController
         try {
             $zoneId = $this->adService->createZone($data);
             Response::json(['success' => true, 'zone_id' => $zoneId]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -580,7 +580,7 @@ class AdController
         try {
             $this->adService->updateZone($id, $data);
             Response::json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -614,7 +614,7 @@ class AdController
         try {
             $this->adService->deleteZone($id);
             Response::json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Response::json(['success' => false, 'message' => $e->getMessage()]);
         }
     }

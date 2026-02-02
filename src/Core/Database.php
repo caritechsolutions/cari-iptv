@@ -157,6 +157,14 @@ class Database
     }
 
     /**
+     * Get last insert ID
+     */
+    public function lastInsertId(): int
+    {
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
      * Begin transaction
      */
     public function beginTransaction(): bool
