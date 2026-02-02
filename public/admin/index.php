@@ -60,6 +60,7 @@ use CariIPTV\Controllers\Admin\SeriesController;
 use CariIPTV\Controllers\Admin\CategoryController;
 use CariIPTV\Controllers\Admin\EpgController;
 use CariIPTV\Controllers\Admin\AppLayoutController;
+use CariIPTV\Controllers\Admin\AdController;
 
 // Initialize session
 Session::start();
@@ -263,6 +264,43 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/app-layout/navigation/items/reorder', [AppLayoutController::class, 'reorderNavItems']);
     $router->post('/app-layout/navigation/items/{id}/update', [AppLayoutController::class, 'updateNavItem']);
     $router->post('/app-layout/navigation/items/{id}/remove', [AppLayoutController::class, 'removeNavItem']);
+
+    // Advertising - Campaigns
+    $router->get('/ads', [AdController::class, 'index']);
+    $router->get('/ads/create', [AdController::class, 'create']);
+    $router->post('/ads/store', [AdController::class, 'store']);
+    $router->get('/ads/{id}/edit', [AdController::class, 'edit']);
+    $router->post('/ads/{id}/update', [AdController::class, 'update']);
+    $router->post('/ads/{id}/delete', [AdController::class, 'delete']);
+    $router->post('/ads/{id}/toggle-status', [AdController::class, 'toggleStatus']);
+    $router->post('/ads/bulk', [AdController::class, 'bulkAction']);
+
+    // Advertising - Creatives
+    $router->post('/ads/{id}/creatives/add', [AdController::class, 'addCreative']);
+    $router->post('/ads/{id}/creatives/{creativeId}/update', [AdController::class, 'updateCreative']);
+    $router->post('/ads/{id}/creatives/{creativeId}/delete', [AdController::class, 'deleteCreative']);
+
+    // Advertising - Placements & Targeting
+    $router->post('/ads/{id}/placements/add', [AdController::class, 'addPlacement']);
+    $router->post('/ads/{id}/placements/{placementId}/update', [AdController::class, 'updatePlacement']);
+    $router->post('/ads/{id}/placements/{placementId}/delete', [AdController::class, 'deletePlacement']);
+
+    // Advertising - Zones
+    $router->get('/ads/zones', [AdController::class, 'zones']);
+    $router->post('/ads/zones/store', [AdController::class, 'storeZone']);
+    $router->post('/ads/zones/{id}/update', [AdController::class, 'updateZone']);
+    $router->post('/ads/zones/{id}/toggle', [AdController::class, 'toggleZone']);
+    $router->post('/ads/zones/{id}/delete', [AdController::class, 'deleteZone']);
+
+    // Advertising - Reports
+    $router->get('/ads/reports', [AdController::class, 'reports']);
+    $router->get('/ads/{id}/report', [AdController::class, 'campaignReport']);
+
+    // Advertising - Ad Serving API
+    $router->get('/ads/api/serve', [AdController::class, 'serve']);
+    $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);
+    $router->post('/ads/api/event', [AdController::class, 'recordEvent']);
+    $router->get('/ads/api/vast', [AdController::class, 'vastXml']);
 });
 
 // Dispatch the request

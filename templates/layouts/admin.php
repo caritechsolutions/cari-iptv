@@ -710,6 +710,22 @@
                 </div>
 
                 <div class="nav-section">
+                    <div class="nav-section-title">Advertising</div>
+                    <a href="/admin/ads" class="nav-item <?= in_array($pageTitle ?? '', ['Advertising', 'Create Campaign', 'Edit Campaign']) ? 'active' : '' ?>">
+                        <i class="lucide-megaphone"></i>
+                        <span>Campaigns</span>
+                    </a>
+                    <a href="/admin/ads/zones" class="nav-item <?= ($pageTitle ?? '') === 'Ad Zones' ? 'active' : '' ?>">
+                        <i class="lucide-layout"></i>
+                        <span>Ad Zones</span>
+                    </a>
+                    <a href="/admin/ads/reports" class="nav-item <?= ($pageTitle ?? '') === 'Ad Reports' ? 'active' : '' ?>">
+                        <i class="lucide-bar-chart-2"></i>
+                        <span>Ad Reports</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
                     <div class="nav-section-title">Subscribers</div>
                     <a href="/admin/users" class="nav-item">
                         <i class="lucide-users"></i>

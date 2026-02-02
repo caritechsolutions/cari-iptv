@@ -1,0 +1,817 @@
+<?php
+$pageTitle = $campaign ? 'Edit Campaign' : 'Create Campaign';
+$isEdit = !empty($campaign);
+?>
+
+<style>
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    .form-full { grid-column: 1 / -1; }
+    .section-title { font-size: 1.1rem; font-weight: 600; margin: 1.5rem 0 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); }
+    .section-title:first-child { margin-top: 0; }
+    .creative-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
+    .creative-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .creative-type-label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 500; }
+    .placement-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
+    .targeting-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .targeting-row select, .targeting-row input { font-size: 0.8rem; padding: 0.375rem 0.5rem; }
+    .tab-nav { display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem; gap: 0; }
+    .tab-btn { padding: 0.75rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; color: var(--text-muted); font-size: 0.875rem; font-weight: 500; transition: all 0.2s; }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--primary-light); border-bottom-color: var(--primary); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .type-fields { display: none; }
+    .type-fields.active { display: block; }
+    .help-text { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+    .no-items { text-align: center; padding: 2rem; color: var(--text-muted); }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-overlay.active { display: flex; }
+    .modal-box { background: #1e293b; border: 1px solid #475569; border-radius: 12px; width: 90%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); }
+    .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: #1e293b; }
+    .modal-header h3 { font-size: 1rem; font-weight: 600; }
+    .modal-body { padding: 1.25rem; background: #1e293b; }
+    .modal-footer { padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem; background: #1e293b; }
+    .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.25rem; padding: 0.25rem; }
+</style>
+
+<div class="page-header flex justify-between items-center">
+    <div>
+        <h1 class="page-title"><?= $isEdit ? 'Edit Campaign' : 'Create Campaign' ?></h1>
+        <p class="page-subtitle"><?= $isEdit ? 'Update campaign settings, creatives, and placements.' : 'Set up a new advertising campaign.' ?></p>
+    </div>
+    <div>
+        <a href="/admin/ads" class="btn btn-secondary">Back to Campaigns</a>
+    </div>
+</div>
+
+<!-- Tabs (only show all tabs in edit mode) -->
+<?php if ($isEdit): ?>
+<div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('details')">Campaign Details</button>
+    <button class="tab-btn" onclick="switchTab('creatives')">Creatives (<?= count($campaign['creatives'] ?? []) ?>)</button>
+    <button class="tab-btn" onclick="switchTab('placements')">Placements (<?= count($campaign['placements'] ?? []) ?>)</button>
+</div>
+<?php endif; ?>
+
+<!-- Campaign Details Tab -->
+<div class="tab-content active" id="tab-details">
+    <form method="POST" action="<?= $isEdit ? '/admin/ads/' . $campaign['id'] . '/update' : '/admin/ads/store' ?>">
+        <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+        <div class="card">
+            <div class="card-body">
+                <h3 class="section-title" style="margin-top:0;">Basic Information</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Campaign Name *</label>
+                        <input type="text" name="name" class="form-input" required
+                               value="<?= htmlspecialchars($campaign['name'] ?? '') ?>"
+                               placeholder="e.g. Holiday Sale Banner">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Advertiser</label>
+                        <input type="text" name="advertiser" class="form-input"
+                               value="<?= htmlspecialchars($campaign['advertiser'] ?? '') ?>"
+                               placeholder="e.g. Digicel, Flow">
+                    </div>
+                    <div class="form-group form-full">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-input" rows="2" placeholder="Campaign notes..."><?= htmlspecialchars($campaign['description'] ?? '') ?></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-input">
+                            <?php foreach (['draft', 'active', 'paused', 'completed', 'archived'] as $s): ?>
+                                <option value="<?= $s ?>" <?= ($campaign['status'] ?? 'draft') === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Priority (1=highest, 10=lowest)</label>
+                        <input type="number" name="priority" class="form-input" min="1" max="10"
+                               value="<?= $campaign['priority'] ?? 5 ?>">
+                    </div>
+                </div>
+
+                <h3 class="section-title">Schedule</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Start Date</label>
+                        <input type="datetime-local" name="start_date" class="form-input"
+                               value="<?= $campaign['start_date'] ? date('Y-m-d\TH:i', strtotime($campaign['start_date'])) : '' ?>">
+                        <div class="help-text">Leave empty for immediate start</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">End Date</label>
+                        <input type="datetime-local" name="end_date" class="form-input"
+                               value="<?= $campaign['end_date'] ? date('Y-m-d\TH:i', strtotime($campaign['end_date'])) : '' ?>">
+                        <div class="help-text">Leave empty for no end date</div>
+                    </div>
+                </div>
+
+                <h3 class="section-title">Budget & Caps</h3>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Daily Budget ($)</label>
+                        <input type="number" name="daily_budget" class="form-input" step="0.01" min="0"
+                               value="<?= $campaign['daily_budget'] ?? '' ?>" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Total Budget ($)</label>
+                        <input type="number" name="total_budget" class="form-input" step="0.01" min="0"
+                               value="<?= $campaign['total_budget'] ?? '' ?>" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Frequency Cap (per user/day)</label>
+                        <input type="number" name="frequency_cap" class="form-input" min="0"
+                               value="<?= $campaign['frequency_cap'] ?? '' ?>" placeholder="e.g. 3">
+                        <div class="help-text">Max times a user sees this ad per day</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Daily Impressions Cap</label>
+                        <input type="number" name="daily_impressions_cap" class="form-input" min="0"
+                               value="<?= $campaign['daily_impressions_cap'] ?? '' ?>" placeholder="Optional">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Total Impressions Cap</label>
+                        <input type="number" name="total_impressions_cap" class="form-input" min="0"
+                               value="<?= $campaign['total_impressions_cap'] ?? '' ?>" placeholder="Optional">
+                    </div>
+                </div>
+
+                <?php if ($isEdit): ?>
+                <h3 class="section-title">Performance</h3>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Total Impressions</label>
+                        <div style="font-size:1.25rem;font-weight:600;"><?= number_format($campaign['total_impressions']) ?></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Total Clicks</label>
+                        <div style="font-size:1.25rem;font-weight:600;"><?= number_format($campaign['total_clicks']) ?></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">CTR</label>
+                        <div style="font-size:1.25rem;font-weight:600;">
+                            <?= $campaign['total_impressions'] > 0 ? round(($campaign['total_clicks'] / $campaign['total_impressions']) * 100, 2) : 0 ?>%
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Update Campaign' : 'Create Campaign' ?></button>
+                <a href="/admin/ads" class="btn btn-secondary">Cancel</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<?php if ($isEdit): ?>
+<!-- Creatives Tab -->
+<div class="tab-content" id="tab-creatives">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Ad Creatives</div>
+            <button class="btn btn-primary btn-sm" onclick="openCreativeModal()">
+                <i class="lucide-plus"></i> Add Creative
+            </button>
+        </div>
+        <div class="card-body">
+            <?php if (empty($campaign['creatives'])): ?>
+                <div class="no-items">
+                    <i class="lucide-image" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>
+                    No creatives yet. Add your first ad creative.
+                </div>
+            <?php else: ?>
+                <?php foreach ($campaign['creatives'] as $creative): ?>
+                    <div class="creative-card">
+                        <div class="creative-card-header">
+                            <div>
+                                <strong><?= htmlspecialchars($creative['name']) ?></strong>
+                                <?php
+                                $typeInfo = $adTypes[$creative['type']] ?? null;
+                                $typeColor = $typeInfo['color'] ?? 'info';
+                                ?>
+                                <span class="creative-type-label" style="background:rgba(var(--<?= $typeColor ?>-rgb, 100,100,100),0.15);color:var(--<?= $typeColor ?>);">
+                                    <?= $typeInfo['name'] ?? $creative['type'] ?>
+                                </span>
+                                <span class="badge badge-<?= $creative['status'] === 'active' ? 'success' : ($creative['status'] === 'paused' ? 'warning' : 'info') ?>">
+                                    <?= ucfirst($creative['status']) ?>
+                                </span>
+                            </div>
+                            <div style="display:flex;gap:0.25rem;">
+                                <button class="btn btn-secondary btn-sm" onclick="editCreative(<?= htmlspecialchars(json_encode($creative)) ?>)">Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteCreative(<?= $creative['id'] ?>)">Delete</button>
+                            </div>
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);">
+                            <?php if ($creative['type'] === 'text_scroller' && $creative['scroll_text']): ?>
+                                Text: "<?= htmlspecialchars(substr($creative['scroll_text'], 0, 100)) ?>..."
+                            <?php elseif ($creative['type'] === 'banner' && $creative['image_url']): ?>
+                                Image: <?= htmlspecialchars(basename($creative['image_url'])) ?> (<?= $creative['image_width'] ?>x<?= $creative['image_height'] ?>)
+                            <?php elseif (in_array($creative['type'], ['pre_roll', 'mid_roll'])): ?>
+                                <?php if ($creative['video_url']): ?>Video: <?= htmlspecialchars(basename($creative['video_url'])) ?><?php endif; ?>
+                                <?php if ($creative['vast_tag_url']): ?>VAST Tag configured<?php endif; ?>
+                                <?php if ($creative['video_duration']): ?> | <?= $creative['video_duration'] ?>s<?php endif; ?>
+                                <?php if ($creative['skip_after']): ?> | Skip after <?= $creative['skip_after'] ?>s<?php endif; ?>
+                            <?php endif; ?>
+                            | Weight: <?= $creative['weight'] ?> | Impressions: <?= number_format($creative['impressions']) ?> | Clicks: <?= number_format($creative['clicks']) ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Placements Tab -->
+<div class="tab-content" id="tab-placements">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Placements & Targeting</div>
+            <button class="btn btn-primary btn-sm" onclick="openPlacementModal()">
+                <i class="lucide-plus"></i> Add Placement
+            </button>
+        </div>
+        <div class="card-body">
+            <?php if (empty($campaign['placements'])): ?>
+                <div class="no-items">
+                    <i class="lucide-target" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>
+                    No placements yet. Add a placement to link creatives to ad zones with targeting.
+                </div>
+            <?php else: ?>
+                <?php foreach ($campaign['placements'] as $placement): ?>
+                    <div class="placement-card">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                            <div>
+                                <strong><?= htmlspecialchars($placement['creative_name']) ?></strong>
+                                <i class="lucide-arrow-right" style="margin:0 0.25rem;font-size:0.75rem;color:var(--text-muted);"></i>
+                                <strong><?= htmlspecialchars($placement['zone_name']) ?></strong>
+                                <span class="badge badge-<?= $placement['status'] === 'active' ? 'success' : 'warning' ?>" style="margin-left:0.5rem;">
+                                    <?= ucfirst($placement['status']) ?>
+                                </span>
+                            </div>
+                            <div style="display:flex;gap:0.25rem;">
+                                <button class="btn btn-secondary btn-sm" onclick="editPlacement(<?= htmlspecialchars(json_encode($placement)) ?>)">Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="deletePlacement(<?= $placement['id'] ?>)">Delete</button>
+                            </div>
+                        </div>
+                        <?php if (!empty($placement['targeting_rules'])): ?>
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem;">
+                                <strong>Targeting:</strong>
+                                <?php foreach ($placement['targeting_rules'] as $rule): ?>
+                                    <span style="margin-left:0.5rem;">
+                                        <?= ucfirst($rule['rule_type']) ?>:
+                                        <em><?= $rule['rule_operator'] ?> [<?= is_array($rule['rule_value']) ? implode(', ', $rule['rule_value']) : $rule['rule_value'] ?>]</em>
+                                    </span>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;">
+                                No targeting rules (shows to all users)
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Creative Modal -->
+<div class="modal-overlay" id="creativeModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="creativeModalTitle">Add Creative</h3>
+            <button class="modal-close" onclick="closeModal('creativeModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="creativeId" value="">
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input type="text" id="creativeName" class="form-input" placeholder="e.g. Main Banner 728x90">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Type *</label>
+                    <select id="creativeType" class="form-input" onchange="showTypeFields(this.value)">
+                        <option value="">Select type...</option>
+                        <?php foreach ($adTypes as $key => $type): ?>
+                            <option value="<?= $key ?>"><?= $type['name'] ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select id="creativeStatus" class="form-input">
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Weight</label>
+                    <input type="number" id="creativeWeight" class="form-input" value="100" min="1" max="1000">
+                    <div class="help-text">Higher weight = more likely to serve</div>
+                </div>
+            </div>
+
+            <!-- Text Scroller Fields -->
+            <div class="type-fields" id="fields-text_scroller">
+                <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Text Scroller Settings</h4>
+                <div class="form-group">
+                    <label class="form-label">Scroll Text *</label>
+                    <textarea id="scrollText" class="form-input" rows="2" placeholder="Enter scrolling text..."></textarea>
+                </div>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Speed</label>
+                        <select id="scrollSpeed" class="form-input">
+                            <option value="slow">Slow</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="fast">Fast</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Text Color</label>
+                        <input type="color" id="textColor" class="form-input" value="#FFFFFF" style="height:38px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Background Color</label>
+                        <input type="color" id="bgColor" class="form-input" value="#000000" style="height:38px;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Background Opacity (0-1)</label>
+                    <input type="number" id="bgOpacity" class="form-input" value="0.80" min="0" max="1" step="0.05">
+                </div>
+            </div>
+
+            <!-- Banner Fields -->
+            <div class="type-fields" id="fields-banner">
+                <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Banner Settings</h4>
+                <div class="form-group">
+                    <label class="form-label">Image URL *</label>
+                    <input type="url" id="bannerImageUrl" class="form-input" placeholder="https://...">
+                </div>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Width (px)</label>
+                        <input type="number" id="imageWidth" class="form-input" placeholder="728">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Height (px)</label>
+                        <input type="number" id="imageHeight" class="form-input" placeholder="90">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Position</label>
+                        <select id="bannerPosition" class="form-input">
+                            <option value="bottom">Bottom</option>
+                            <option value="top">Top</option>
+                            <option value="overlay_bottom">Overlay Bottom</option>
+                            <option value="overlay_top">Overlay Top</option>
+                            <option value="sidebar">Sidebar</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Click URL</label>
+                        <input type="url" id="bannerClickUrl" class="form-input" placeholder="https://advertiser.com/landing">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Click Target</label>
+                        <select id="clickTarget" class="form-input">
+                            <option value="_blank">New Tab</option>
+                            <option value="_self">Same Window</option>
+                            <option value="deeplink">Deep Link</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Alt Text</label>
+                    <input type="text" id="bannerAltText" class="form-input" placeholder="Ad description for accessibility">
+                </div>
+            </div>
+
+            <!-- Pre-Roll / Mid-Roll Video Fields -->
+            <div class="type-fields" id="fields-pre_roll">
+                <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Video Ad Settings</h4>
+                <div class="form-group">
+                    <label class="form-label">Video URL</label>
+                    <input type="url" id="videoUrl" class="form-input" placeholder="https://cdn.example.com/ad.mp4">
+                    <div class="help-text">Direct MP4 video URL for self-hosted ads</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">VAST Tag URL</label>
+                    <input type="url" id="vastTagUrl" class="form-input" placeholder="https://adserver.example.com/vast?...">
+                    <div class="help-text">Third-party VAST XML endpoint (takes priority over video URL)</div>
+                </div>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Duration (seconds)</label>
+                        <input type="number" id="videoDuration" class="form-input" placeholder="30">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Skip After (seconds)</label>
+                        <input type="number" id="skipAfter" class="form-input" placeholder="5">
+                        <div class="help-text">Empty = no skip</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Click URL</label>
+                        <input type="url" id="videoClickUrl" class="form-input" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Companion Banner URL</label>
+                    <input type="url" id="companionBannerUrl" class="form-input" placeholder="https://cdn.example.com/companion.jpg">
+                    <div class="help-text">Banner displayed alongside video ad</div>
+                </div>
+            </div>
+
+            <!-- Mid-Roll specific fields -->
+            <div class="type-fields" id="fields-mid_roll">
+                <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Video Ad Settings</h4>
+                <div class="form-group">
+                    <label class="form-label">Video URL</label>
+                    <input type="url" id="midVideoUrl" class="form-input" placeholder="https://cdn.example.com/ad.mp4">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">VAST Tag URL</label>
+                    <input type="url" id="midVastTagUrl" class="form-input" placeholder="https://adserver.example.com/vast?...">
+                </div>
+                <div class="form-grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Duration (seconds)</label>
+                        <input type="number" id="midVideoDuration" class="form-input" placeholder="30">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Skip After (seconds)</label>
+                        <input type="number" id="midSkipAfter" class="form-input" placeholder="5">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Click URL</label>
+                        <input type="url" id="midClickUrl" class="form-input" placeholder="https://...">
+                    </div>
+                </div>
+                <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Mid-Roll Insertion Point</h4>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Offset Type</label>
+                        <select id="midrollOffsetType" class="form-input">
+                            <option value="percent">Percentage of content</option>
+                            <option value="seconds">Seconds into content</option>
+                            <option value="cue">SCTE-35 cue point</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Offset Value</label>
+                        <input type="text" id="midrollOffsetValue" class="form-input" placeholder="e.g. 50 (for 50%)">
+                        <div class="help-text">For percent: 0-100. For seconds: number of seconds.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Companion Banner URL</label>
+                    <input type="url" id="midCompanionUrl" class="form-input" placeholder="https://...">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('creativeModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveCreative()">Save Creative</button>
+        </div>
+    </div>
+</div>
+
+<!-- Placement Modal -->
+<div class="modal-overlay" id="placementModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="placementModalTitle">Add Placement</h3>
+            <button class="modal-close" onclick="closeModal('placementModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="placementId" value="">
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Creative *</label>
+                    <select id="placementCreative" class="form-input">
+                        <option value="">Select creative...</option>
+                        <?php foreach ($campaign['creatives'] as $c): ?>
+                            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['name']) ?> (<?= $adTypes[$c['type']]['name'] ?? $c['type'] ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Zone *</label>
+                    <select id="placementZone" class="form-input">
+                        <option value="">Select zone...</option>
+                        <?php foreach ($zones as $z): ?>
+                            <option value="<?= $z['id'] ?>"><?= htmlspecialchars($z['name']) ?> (<?= $adTypes[$z['zone_type']]['name'] ?? $z['zone_type'] ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select id="placementStatus" class="form-input">
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Priority (1=highest)</label>
+                    <input type="number" id="placementPriority" class="form-input" value="5" min="1" max="10">
+                </div>
+            </div>
+
+            <h4 style="margin:1rem 0 0.5rem;font-size:0.9rem;">Targeting Rules</h4>
+            <div class="help-text" style="margin-bottom:0.75rem;">Define who sees this ad. Leave empty to show to everyone.</div>
+
+            <div id="targetingRulesContainer"></div>
+
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addTargetingRule()" style="margin-top:0.5rem;">
+                <i class="lucide-plus"></i> Add Targeting Rule
+            </button>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('placementModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="savePlacement()">Save Placement</button>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<script>
+const csrf = '<?= $csrf ?>';
+const campaignId = <?= $campaign['id'] ?? 'null' ?>;
+const channels = <?= json_encode($channels ?? []) ?>;
+const categories = <?= json_encode($categories ?? []) ?>;
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+}
+
+function showTypeFields(type) {
+    document.querySelectorAll('.type-fields').forEach(f => f.classList.remove('active'));
+    if (type) {
+        const el = document.getElementById('fields-' + type);
+        if (el) el.classList.add('active');
+    }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+// Creative Modal
+function openCreativeModal() {
+    document.getElementById('creativeId').value = '';
+    document.getElementById('creativeName').value = '';
+    document.getElementById('creativeType').value = '';
+    document.getElementById('creativeStatus').value = 'draft';
+    document.getElementById('creativeWeight').value = '100';
+    document.querySelectorAll('.type-fields').forEach(f => f.classList.remove('active'));
+    document.getElementById('creativeModalTitle').textContent = 'Add Creative';
+    openModal('creativeModal');
+}
+
+function editCreative(creative) {
+    document.getElementById('creativeId').value = creative.id;
+    document.getElementById('creativeName').value = creative.name;
+    document.getElementById('creativeType').value = creative.type;
+    document.getElementById('creativeStatus').value = creative.status;
+    document.getElementById('creativeWeight').value = creative.weight;
+    showTypeFields(creative.type);
+
+    // Populate type-specific fields
+    if (creative.type === 'text_scroller') {
+        document.getElementById('scrollText').value = creative.scroll_text || '';
+        document.getElementById('scrollSpeed').value = creative.scroll_speed || 'normal';
+        document.getElementById('textColor').value = creative.text_color || '#FFFFFF';
+        document.getElementById('bgColor').value = creative.bg_color || '#000000';
+        document.getElementById('bgOpacity').value = creative.bg_opacity || '0.80';
+    } else if (creative.type === 'banner') {
+        document.getElementById('bannerImageUrl').value = creative.image_url || '';
+        document.getElementById('imageWidth').value = creative.image_width || '';
+        document.getElementById('imageHeight').value = creative.image_height || '';
+        document.getElementById('bannerPosition').value = creative.banner_position || 'bottom';
+        document.getElementById('bannerClickUrl').value = creative.click_url || '';
+        document.getElementById('clickTarget').value = creative.click_target || '_blank';
+        document.getElementById('bannerAltText').value = creative.alt_text || '';
+    } else if (creative.type === 'pre_roll') {
+        document.getElementById('videoUrl').value = creative.video_url || '';
+        document.getElementById('vastTagUrl').value = creative.vast_tag_url || '';
+        document.getElementById('videoDuration').value = creative.video_duration || '';
+        document.getElementById('skipAfter').value = creative.skip_after || '';
+        document.getElementById('videoClickUrl').value = creative.click_url || '';
+        document.getElementById('companionBannerUrl').value = creative.companion_banner_url || '';
+    } else if (creative.type === 'mid_roll') {
+        document.getElementById('midVideoUrl').value = creative.video_url || '';
+        document.getElementById('midVastTagUrl').value = creative.vast_tag_url || '';
+        document.getElementById('midVideoDuration').value = creative.video_duration || '';
+        document.getElementById('midSkipAfter').value = creative.skip_after || '';
+        document.getElementById('midClickUrl').value = creative.click_url || '';
+        document.getElementById('midrollOffsetType').value = creative.midroll_offset_type || 'percent';
+        document.getElementById('midrollOffsetValue').value = creative.midroll_offset_value || '';
+        document.getElementById('midCompanionUrl').value = creative.companion_banner_url || '';
+    }
+
+    document.getElementById('creativeModalTitle').textContent = 'Edit Creative';
+    openModal('creativeModal');
+}
+
+function saveCreative() {
+    const id = document.getElementById('creativeId').value;
+    const type = document.getElementById('creativeType').value;
+
+    const data = new URLSearchParams();
+    data.append('_token', csrf);
+    data.append('name', document.getElementById('creativeName').value);
+    data.append('type', type);
+    data.append('status', document.getElementById('creativeStatus').value);
+    data.append('weight', document.getElementById('creativeWeight').value);
+
+    // Type-specific data
+    if (type === 'text_scroller') {
+        data.append('scroll_text', document.getElementById('scrollText').value);
+        data.append('scroll_speed', document.getElementById('scrollSpeed').value);
+        data.append('text_color', document.getElementById('textColor').value);
+        data.append('bg_color', document.getElementById('bgColor').value);
+        data.append('bg_opacity', document.getElementById('bgOpacity').value);
+    } else if (type === 'banner') {
+        data.append('image_url', document.getElementById('bannerImageUrl').value);
+        data.append('image_width', document.getElementById('imageWidth').value);
+        data.append('image_height', document.getElementById('imageHeight').value);
+        data.append('banner_position', document.getElementById('bannerPosition').value);
+        data.append('click_url', document.getElementById('bannerClickUrl').value);
+        data.append('click_target', document.getElementById('clickTarget').value);
+        data.append('alt_text', document.getElementById('bannerAltText').value);
+    } else if (type === 'pre_roll') {
+        data.append('video_url', document.getElementById('videoUrl').value);
+        data.append('vast_tag_url', document.getElementById('vastTagUrl').value);
+        data.append('video_duration', document.getElementById('videoDuration').value);
+        data.append('skip_after', document.getElementById('skipAfter').value);
+        data.append('click_url', document.getElementById('videoClickUrl').value);
+        data.append('companion_banner_url', document.getElementById('companionBannerUrl').value);
+    } else if (type === 'mid_roll') {
+        data.append('video_url', document.getElementById('midVideoUrl').value);
+        data.append('vast_tag_url', document.getElementById('midVastTagUrl').value);
+        data.append('video_duration', document.getElementById('midVideoDuration').value);
+        data.append('skip_after', document.getElementById('midSkipAfter').value);
+        data.append('click_url', document.getElementById('midClickUrl').value);
+        data.append('midroll_offset_type', document.getElementById('midrollOffsetType').value);
+        data.append('midroll_offset_value', document.getElementById('midrollOffsetValue').value);
+        data.append('companion_banner_url', document.getElementById('midCompanionUrl').value);
+    }
+
+    const url = id
+        ? `/admin/ads/${campaignId}/creatives/${id}/update`
+        : `/admin/ads/${campaignId}/creatives/add`;
+
+    fetch(url, { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                location.reload();
+            } else {
+                alert(d.message || 'Error saving creative');
+            }
+        });
+}
+
+function deleteCreative(id) {
+    if (!confirm('Delete this creative?')) return;
+
+    fetch(`/admin/ads/${campaignId}/creatives/${id}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: '_token=' + csrf
+    })
+    .then(r => r.json())
+    .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+
+// Placement Modal
+function openPlacementModal() {
+    document.getElementById('placementId').value = '';
+    document.getElementById('placementCreative').value = '';
+    document.getElementById('placementZone').value = '';
+    document.getElementById('placementStatus').value = 'active';
+    document.getElementById('placementPriority').value = '5';
+    document.getElementById('targetingRulesContainer').innerHTML = '';
+    document.getElementById('placementModalTitle').textContent = 'Add Placement';
+    openModal('placementModal');
+}
+
+function editPlacement(placement) {
+    document.getElementById('placementId').value = placement.id;
+    document.getElementById('placementCreative').value = placement.creative_id;
+    document.getElementById('placementZone').value = placement.zone_id;
+    document.getElementById('placementStatus').value = placement.status;
+    document.getElementById('placementPriority').value = placement.priority;
+
+    document.getElementById('targetingRulesContainer').innerHTML = '';
+    if (placement.targeting_rules) {
+        placement.targeting_rules.forEach(rule => {
+            addTargetingRule(rule.rule_type, rule.rule_operator, rule.rule_value);
+        });
+    }
+
+    document.getElementById('placementModalTitle').textContent = 'Edit Placement';
+    openModal('placementModal');
+}
+
+let targetingRuleIndex = 0;
+
+function addTargetingRule(type, operator, values) {
+    const idx = targetingRuleIndex++;
+    const container = document.getElementById('targetingRulesContainer');
+
+    const row = document.createElement('div');
+    row.className = 'targeting-row';
+    row.id = 'targeting-rule-' + idx;
+
+    let valuesStr = '';
+    if (values && Array.isArray(values)) {
+        valuesStr = values.join(',');
+    }
+
+    row.innerHTML = `
+        <select class="form-input rule-type" onchange="updateRuleValueOptions(${idx}, this.value)" style="width:150px;">
+            <option value="">Select type...</option>
+            <option value="package" ${type === 'package' ? 'selected' : ''}>Package/Plan</option>
+            <option value="channel" ${type === 'channel' ? 'selected' : ''}>Channel</option>
+            <option value="category" ${type === 'category' ? 'selected' : ''}>Category</option>
+            <option value="content_type" ${type === 'content_type' ? 'selected' : ''}>Content Type</option>
+            <option value="platform" ${type === 'platform' ? 'selected' : ''}>Platform</option>
+            <option value="schedule" ${type === 'schedule' ? 'selected' : ''}>Schedule</option>
+        </select>
+        <select class="form-input rule-operator" style="width:100px;">
+            <option value="include" ${operator === 'include' || !operator ? 'selected' : ''}>Include</option>
+            <option value="exclude" ${operator === 'exclude' ? 'selected' : ''}>Exclude</option>
+        </select>
+        <input type="text" class="form-input rule-value" placeholder="Values (comma-separated)" value="${valuesStr}" style="flex:1;min-width:150px;">
+        <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('targeting-rule-${idx}').remove()">Remove</button>
+    `;
+
+    container.appendChild(row);
+}
+
+function savePlacement() {
+    const id = document.getElementById('placementId').value;
+
+    // Gather targeting rules
+    const rules = [];
+    document.querySelectorAll('.targeting-row').forEach(row => {
+        const type = row.querySelector('.rule-type').value;
+        const operator = row.querySelector('.rule-operator').value;
+        const valueStr = row.querySelector('.rule-value').value;
+        if (type && valueStr) {
+            rules.push({
+                rule_type: type,
+                rule_operator: operator,
+                rule_value: valueStr.split(',').map(v => v.trim()).filter(v => v)
+            });
+        }
+    });
+
+    const data = new URLSearchParams();
+    data.append('_token', csrf);
+    data.append('creative_id', document.getElementById('placementCreative').value);
+    data.append('zone_id', document.getElementById('placementZone').value);
+    data.append('status', document.getElementById('placementStatus').value);
+    data.append('priority', document.getElementById('placementPriority').value);
+    data.append('targeting_rules', JSON.stringify(rules));
+
+    const url = id
+        ? `/admin/ads/${campaignId}/placements/${id}/update`
+        : `/admin/ads/${campaignId}/placements/add`;
+
+    fetch(url, { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) location.reload();
+            else alert(d.message || 'Error saving placement');
+        });
+}
+
+function deletePlacement(id) {
+    if (!confirm('Delete this placement and its targeting rules?')) return;
+
+    fetch(`/admin/ads/${campaignId}/placements/${id}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: '_token=' + csrf
+    })
+    .then(r => r.json())
+    .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+</script>

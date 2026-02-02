@@ -198,6 +198,13 @@ $db->lastInsertId();            // Get last insert ID
 | `app_pages` | App screens per platform (linked to layouts) |
 | `app_navigation` | Navigation menus per platform+position |
 | `app_navigation_items` | Menu items linking to pages/URLs |
+| `ad_campaigns` | Advertising campaigns with scheduling and budgets |
+| `ad_creatives` | Ad content (text, banner, video) per campaign |
+| `ad_zones` | Pre-defined ad placement locations |
+| `ad_placements` | Links creatives to zones with targeting |
+| `ad_targeting_rules` | Flexible targeting rules per placement |
+| `ad_impressions` | Ad impression tracking |
+| `ad_events` | Ad click/completion/skip event tracking |
 
 ### Admin Roles (Hierarchy)
 1. `viewer` (level 1) - Read-only access
@@ -650,9 +657,196 @@ Lucide icon font is hosted locally at `public/assets/fonts/lucide/`. The CSS use
 
 **Important:** The `[data-icon]` CSS selector in lucide.css conflicts with `data-icon` HTML attributes — use `data-value` instead when storing icon names on elements.
 
+## Advertising System
+
+The advertising system supports 4 ad types with flexible targeting, scheduling, and performance tracking.
+
+### Architecture
+
+```
+Campaign → Creatives → Placements → Zones
+                          ↓
+                    Targeting Rules
+                          ↓
+              (package, channel, category,
+               content_type, platform, geo, schedule)
+```
+
+**Flow:** Admin creates a Campaign, adds Creatives (the actual ads), then creates Placements that link Creatives to Zones (where ads appear). Each Placement can have Targeting Rules that control who sees the ad.
+
+### Ad Types
+
+| Type | Key | Description | Fields |
+|------|-----|-------------|--------|
+| Text Scroller | `text_scroller` | Scrolling text ticker overlay | scroll_text, scroll_speed, text_color, bg_color, bg_opacity |
+| Banner Image | `banner` | Static/animated image overlay | image_url, dimensions, position, click_url |
+| Pre-Roll Video | `pre_roll` | Video ad before content | video_url or vast_tag_url, duration, skip_after |
+| Mid-Roll Video | `mid_roll` | Video ad during content | video_url or vast_tag_url, midroll_offset_type/value |
+
+### Database Tables
+
+#### `ad_campaigns` — Campaign container
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `name` | VARCHAR(255) | Campaign name |
+| `advertiser` | VARCHAR(255) | Client/advertiser name |
+| `status` | ENUM(draft,active,paused,completed,archived) | Lifecycle state |
+| `priority` | INT 1-10 | 1=highest priority |
+| `start_date/end_date` | DATETIME | Schedule window |
+| `daily_budget/total_budget` | DECIMAL | Spend limits |
+| `daily_impressions_cap` | INT | Max impressions per day |
+| `total_impressions_cap` | INT | Max total impressions |
+| `frequency_cap` | INT | Max times per user per day |
+| `total_impressions/clicks/spend` | Counters | Running totals |
+
+#### `ad_creatives` — Ad content
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `campaign_id` | INT FK→ad_campaigns | Parent campaign (CASCADE) |
+| `type` | ENUM(text_scroller,banner,pre_roll,mid_roll) | Ad format |
+| `scroll_text/speed/colors` | Various | Text scroller config |
+| `image_url/width/height/position` | Various | Banner config |
+| `video_url/vast_tag_url/duration/skip_after` | Various | Video config |
+| `midroll_offset_type/value` | Various | Mid-roll insertion point |
+| `click_url/click_target` | VARCHAR | Click-through destination |
+| `weight` | INT | Rotation weight within campaign |
+
+#### `ad_zones` — Pre-defined placement locations
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `slug` | VARCHAR(100) UNIQUE | API identifier (e.g. `preroll-vod`) |
+| `zone_type` | ENUM | Matches creative types |
+| `default_settings` | JSON | Zone-specific config |
+
+**Default zones seeded:** live-text-scroller, vod-text-scroller, live-banner, vod-banner, app-banner-top, app-banner-bottom, preroll-vod, preroll-live, midroll-vod, midroll-live
+
+#### `ad_placements` — Links creatives to zones
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `campaign_id` | INT FK | Parent campaign |
+| `creative_id` | INT FK | Which creative to show |
+| `zone_id` | INT FK | Where to show it |
+| `status` | ENUM(active,paused) | Toggle |
+| `priority` | INT | Within-zone priority |
+
+#### `ad_targeting_rules` — Flexible targeting per placement
+| Column | Type | Purpose |
+|--------|------|---------|
+| `placement_id` | INT FK | Parent placement (CASCADE) |
+| `rule_type` | ENUM | package, channel, category, content_type, platform, geo, schedule |
+| `rule_operator` | ENUM(include,exclude) | Include or exclude matches |
+| `rule_value` | JSON | Array of IDs or values |
+
+**Targeting examples:**
+- Show ads only to free-tier users: `{type: "package", operator: "include", value: [1]}` (package ID 1 = free)
+- Show ads only on specific channels: `{type: "channel", operator: "include", value: [5, 12, 18]}`
+- Exclude premium categories: `{type: "category", operator: "exclude", value: [3, 7]}`
+- Only show on mobile: `{type: "platform", operator: "include", value: ["mobile"]}`
+- Only during daytime: `{type: "schedule", operator: "include", value: ["06:00-18:00"]}`
+
+#### `ad_impressions` — Impression tracking
+Tracks every ad view with campaign_id, creative_id, zone_id, user_id, session, IP, platform, channel_id, content_type, revenue.
+
+#### `ad_events` — Click/completion tracking
+Tracks: click, complete, skip, error, quartile_25/50/75, mute, unmute, pause, resume, fullscreen.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/Services/AdService.php` | Ad business logic, targeting engine, reporting |
+| `src/Controllers/Admin/AdController.php` | Admin CRUD + ad serving API |
+| `templates/admin/ads/index.php` | Campaign listing |
+| `templates/admin/ads/form.php` | Campaign create/edit + creatives + placements |
+| `templates/admin/ads/zones.php` | Zone management |
+| `templates/admin/ads/reports.php` | Performance reports with charts |
+| `database/migrations/012_create_advertising_tables.sql` | All 7 tables |
+
+### Ad Serving API
+
+The player/app calls these endpoints to get and track ads:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/admin/ads/api/serve?zone_type=pre_roll&channel_id=5&platform=web&package_id=1` | GET | Get ads for context |
+| `/admin/ads/api/vast?zone_type=pre_roll&channel_id=5` | GET | Get VAST 4.2 XML for video players |
+| `/admin/ads/api/impression` | POST | Record ad impression |
+| `/admin/ads/api/event` | POST | Record click/complete/skip/etc. |
+
+**Serve API parameters:**
+- `zone_type` — text_scroller, banner, pre_roll, mid_roll
+- `zone_slug` — specific zone slug
+- `channel_id` — current channel
+- `content_type` — live, vod, series
+- `content_id` — movie/episode ID
+- `category_id` — content category
+- `package_id` — user's subscription package
+- `platform` — web, mobile, tv, stb
+- `user_id` — logged-in user
+- `limit` — max ads to return
+
+**VAST XML support:** The `/admin/ads/api/vast` endpoint generates VAST 4.2 XML for video player integration. It supports InLine ads with MediaFiles, TrackingEvents (start, quartiles, complete), VideoClicks, companion banners, and skip offsets.
+
+### Admin Routes (34 routes)
+
+```
+# Campaigns
+GET  /admin/ads                              → campaign listing
+GET  /admin/ads/create                       → create form
+POST /admin/ads/store                        → save new campaign
+GET  /admin/ads/{id}/edit                    → edit form
+POST /admin/ads/{id}/update                  → update campaign
+POST /admin/ads/{id}/delete                  → delete campaign
+POST /admin/ads/{id}/toggle-status           → pause/activate
+POST /admin/ads/bulk                         → bulk actions
+
+# Creatives
+POST /admin/ads/{id}/creatives/add           → add creative
+POST /admin/ads/{id}/creatives/{cid}/update  → update creative
+POST /admin/ads/{id}/creatives/{cid}/delete  → delete creative
+
+# Placements
+POST /admin/ads/{id}/placements/add          → add placement
+POST /admin/ads/{id}/placements/{pid}/update → update placement
+POST /admin/ads/{id}/placements/{pid}/delete → delete placement
+
+# Zones
+GET  /admin/ads/zones                        → zone management
+POST /admin/ads/zones/store                  → create zone
+POST /admin/ads/zones/{id}/update            → update zone
+POST /admin/ads/zones/{id}/toggle            → enable/disable zone
+POST /admin/ads/zones/{id}/delete            → delete zone
+
+# Reports
+GET  /admin/ads/reports                      → performance dashboard
+GET  /admin/ads/{id}/report                  → campaign report (AJAX)
+
+# Ad Serving API
+GET  /admin/ads/api/serve                    → get ads for context
+POST /admin/ads/api/impression               → record impression
+POST /admin/ads/api/event                    → record event
+GET  /admin/ads/api/vast                     → VAST 4.2 XML
+```
+
+### Building a Player with Ads
+
+To integrate ads in a player/frontend:
+
+1. **Before content playback** — Call `/admin/ads/api/serve?zone_type=pre_roll&channel_id=X&package_id=Y&platform=Z` to get pre-roll ads
+2. **For VAST-compatible players** — Use `/admin/ads/api/vast?zone_type=pre_roll&...` as the VAST tag URL
+3. **During playback** — Call `/admin/ads/api/serve?zone_type=mid_roll&...` for mid-roll insertion points
+4. **Overlay ads** — Call `/admin/ads/api/serve?zone_type=banner&...` or `zone_type=text_scroller&...` for overlay ads
+5. **Track impressions** — POST to `/admin/ads/api/impression` when ad is displayed
+6. **Track events** — POST to `/admin/ads/api/event` for clicks, completions, skips
+7. **Respect targeting** — Pass `package_id` so free-tier users see ads while premium users don't
+
 ## Project Status
 
-### Completed (Phases 0-4)
+### Completed (Phases 0-5)
 - Admin authentication system
 - Role-based access control
 - Admin user management
@@ -666,8 +860,9 @@ Lucide icon font is hosted locally at `public/assets/fonts/lucide/`. The CSS use
 - EPG system
 - App Layout builder (sections, items, TMDB import, image upload)
 - Pages & Navigation system (per-platform pages, navigation menus, icon picker)
+- Advertising system (campaigns, creatives, zones, placements, targeting, reporting, VAST)
 
-### In Progress (Phase 5)
+### In Progress (Phase 6)
 - Player integration
 - Frontend app rendering
 
