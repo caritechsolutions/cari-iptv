@@ -61,6 +61,7 @@ use CariIPTV\Controllers\Admin\CategoryController;
 use CariIPTV\Controllers\Admin\EpgController;
 use CariIPTV\Controllers\Admin\AppLayoutController;
 use CariIPTV\Controllers\Admin\AdController;
+use CariIPTV\Controllers\Admin\SubscriberController;
 
 // Initialize session
 Session::start();
@@ -307,6 +308,20 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);
     $router->post('/ads/api/event', [AdController::class, 'recordEvent']);
     $router->get('/ads/api/vast', [AdController::class, 'vastXml']);
+
+    // Subscriber Management
+    $router->get('/subscribers', [SubscriberController::class, 'index']);
+    $router->get('/subscribers/{id}/show', [SubscriberController::class, 'show']);
+    $router->post('/subscribers/store', [SubscriberController::class, 'store']);
+    $router->post('/subscribers/{id}/update', [SubscriberController::class, 'update']);
+    $router->post('/subscribers/{id}/delete', [SubscriberController::class, 'delete']);
+    $router->post('/subscribers/{id}/toggle-status', [SubscriberController::class, 'toggleStatus']);
+    $router->post('/subscribers/bulk', [SubscriberController::class, 'bulkAction']);
+
+    // Subscriber Groups
+    $router->post('/subscribers/groups/store', [SubscriberController::class, 'storeGroup']);
+    $router->post('/subscribers/groups/{id}/update', [SubscriberController::class, 'updateGroup']);
+    $router->post('/subscribers/groups/{id}/delete', [SubscriberController::class, 'deleteGroup']);
 });
 
 // Dispatch the request

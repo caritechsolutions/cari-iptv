@@ -727,9 +727,9 @@
 
                 <div class="nav-section">
                     <div class="nav-section-title">Subscribers</div>
-                    <a href="/admin/users" class="nav-item">
+                    <a href="/admin/subscribers" class="nav-item <?= ($pageTitle ?? '') === 'Subscribers' ? 'active' : '' ?>">
                         <i class="lucide-users"></i>
-                        <span>Users</span>
+                        <span>Subscribers</span>
                     </a>
                     <a href="/admin/subscriptions" class="nav-item">
                         <i class="lucide-credit-card"></i>
