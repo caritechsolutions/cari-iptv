@@ -190,7 +190,14 @@ $db->lastInsertId();            // Get last insert ID
 | `movie_artwork` | Fanart.tv artwork (posters, backdrops, logos) |
 | `movie_cast` | Cast and crew from TMDB |
 | `categories` | Channel/VOD categories (type: live, vod, series) |
+| `series` | TV show content with metadata (slug, year, synopsis) |
 | `settings` | Key-value configuration store (grouped by feature) |
+| `app_layouts` | Visual content templates per platform |
+| `app_layout_sections` | Ordered sections within a layout |
+| `app_layout_items` | Content items within sections |
+| `app_pages` | App screens per platform (linked to layouts) |
+| `app_navigation` | Navigation menus per platform+position |
+| `app_navigation_items` | Menu items linking to pages/URLs |
 
 ### Admin Roles (Hierarchy)
 1. `viewer` (level 1) - Read-only access
@@ -402,9 +409,250 @@ curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_
 4. Add proper validation and error handling
 5. Test the changes thoroughly
 
+## App Layout System (Pages, Navigation & Layout Builder)
+
+The App Layout system controls what end-users see in the IPTV app. It has three layers:
+
+```
+Navigation (menus) → Pages (screens) → Layouts (visual content)
+                                            ↓
+                                      Sections (rows/grids)
+                                            ↓
+                                      Content Items (movies, series, channels)
+```
+
+### How It All Connects
+
+1. **Navigation** menus contain items that link to **Pages**
+2. **Pages** are app screens (Home, Movies, Live TV, etc.) — some link to a **Layout**
+3. **Layouts** contain ordered **Sections** (hero slideshow, content rows, etc.)
+4. **Sections** contain **Content Items** (movies, series, channels, or custom images)
+
+Each layer is platform-specific (`web`, `mobile`, `tv`, `stb`) so each platform can have its own navigation style, pages, and layouts.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/Controllers/Admin/AppLayoutController.php` | All AJAX endpoints (36 routes) |
+| `src/Services/AppLayoutService.php` | Business logic (30+ methods) |
+| `templates/admin/app-layout/index.php` | Layout listing page |
+| `templates/admin/app-layout/builder.php` | Visual layout builder |
+| `templates/admin/app-layout/pages.php` | Pages & Navigation management |
+| `database/migrations/010_create_app_layout_tables.sql` | Layouts, sections, items tables |
+| `database/migrations/011_create_app_pages_navigation.sql` | Pages, navigation tables + seed data |
+
+### Database Tables
+
+#### `app_layouts` — Visual content templates
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `name` | VARCHAR(255) | Layout name |
+| `platform` | ENUM(web,mobile,tv,stb) | Target platform |
+| `status` | ENUM(draft,published,archived) | Lifecycle state |
+| `is_default` | TINYINT | Active default for platform (1 per platform) |
+| `schedule_start/end` | DATETIME | Optional scheduled activation |
+
+#### `app_layout_sections` — Rows within a layout
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `layout_id` | INT FK→app_layouts | Parent layout (CASCADE delete) |
+| `section_type` | VARCHAR(50) | Type key (see section types below) |
+| `title` | VARCHAR(255) | Display heading |
+| `settings` | JSON | Type-specific configuration |
+| `sort_order` | INT | Display order |
+| `is_active` | TINYINT | Toggle |
+
+#### `app_layout_items` — Content within a section
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `section_id` | INT FK→app_layout_sections | Parent section (CASCADE delete) |
+| `content_type` | ENUM(movie,series,channel,category,custom) | What type of content |
+| `content_id` | INT | FK to movies/series/channels/categories (NULL for custom) |
+| `settings` | JSON | For custom items: `{image_url, title, link_url}` |
+| `sort_order` | INT | Display order |
+
+#### `app_pages` — App screens
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `name` | VARCHAR(255) | Display name (e.g. "Movies") |
+| `slug` | VARCHAR(100) | URL path (e.g. "movies") |
+| `page_type` | ENUM(11 types) | See page types below |
+| `platform` | ENUM(web,mobile,tv,stb) | Target platform |
+| `layout_id` | INT FK→app_layouts | Linked layout (SET NULL on delete) |
+| `icon` | VARCHAR(50) | Lucide icon class (e.g. `lucide-film`) |
+| `is_system` | TINYINT | System pages cannot be deleted |
+| `sort_order` | INT | Display order |
+
+#### `app_navigation` — Navigation menus
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `platform` | ENUM(web,mobile,tv,stb) | Target platform |
+| `position` | ENUM(main,footer,sidebar,top) | Menu position |
+| `settings` | JSON | Style config: `{style, show_icons, show_labels}` |
+
+Unique constraint on `(platform, position)`.
+
+#### `app_navigation_items` — Menu items
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `navigation_id` | INT FK→app_navigation | Parent menu (CASCADE delete) |
+| `page_id` | INT FK→app_pages | Target page (when target=page) |
+| `label` | VARCHAR(100) | Display text |
+| `icon` | VARCHAR(50) | Lucide icon class |
+| `target` | ENUM(page,url,deeplink) | Link type |
+| `url` | VARCHAR(500) | For url/deeplink targets |
+| `sort_order` | INT | Display order |
+
+### Page Types
+
+Defined in `AppLayoutService::getPageTypes()`:
+
+| Type | Name | has_layout | Description |
+|------|------|-----------|-------------|
+| `home` | Home | YES | Main landing page |
+| `movies` | Movies | YES | Movie browsing & listing |
+| `series` | TV Shows | YES | TV series browsing |
+| `live_tv` | Live TV | YES | Live channel guide & player |
+| `categories` | Categories | YES | Browse by genre/category |
+| `custom` | Custom Page | YES | User-defined page |
+| `search` | Search | NO | Content search |
+| `watchlist` | My List | NO | User watchlist/favourites |
+| `settings` | Settings | NO | App settings & preferences |
+| `player` | Player | NO | Media player page |
+| `details` | Details | NO | Content detail view |
+
+Pages with `has_layout: true` can be linked to a layout via `layout_id`. Pages with `has_layout: false` are standalone screens that need their own implementation.
+
+### Section Types (10 types)
+
+Defined in `AppLayoutService::getSectionTypes()`:
+
+| Type Key | Name | Category | Supports Items | Max/Layout | Description |
+|----------|------|----------|---------------|------------|-------------|
+| `hero_slideshow` | Hero Slideshow | featured | YES | 1 | Full-width billboard with auto-rotation |
+| `content_row` | Content Row | content | YES | 20 | Horizontal scrollable rail of cards |
+| `continue_watching` | Continue Watching | personalized | NO (auto) | 1 | User's resume-watching row |
+| `live_now` | Live Now | live | NO (auto/EPG) | 2 | Currently airing programmes |
+| `epg_schedule` | TV Guide | live | NO (auto/EPG) | 1 | Mini programme guide grid |
+| `channel_grid` | Channel Grid | live | YES | 3 | Featured channels grid |
+| `category_grid` | Category Grid | navigation | NO (auto) | 2 | Browse-by-genre grid |
+| `banner` | Promo Banner | promotional | NO (settings) | 5 | Promotional image with link |
+| `spotlight` | Spotlight | featured | YES | 3 | Single featured item with details |
+| `text_divider` | Section Divider | utility | NO | 10 | Heading text or separator |
+
+**Sections that accept manual content items:** `hero_slideshow`, `content_row`, `channel_grid`, `spotlight`
+
+**Auto-populated sections:** `continue_watching` (per user), `live_now` (from EPG), `epg_schedule` (from EPG), `category_grid` (from categories table)
+
+### Section Settings (defaults)
+
+Each section type has configurable settings stored as JSON. Key ones:
+
+**hero_slideshow**: `auto_rotate` (bool), `interval` (seconds), `height` (small/medium/large), `show_play_button`, `show_info_button`
+
+**content_row**: `source` (curated/latest/popular/top_rated/featured/category), `content_type` (movie/series/mixed), `card_style` (poster/backdrop/square), `max_items`, `category_id`, `sort_by`
+
+**channel_grid**: `source` (curated/popular/category), `columns`, `max_items`, `show_now_playing`, `category_id`
+
+**banner**: `image_url`, `link_url`, `link_type` (url/movie/series/channel), `aspect_ratio` (21:9/16:9/3:1)
+
+### Content Items — 3 Ways to Add
+
+1. **Local Library**: Search existing movies, series, channels, categories via `GET /admin/app-layout/search-content?type=movie&q=batman`
+2. **TMDB Import**: Search TMDB via `GET /admin/app-layout/search-tmdb?q=batman&type=movie`, then import via `POST /admin/app-layout/import-tmdb-item` — creates a local record with `status=draft, source=tmdb`
+3. **Custom Image Upload**: Upload via `POST /admin/app-layout/upload-item-image` — processed through `ImageService` with context `layout`, creates a custom item with `{image_url, title, link_url}`
+
+### Navigation Styles
+
+Each platform has a default navigation style:
+- **Web**: `sidebar` — vertical side menu
+- **Mobile**: `bottom_tab` — bottom tab bar (max 5 items)
+- **TV**: `top_bar` — horizontal top menu
+- **STB**: `sidebar` — vertical side menu
+
+Settings JSON: `{"style": "bottom_tab", "show_icons": true, "show_labels": true, "max_items": 5}`
+
+### API Routes Summary (36 routes)
+
+All routes require auth middleware. All POST endpoints are AJAX (return JSON).
+
+```
+# Layout CRUD
+GET  /admin/app-layout                                → index listing
+POST /admin/app-layout/store                           → create layout
+GET  /admin/app-layout/{id}/builder                    → visual builder
+POST /admin/app-layout/{id}/update                     → update layout
+POST /admin/app-layout/{id}/delete                     → delete layout
+POST /admin/app-layout/{id}/duplicate                  → deep-copy layout
+POST /admin/app-layout/{id}/publish                    → publish + set default
+
+# Sections
+POST /admin/app-layout/{id}/sections/add               → add section
+POST /admin/app-layout/{id}/sections/reorder            → reorder sections
+POST /admin/app-layout/{id}/sections/{sid}/update       → update section
+POST /admin/app-layout/{id}/sections/{sid}/delete       → delete section
+
+# Items
+POST /admin/app-layout/{id}/sections/{sid}/items/add    → add item
+POST /admin/app-layout/{id}/sections/{sid}/items/reorder → reorder items
+POST /admin/app-layout/{id}/sections/{sid}/items/{iid}/remove → remove item
+
+# Content search & import
+GET  /admin/app-layout/search-content                  → search local library
+GET  /admin/app-layout/search-tmdb                     → search TMDB
+POST /admin/app-layout/import-tmdb-item                → import from TMDB
+POST /admin/app-layout/upload-item-image               → upload custom image
+
+# Pages
+GET  /admin/app-layout/pages                           → pages & nav management
+POST /admin/app-layout/pages/store                     → create page
+POST /admin/app-layout/pages/reorder                   → reorder pages
+POST /admin/app-layout/pages/{id}/update               → update page
+POST /admin/app-layout/pages/{id}/delete               → delete page
+
+# Navigation
+POST /admin/app-layout/navigation/save                 → upsert nav menu
+POST /admin/app-layout/navigation/items/add            → add nav item
+POST /admin/app-layout/navigation/items/reorder        → reorder items
+POST /admin/app-layout/navigation/items/{id}/update    → update item
+POST /admin/app-layout/navigation/items/{id}/remove    → remove item
+```
+
+### Building a Player / Frontend App
+
+To render the app for an end-user, a player/frontend needs to:
+
+1. **Get navigation** for the platform — query `app_navigation` + `app_navigation_items` joined with `app_pages` to build the menu
+2. **Get pages** for the platform — query `app_pages` to know what screens exist and their page_type
+3. **For each page with a layout** — query `app_layouts` → `app_layout_sections` → `app_layout_items`, resolve items via their `content_type` + `content_id`
+4. **Render sections** based on `section_type` and `settings`:
+   - `hero_slideshow`: Full-width carousel of items
+   - `content_row`: Horizontal scrollable cards with `card_style` (poster/backdrop/square)
+   - `continue_watching`: Query user's watch history, show progress bars
+   - `live_now`: Query EPG for current programmes
+   - `channel_grid`: Grid of channel logos/cards
+   - `category_grid`: Grid of genre tiles
+   - `banner`: Single promotional image
+   - `spotlight`: Featured single item
+   - `text_divider`: Heading or separator
+5. **For pages without layouts** (search, watchlist, settings, player, details): Build standalone UI
+
+### Icons
+
+Lucide icon font is hosted locally at `public/assets/fonts/lucide/`. The CSS uses class prefix `lucide-` (e.g., `<i class="lucide-film"></i>`). The font files (woff2, woff, ttf) are in the same directory. Loaded via `<link rel="stylesheet" href="/assets/fonts/lucide/lucide.css">` in the admin layout.
+
+**Important:** The `[data-icon]` CSS selector in lucide.css conflicts with `data-icon` HTML attributes — use `data-value` instead when storing icon names on elements.
+
 ## Project Status
 
-### Completed (Phases 0-3)
+### Completed (Phases 0-4)
 - Admin authentication system
 - Role-based access control
 - Admin user management
@@ -413,15 +661,18 @@ curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_
 - Profile management
 - Channel management (CRUD, bulk actions, logo search)
 - Movies management (CRUD, TMDB/Fanart.tv metadata, trailers, YouTube import)
+- Series/TV Shows management
+- Category management
+- EPG system
+- App Layout builder (sections, items, TMDB import, image upload)
+- Pages & Navigation system (per-platform pages, navigation menus, icon picker)
 
-### In Progress (Phase 4)
-- Series management
-- Category management refinements
+### In Progress (Phase 5)
+- Player integration
+- Frontend app rendering
 
 ### Future Phases
 - User profiles with parental controls
-- Live TV player integration
-- EPG system
 - Package/subscription management
 - Analytics dashboard
 
