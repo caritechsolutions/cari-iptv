@@ -17,6 +17,19 @@ class ContentApiService
         $this->db = Database::getInstance();
     }
 
+    /**
+     * Safe query wrapper - returns default on failure
+     */
+    private function safeQuery(callable $fn, mixed $default = null): mixed
+    {
+        try {
+            return $fn();
+        } catch (\Throwable $e) {
+            error_log('ContentAPI query error: ' . $e->getMessage());
+            return $default;
+        }
+    }
+
     // =========================================================================
     // MANIFEST / VERSIONING
     // =========================================================================
@@ -29,10 +42,10 @@ class ContentApiService
     {
         $manifest = [];
 
-        // Channels version
-        $row = $this->db->fetch(
-            "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM channels WHERE status = 'active'"
-        );
+        // Channels version (is_active, not status)
+        $row = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM channels WHERE is_active = 1"
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['channels'] = [
             'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
@@ -40,9 +53,9 @@ class ContentApiService
         ];
 
         // Movies version
-        $row = $this->db->fetch(
+        $row = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM movies WHERE status = 'published'"
-        );
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['movies'] = [
             'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
@@ -50,81 +63,65 @@ class ContentApiService
         ];
 
         // Series version
-        $row = $this->db->fetch(
+        $row = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM series WHERE status = 'published'"
-        );
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['series'] = [
             'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Categories version
-        $row = $this->db->fetch(
-            "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM categories WHERE is_active = 1"
-        );
+        // Categories version (no updated_at column, use created_at)
+        $row = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM categories WHERE is_active = 1"
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['categories'] = [
             'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // EPG version (programmes table)
-        try {
-            $row = $this->db->fetch(
-                "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM epg_programmes WHERE end_time > NOW()"
-            );
-            $manifest['epg'] = [
-                'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
-                'count' => (int)($row['cnt'] ?? 0),
-                'updated_at' => $row['latest'] ?? null,
-            ];
-        } catch (\Throwable $e) {
-            $manifest['epg'] = ['version' => 'none', 'count' => 0, 'updated_at' => null];
-        }
+        // EPG version (table is epg_programs, no updated_at)
+        $row = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM epg_programs WHERE end_time > NOW()"
+        ), ['cnt' => 0, 'latest' => null]);
+        $manifest['epg'] = [
+            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+            'count' => (int)($row['cnt'] ?? 0),
+            'updated_at' => $row['latest'] ?? null,
+        ];
 
         // Layout versions per platform
         $platforms = $platform ? [$platform] : ['web', 'mobile', 'tv', 'stb'];
         $manifest['layouts'] = [];
         foreach ($platforms as $p) {
-            try {
-                $row = $this->db->fetch(
-                    "SELECT id, updated_at FROM app_layouts WHERE platform = ? AND is_default = 1 AND status = 'published' LIMIT 1",
-                    [$p]
-                );
-                if ($row) {
-                    $manifest['layouts'][$p] = [
-                        'version' => md5($row['id'] . ':' . $row['updated_at']),
-                        'layout_id' => (int)$row['id'],
-                        'updated_at' => $row['updated_at'],
-                    ];
-                }
-            } catch (\Throwable $e) {
-                // Table may not exist yet
+            $row = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT id, updated_at FROM app_layouts WHERE platform = ? AND is_default = 1 AND status = 'published' LIMIT 1",
+                [$p]
+            ));
+            if ($row) {
+                $manifest['layouts'][$p] = [
+                    'version' => md5($row['id'] . ':' . $row['updated_at']),
+                    'layout_id' => (int)$row['id'],
+                    'updated_at' => $row['updated_at'],
+                ];
             }
         }
 
         // Navigation versions per platform
         $manifest['navigation'] = [];
         foreach ($platforms as $p) {
-            try {
-                $row = $this->db->fetch(
-                    "SELECT MAX(n.updated_at) as latest,
-                            (SELECT MAX(ni.updated_at) FROM app_navigation_items ni
-                             JOIN app_navigation nav ON ni.navigation_id = nav.id
-                             WHERE nav.platform = ?) as items_latest
-                     FROM app_navigation n WHERE n.platform = ?",
-                    [$p, $p]
-                );
-                $combined = max($row['latest'] ?? '', $row['items_latest'] ?? '');
-                if ($combined) {
-                    $manifest['navigation'][$p] = [
-                        'version' => md5($p . ':' . $combined),
-                        'updated_at' => $combined,
-                    ];
-                }
-            } catch (\Throwable $e) {
-                // Table may not exist yet
+            $row = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT MAX(n.updated_at) as latest
+                 FROM app_navigation n WHERE n.platform = ?",
+                [$p]
+            ));
+            if ($row && $row['latest']) {
+                $manifest['navigation'][$p] = [
+                    'version' => md5($p . ':' . $row['latest']),
+                    'updated_at' => $row['latest'],
+                ];
             }
         }
 
@@ -146,7 +143,7 @@ class ContentApiService
 
     public function getChannels(array $filters = []): array
     {
-        $where = ["c.status = 'active'"];
+        $where = ["c.is_active = 1"];
         $params = [];
 
         if (!empty($filters['category_id'])) {
@@ -160,20 +157,19 @@ class ContentApiService
         }
 
         $whereStr = implode(' AND ', $where);
-        $orderBy = $filters['sort'] ?? 'c.sort_order ASC, c.name ASC';
 
         $limit = min((int)($filters['limit'] ?? 500), 1000);
         $offset = max((int)($filters['offset'] ?? 0), 0);
 
         $channels = $this->db->fetchAll(
-            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.stream_type,
-                    c.epg_channel_id, c.category_id, c.country_code,
-                    c.is_hd, c.sort_order, c.updated_at,
+            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url,
+                    c.epg_channel_id, c.category_id, c.country,
+                    c.is_hd, c.channel_number, c.sort_order, c.updated_at,
                     cat.name as category_name
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
              WHERE {$whereStr}
-             ORDER BY {$orderBy}
+             ORDER BY c.sort_order ASC, c.name ASC
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
@@ -197,7 +193,7 @@ class ContentApiService
             "SELECT c.*, cat.name as category_name
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
-             WHERE c.id = ? AND c.status = 'active'",
+             WHERE c.id = ? AND c.is_active = 1",
             [$id]
         );
 
@@ -205,26 +201,22 @@ class ContentApiService
             return null;
         }
 
-        // Get current EPG programme
-        try {
-            $channel['now_playing'] = $this->db->fetch(
-                "SELECT title, description, start_time, end_time
-                 FROM epg_programmes
-                 WHERE channel_id = ? AND start_time <= NOW() AND end_time > NOW()
-                 LIMIT 1",
-                [$id]
-            );
-            $channel['next_up'] = $this->db->fetch(
-                "SELECT title, description, start_time, end_time
-                 FROM epg_programmes
-                 WHERE channel_id = ? AND start_time > NOW()
-                 ORDER BY start_time ASC LIMIT 1",
-                [$id]
-            );
-        } catch (\Throwable $e) {
-            $channel['now_playing'] = null;
-            $channel['next_up'] = null;
-        }
+        // Get current EPG programme (table is epg_programs)
+        $channel['now_playing'] = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT title, description, start_time, end_time
+             FROM epg_programs
+             WHERE channel_id = ? AND start_time <= NOW() AND end_time > NOW()
+             LIMIT 1",
+            [$id]
+        ));
+
+        $channel['next_up'] = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT title, description, start_time, end_time
+             FROM epg_programs
+             WHERE channel_id = ? AND start_time > NOW()
+             ORDER BY start_time ASC LIMIT 1",
+            [$id]
+        ));
 
         return $channel;
     }
@@ -253,7 +245,8 @@ class ContentApiService
         }
 
         if (!empty($filters['genre'])) {
-            $where[] = "m.genre LIKE ?";
+            // genres is a JSON column
+            $where[] = "m.genres LIKE ?";
             $params[] = '%' . $filters['genre'] . '%';
         }
 
@@ -264,13 +257,13 @@ class ContentApiService
 
         $whereStr = implode(' AND ', $where);
 
-        // Sort options
+        // Sort options (vote_average, not tmdb_rating)
         $sortMap = [
             'latest' => 'm.created_at DESC',
             'title' => 'm.title ASC',
             'year' => 'm.year DESC, m.title ASC',
-            'rating' => 'm.tmdb_rating DESC',
-            'popular' => 'm.tmdb_popularity DESC',
+            'rating' => 'm.vote_average DESC',
+            'popular' => 'm.views DESC',
         ];
         $orderBy = $sortMap[$filters['sort'] ?? 'latest'] ?? 'm.created_at DESC';
 
@@ -278,9 +271,9 @@ class ContentApiService
         $offset = max((int)($filters['offset'] ?? 0), 0);
 
         $movies = $this->db->fetchAll(
-            "SELECT m.id, m.title, m.slug, m.year, m.genre, m.runtime,
-                    m.tmdb_rating, m.tmdb_popularity, m.poster_url, m.backdrop_url,
-                    m.stream_url, m.stream_type, m.is_featured,
+            "SELECT m.id, m.title, m.slug, m.year, m.genres, m.runtime,
+                    m.vote_average, m.poster_url, m.backdrop_url,
+                    m.stream_url, m.is_featured,
                     m.category_id, m.updated_at,
                     cat.name as category_name
              FROM movies m
@@ -318,38 +311,26 @@ class ContentApiService
             return null;
         }
 
-        // Trailers
-        try {
-            $movie['trailers'] = $this->db->fetchAll(
-                "SELECT id, title, youtube_id, youtube_url, is_primary
-                 FROM movie_trailers WHERE movie_id = ? ORDER BY is_primary DESC, sort_order ASC",
-                [$id]
-            );
-        } catch (\Throwable $e) {
-            $movie['trailers'] = [];
-        }
+        // Trailers (video_key, url - not youtube_id, youtube_url)
+        $movie['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, name as title, video_key, url, is_primary
+             FROM movie_trailers WHERE movie_id = ? ORDER BY is_primary DESC, sort_order ASC",
+            [$id]
+        ), []);
 
         // Artwork
-        try {
-            $movie['artwork'] = $this->db->fetchAll(
-                "SELECT id, type, url, language, is_primary
-                 FROM movie_artwork WHERE movie_id = ? ORDER BY is_primary DESC",
-                [$id]
-            );
-        } catch (\Throwable $e) {
-            $movie['artwork'] = [];
-        }
+        $movie['artwork'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, type, url, language, is_primary
+             FROM movie_artwork WHERE movie_id = ? ORDER BY is_primary DESC",
+            [$id]
+        ), []);
 
         // Cast
-        try {
-            $movie['cast'] = $this->db->fetchAll(
-                "SELECT name, character_name, profile_path, role, sort_order
-                 FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
-                [$id]
-            );
-        } catch (\Throwable $e) {
-            $movie['cast'] = [];
-        }
+        $movie['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT name, character_name, profile_url, role, sort_order
+             FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
+            [$id]
+        ), []);
 
         return $movie;
     }
@@ -378,31 +359,34 @@ class ContentApiService
         }
 
         if (!empty($filters['genre'])) {
-            $where[] = "s.genre LIKE ?";
+            // genres is a JSON column
+            $where[] = "s.genres LIKE ?";
             $params[] = '%' . $filters['genre'] . '%';
         }
 
         $whereStr = implode(' AND ', $where);
 
+        // Sort options (vote_average, not tmdb_rating)
         $sortMap = [
             'latest' => 's.created_at DESC',
             'title' => 's.title ASC',
             'year' => 's.year DESC, s.title ASC',
-            'rating' => 's.tmdb_rating DESC',
-            'popular' => 's.tmdb_popularity DESC',
+            'rating' => 's.vote_average DESC',
+            'popular' => 's.views DESC',
         ];
         $orderBy = $sortMap[$filters['sort'] ?? 'latest'] ?? 's.created_at DESC';
 
         $limit = min((int)($filters['limit'] ?? 50), 200);
         $offset = max((int)($filters['offset'] ?? 0), 0);
 
+        // Use cached counts from series table (number_of_seasons, number_of_episodes)
         $series = $this->db->fetchAll(
-            "SELECT s.id, s.title, s.slug, s.year, s.genre, s.synopsis,
-                    s.tmdb_rating, s.tmdb_popularity, s.poster_url, s.backdrop_url,
+            "SELECT s.id, s.title, s.slug, s.year, s.genres, s.synopsis,
+                    s.vote_average, s.poster_url, s.backdrop_url,
                     s.is_featured, s.category_id, s.updated_at,
-                    cat.name as category_name,
-                    (SELECT COUNT(*) FROM seasons WHERE series_id = s.id) as season_count,
-                    (SELECT COUNT(*) FROM episodes e JOIN seasons sn ON e.season_id = sn.id WHERE sn.series_id = s.id) as episode_count
+                    s.number_of_seasons as season_count,
+                    s.number_of_episodes as episode_count,
+                    cat.name as category_name
              FROM series s
              LEFT JOIN categories cat ON s.category_id = cat.id
              WHERE {$whereStr}
@@ -438,38 +422,33 @@ class ContentApiService
             return null;
         }
 
-        // Seasons with episode counts
-        $show['seasons'] = $this->db->fetchAll(
-            "SELECT sn.*,
-                    (SELECT COUNT(*) FROM episodes WHERE season_id = sn.id) as episode_count
-             FROM seasons sn
+        // Seasons (table is series_seasons)
+        $show['seasons'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT sn.*, sn.episode_count
+             FROM series_seasons sn
              WHERE sn.series_id = ?
              ORDER BY sn.season_number ASC",
             [$id]
-        );
+        ), []);
 
-        // Episodes per season
+        // Episodes per season (table is series_episodes)
         foreach ($show['seasons'] as &$season) {
-            $season['episodes'] = $this->db->fetchAll(
-                "SELECT id, title, episode_number, synopsis, runtime,
-                        stream_url, stream_type, still_path, air_date
-                 FROM episodes
+            $season['episodes'] = $this->safeQuery(fn() => $this->db->fetchAll(
+                "SELECT id, name as title, episode_number, overview as synopsis, runtime,
+                        stream_url, still_url, air_date, vote_average
+                 FROM series_episodes
                  WHERE season_id = ?
                  ORDER BY episode_number ASC",
                 [$season['id']]
-            );
+            ), []);
         }
 
-        // Trailers (series-level)
-        try {
-            $show['trailers'] = $this->db->fetchAll(
-                "SELECT id, title, youtube_id, youtube_url, is_primary
-                 FROM movie_trailers WHERE movie_id = ? ORDER BY is_primary DESC, sort_order ASC",
-                [$id]
-            );
-        } catch (\Throwable $e) {
-            $show['trailers'] = [];
-        }
+        // Trailers (series-level, table is series_trailers)
+        $show['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, name as title, video_key, url, is_primary
+             FROM series_trailers WHERE series_id = ? ORDER BY is_primary DESC, sort_order ASC",
+            [$id]
+        ), []);
 
         return $show;
     }
@@ -488,15 +467,16 @@ class ContentApiService
             $params[] = $filters['type'];
         }
 
+        // Categories has no updated_at, use created_at for since filter
         if (!empty($filters['since'])) {
-            $where[] = "c.updated_at > ?";
+            $where[] = "c.created_at > ?";
             $params[] = $filters['since'];
         }
 
         $whereStr = implode(' AND ', $where);
 
         return $this->db->fetchAll(
-            "SELECT c.id, c.name, c.slug, c.type, c.icon, c.sort_order, c.updated_at
+            "SELECT c.id, c.name, c.slug, c.type, c.icon, c.sort_order, c.created_at
              FROM categories c
              WHERE {$whereStr}
              ORDER BY c.sort_order ASC, c.name ASC",
@@ -532,11 +512,12 @@ class ContentApiService
 
         $limit = min((int)($filters['limit'] ?? 500), 2000);
 
+        // Table is epg_programs (not epg_programmes)
         return $this->db->fetchAll(
             "SELECT p.id, p.channel_id, p.title, p.description,
-                    p.start_time, p.end_time, p.category, p.icon,
+                    p.start_time, p.end_time, p.category,
                     c.name as channel_name
-             FROM epg_programmes p
+             FROM epg_programs p
              JOIN channels c ON p.channel_id = c.id
              WHERE {$whereStr}
              ORDER BY p.channel_id ASC, p.start_time ASC
@@ -551,13 +532,13 @@ class ContentApiService
 
     public function getLayout(string $platform): ?array
     {
-        $layout = $this->db->fetch(
+        $layout = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT id, name, platform, status, updated_at
              FROM app_layouts
              WHERE platform = ? AND is_default = 1 AND status = 'published'
              LIMIT 1",
             [$platform]
-        );
+        ));
 
         if (!$layout) {
             return null;
@@ -603,47 +584,36 @@ class ContentApiService
             return null;
         }
 
-        switch ($type) {
-            case 'movie':
-                return $this->db->fetch(
-                    "SELECT id, title, slug, year, genre, runtime, tmdb_rating,
-                            poster_url, backdrop_url, stream_url, synopsis
-                     FROM movies WHERE id = ? AND status = 'published'",
-                    [$contentId]
-                );
-
-            case 'series':
-                return $this->db->fetch(
-                    "SELECT id, title, slug, year, genre, tmdb_rating,
-                            poster_url, backdrop_url, synopsis
-                     FROM series WHERE id = ? AND status = 'published'",
-                    [$contentId]
-                );
-
-            case 'channel':
-                return $this->db->fetch(
-                    "SELECT id, name, slug, logo_url, stream_url, stream_type, is_hd
-                     FROM channels WHERE id = ? AND status = 'active'",
-                    [$contentId]
-                );
-
-            case 'category':
-                return $this->db->fetch(
-                    "SELECT id, name, slug, type, icon
-                     FROM categories WHERE id = ? AND is_active = 1",
-                    [$contentId]
-                );
-
-            case 'custom':
-                return [
-                    'title' => $settings['title'] ?? null,
-                    'image_url' => $settings['image_url'] ?? null,
-                    'link_url' => $settings['link_url'] ?? null,
-                ];
-
-            default:
-                return null;
-        }
+        return match ($type) {
+            'movie' => $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT id, title, slug, year, genres, runtime, vote_average,
+                        poster_url, backdrop_url, stream_url, synopsis
+                 FROM movies WHERE id = ? AND status = 'published'",
+                [$contentId]
+            )),
+            'series' => $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT id, title, slug, year, genres, vote_average,
+                        poster_url, backdrop_url, synopsis
+                 FROM series WHERE id = ? AND status = 'published'",
+                [$contentId]
+            )),
+            'channel' => $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT id, name, slug, logo_url, stream_url, is_hd
+                 FROM channels WHERE id = ? AND is_active = 1",
+                [$contentId]
+            )),
+            'category' => $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT id, name, slug, type, icon
+                 FROM categories WHERE id = ? AND is_active = 1",
+                [$contentId]
+            )),
+            'custom' => [
+                'title' => $settings['title'] ?? null,
+                'image_url' => $settings['image_url'] ?? null,
+                'link_url' => $settings['link_url'] ?? null,
+            ],
+            default => null,
+        };
     }
 
     // =========================================================================
@@ -652,13 +622,13 @@ class ContentApiService
 
     public function getNavigation(string $platform, string $position = 'main'): ?array
     {
-        $nav = $this->db->fetch(
+        $nav = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT id, platform, position, settings
              FROM app_navigation
              WHERE platform = ? AND position = ?
              LIMIT 1",
             [$platform, $position]
-        );
+        ));
 
         if (!$nav) {
             return null;
@@ -681,13 +651,14 @@ class ContentApiService
 
     public function getPages(string $platform): array
     {
-        return $this->db->fetchAll(
+        // app_pages uses is_active, not status
+        return $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT id, name, slug, page_type, icon, layout_id, is_system, sort_order
              FROM app_pages
-             WHERE platform = ? AND status = 'active'
+             WHERE platform = ? AND is_active = 1
              ORDER BY sort_order ASC",
             [$platform]
-        );
+        ), []);
     }
 
     // =========================================================================
@@ -702,35 +673,35 @@ class ContentApiService
         $limit = min((int)($filters['limit'] ?? 20), 50);
 
         if ($types === 'all' || $types === 'channel') {
-            $channels = $this->db->fetchAll(
+            $channels = $this->safeQuery(fn() => $this->db->fetchAll(
                 "SELECT id, name as title, slug, logo_url as image_url, 'channel' as content_type
                  FROM channels
-                 WHERE status = 'active' AND (name LIKE ? OR slug LIKE ?)
+                 WHERE is_active = 1 AND (name LIKE ? OR slug LIKE ?)
                  ORDER BY name ASC LIMIT ?",
                 [$searchTerm, $searchTerm, $limit]
-            );
+            ), []);
             $results = array_merge($results, $channels);
         }
 
         if ($types === 'all' || $types === 'movie') {
-            $movies = $this->db->fetchAll(
-                "SELECT id, title, slug, poster_url as image_url, year, genre, tmdb_rating, 'movie' as content_type
+            $movies = $this->safeQuery(fn() => $this->db->fetchAll(
+                "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'movie' as content_type
                  FROM movies
                  WHERE status = 'published' AND (title LIKE ? OR slug LIKE ? OR synopsis LIKE ?)
-                 ORDER BY tmdb_popularity DESC LIMIT ?",
+                 ORDER BY vote_average DESC LIMIT ?",
                 [$searchTerm, $searchTerm, $searchTerm, $limit]
-            );
+            ), []);
             $results = array_merge($results, $movies);
         }
 
         if ($types === 'all' || $types === 'series') {
-            $series = $this->db->fetchAll(
-                "SELECT id, title, slug, poster_url as image_url, year, genre, tmdb_rating, 'series' as content_type
+            $series = $this->safeQuery(fn() => $this->db->fetchAll(
+                "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'series' as content_type
                  FROM series
                  WHERE status = 'published' AND (title LIKE ? OR slug LIKE ? OR synopsis LIKE ?)
-                 ORDER BY tmdb_popularity DESC LIMIT ?",
+                 ORDER BY vote_average DESC LIMIT ?",
                 [$searchTerm, $searchTerm, $searchTerm, $limit]
-            );
+            ), []);
             $results = array_merge($results, $series);
         }
 
