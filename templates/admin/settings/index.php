@@ -508,7 +508,7 @@
                         <button type="button" class="btn btn-secondary" onclick="testAIConnection()">
                             <i class="lucide-zap"></i> Test AI Connection
                         </button>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="button" class="btn btn-primary" onclick="saveAISettingsBtn(this)">
                             <i class="lucide-save"></i> Save AI Settings
                         </button>
                     </div>
@@ -1073,6 +1073,14 @@ document.querySelectorAll('.provider-card input').forEach(radio => {
 function showProviderSettings(provider) {
     document.querySelectorAll('.provider-settings').forEach(el => el.style.display = 'none');
     document.getElementById('settings-' + provider).style.display = 'block';
+
+    // Update the provider badge in the card header
+    var badge = document.querySelector('.card.full-width .status-badge');
+    if (badge) {
+        var names = {ollama: 'Ollama (Local)', openai: 'OpenAI', anthropic: 'Anthropic'};
+        badge.textContent = (names[provider] || provider) + ' (unsaved)';
+        badge.className = 'status-badge disconnected';
+    }
 }
 
 // Test functions
@@ -1147,29 +1155,80 @@ function testOllamaConnection() {
     .catch(() => showTestResult('Ollama Connection', 'Connection test failed', false));
 }
 
-function testAIConnection() {
-    var btn = document.querySelector('[onclick="testAIConnection()"]');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="lucide-loader"></i> Testing...'; }
+function saveAISettings(callback) {
+    var form = document.getElementById('aiForm');
+    var formData = new FormData(form);
 
-    fetch('/admin/settings/test-ai', {
+    fetch('/admin/settings/ai', {
         method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: '_token=<?= $csrf ?>'
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        body: new URLSearchParams(formData)
     })
     .then(r => r.json())
     .then(data => {
-        let message = data.message;
-        if (data.response) {
-            message += '<br><br>Response: "' + data.response.substring(0, 200) + '"';
+        if (data.success) {
+            // Update the provider badge
+            var badge = document.querySelector('.card.full-width .status-badge');
+            if (badge && data.provider_name) {
+                badge.textContent = data.provider_name;
+                badge.className = 'status-badge connected';
+            }
         }
-        if (data.model) {
-            message += '<br><small>Model: ' + data.model + '</small>';
-        }
-        showTestResult('AI Connection', message, data.success);
+        if (callback) callback(data);
     })
-    .catch(() => showTestResult('AI Connection', 'Connection test failed. Check server logs.', false))
-    .finally(() => {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="lucide-zap"></i> Test AI Connection'; }
+    .catch(err => {
+        if (callback) callback({success: false, message: 'Failed to save settings: ' + err.message});
+    });
+}
+
+function saveAISettingsBtn(btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader"></i> Saving...';
+
+    saveAISettings(function(data) {
+        if (data.success) {
+            showTestResult('AI Settings', 'AI settings saved successfully. Active provider: <strong>' + (data.provider_name || 'Unknown') + '</strong>', true);
+        } else {
+            showTestResult('AI Settings', 'Failed to save: ' + (data.message || 'Unknown error'), false);
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="lucide-save"></i> Save AI Settings';
+    });
+}
+
+function testAIConnection() {
+    var btn = document.querySelector('[onclick="testAIConnection()"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="lucide-loader"></i> Saving & Testing...'; }
+
+    // Save settings first, then test
+    saveAISettings(function(saveResult) {
+        if (!saveResult.success) {
+            showTestResult('AI Settings', 'Failed to save: ' + (saveResult.message || 'Unknown error'), false);
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="lucide-zap"></i> Test AI Connection'; }
+            return;
+        }
+
+        // Now test with the saved settings
+        fetch('/admin/settings/test-ai', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: '_token=<?= $csrf ?>'
+        })
+        .then(r => r.json())
+        .then(data => {
+            let message = data.message;
+            if (data.response) {
+                message += '<br><br>Response: "' + data.response.substring(0, 200) + '"';
+            }
+            if (data.model) {
+                message += '<br><small>Model: ' + data.model + '</small>';
+            }
+            showTestResult('AI Connection', message, data.success);
+        })
+        .catch(() => showTestResult('AI Connection', 'Connection test failed. Check server logs.', false))
+        .finally(() => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="lucide-zap"></i> Test AI Connection'; }
+        });
     });
 }
 
