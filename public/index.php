@@ -37,6 +37,12 @@ if (str_starts_with($uri, '/admin')) {
     exit;
 }
 
+// Route to Content API
+if (str_starts_with($uri, '/api/')) {
+    require __DIR__ . '/api/index.php';
+    exit;
+}
+
 // API health check endpoint
 if ($uri === '/api/health') {
     header('Content-Type: application/json');
