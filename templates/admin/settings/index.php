@@ -440,13 +440,17 @@
 
                             <div class="form-group">
                                 <label class="form-label" for="ollama_model">Model</label>
-                                <select id="ollama_model" name="ollama_model" class="form-input">
-                                    <option value="llama3.2:1b" <?= ($settings['ai']['ollama_model'] ?? 'llama3.2:1b') === 'llama3.2:1b' ? 'selected' : '' ?>>llama3.2:1b (Fast)</option>
-                                    <option value="llama3.2:3b" <?= ($settings['ai']['ollama_model'] ?? '') === 'llama3.2:3b' ? 'selected' : '' ?>>llama3.2:3b (Balanced)</option>
-                                    <option value="llama3:8b" <?= ($settings['ai']['ollama_model'] ?? '') === 'llama3:8b' ? 'selected' : '' ?>>llama3:8b (Quality)</option>
-                                    <option value="mistral:7b" <?= ($settings['ai']['ollama_model'] ?? '') === 'mistral:7b' ? 'selected' : '' ?>>mistral:7b</option>
-                                    <option value="phi3:mini" <?= ($settings['ai']['ollama_model'] ?? '') === 'phi3:mini' ? 'selected' : '' ?>>phi3:mini</option>
-                                </select>
+                                <div class="input-with-button">
+                                    <select id="ollama_model" name="ollama_model" class="form-input">
+                                        <option value="<?= htmlspecialchars($settings['ai']['ollama_model'] ?? 'llama3.2:1b') ?>" selected>
+                                            <?= htmlspecialchars($settings['ai']['ollama_model'] ?? 'llama3.2:1b') ?> (current)
+                                        </option>
+                                    </select>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="refreshOllamaModels()" title="Refresh model list from Ollama">
+                                        <i class="lucide-refresh-cw"></i>
+                                    </button>
+                                </div>
+                                <small class="form-help">Click refresh or Test to load available models from Ollama</small>
                             </div>
                         </div>
                         <div class="info-box">
@@ -1085,6 +1089,46 @@ function closeTestModal() {
     document.getElementById('testResultModal').style.display = 'none';
 }
 
+function refreshOllamaModels() {
+    fetch('/admin/settings/test-ollama', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: '_token=<?= $csrf ?>'
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.models && data.models.length > 0) {
+            populateOllamaModels(data.models);
+        } else {
+            showTestResult('Ollama Models', data.message || 'Could not load models from Ollama.', false);
+        }
+    })
+    .catch(() => showTestResult('Ollama Models', 'Connection failed', false));
+}
+
+function populateOllamaModels(models) {
+    var select = document.getElementById('ollama_model');
+    var currentValue = select.value;
+    select.innerHTML = '';
+
+    models.forEach(function(model) {
+        var opt = document.createElement('option');
+        opt.value = model;
+        opt.textContent = model;
+        if (model === currentValue) opt.selected = true;
+        select.appendChild(opt);
+    });
+
+    // If current value not in list, add it at top
+    if (currentValue && !models.includes(currentValue)) {
+        var opt = document.createElement('option');
+        opt.value = currentValue;
+        opt.textContent = currentValue + ' (not installed)';
+        opt.selected = true;
+        select.insertBefore(opt, select.firstChild);
+    }
+}
+
 function testOllamaConnection() {
     fetch('/admin/settings/test-ollama', {
         method: 'POST',
@@ -1096,6 +1140,7 @@ function testOllamaConnection() {
         let message = data.message;
         if (data.models && data.models.length > 0) {
             message += '<br><br>Available models: ' + data.models.join(', ');
+            populateOllamaModels(data.models);
         }
         showTestResult('Ollama Connection', message, data.success);
     })
@@ -1103,6 +1148,9 @@ function testOllamaConnection() {
 }
 
 function testAIConnection() {
+    var btn = document.querySelector('[onclick="testAIConnection()"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="lucide-loader"></i> Testing...'; }
+
     fetch('/admin/settings/test-ai', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -1112,11 +1160,17 @@ function testAIConnection() {
     .then(data => {
         let message = data.message;
         if (data.response) {
-            message += '<br><br>Response: "' + data.response.substring(0, 100) + '..."';
+            message += '<br><br>Response: "' + data.response.substring(0, 200) + '"';
+        }
+        if (data.model) {
+            message += '<br><small>Model: ' + data.model + '</small>';
         }
         showTestResult('AI Connection', message, data.success);
     })
-    .catch(() => showTestResult('AI Connection', 'Connection test failed', false));
+    .catch(() => showTestResult('AI Connection', 'Connection test failed. Check server logs.', false))
+    .finally(() => {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="lucide-zap"></i> Test AI Connection'; }
+    });
 }
 
 function testFanartConnection() {

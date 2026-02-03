@@ -11,6 +11,7 @@ class AIService
     private SettingsService $settings;
     private string $provider;
     private array $config;
+    private ?string $lastError = null;
 
     // Provider constants
     public const PROVIDER_OLLAMA = 'ollama';
@@ -121,10 +122,33 @@ class AIService
     }
 
     /**
+     * Get the last error message
+     */
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    /**
+     * Get the current model for the active provider
+     */
+    public function getCurrentModel(): string
+    {
+        return match ($this->provider) {
+            self::PROVIDER_OLLAMA => $this->config['ollama']['model'] ?? 'unknown',
+            self::PROVIDER_OPENAI => $this->config['openai']['model'] ?? 'unknown',
+            self::PROVIDER_ANTHROPIC => $this->config['anthropic']['model'] ?? 'unknown',
+            default => 'unknown',
+        };
+    }
+
+    /**
      * Generate text completion
      */
     public function complete(string $prompt, array $options = []): ?string
     {
+        $this->lastError = null;
+
         switch ($this->provider) {
             case self::PROVIDER_OLLAMA:
                 return $this->completeOllama($prompt, $options);
@@ -149,6 +173,11 @@ class AIService
             $url = rtrim($this->config['ollama']['url'], '/') . '/api/generate';
             $model = $options['model'] ?? $this->config['ollama']['model'];
 
+            if (empty($model)) {
+                $this->lastError = 'No Ollama model configured. Go to Settings > AI and select a model.';
+                return null;
+            }
+
             $payload = [
                 'model' => $model,
                 'prompt' => $prompt,
@@ -169,16 +198,31 @@ class AIService
             ]);
 
             $response = curl_exec($ch);
+            $curlError = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            if ($httpCode === 200) {
-                $data = json_decode($response, true);
-                return $data['response'] ?? null;
+            if ($curlError) {
+                $this->lastError = "Ollama connection error: {$curlError}";
+                return null;
             }
 
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $text = $data['response'] ?? null;
+                if ($text === null) {
+                    $this->lastError = 'Ollama returned 200 but no response text. Raw: ' . substr($response, 0, 200);
+                }
+                return $text;
+            }
+
+            // Parse Ollama error message
+            $data = json_decode($response, true);
+            $errorMsg = $data['error'] ?? "HTTP {$httpCode}";
+            $this->lastError = "Ollama error (model: {$model}): {$errorMsg}";
             return null;
         } catch (\Exception $e) {
+            $this->lastError = 'Ollama exception: ' . $e->getMessage();
             return null;
         }
     }
@@ -191,6 +235,7 @@ class AIService
         try {
             $apiKey = $this->config['openai']['api_key'];
             if (empty($apiKey)) {
+                $this->lastError = 'OpenAI API key not configured.';
                 return null;
             }
 
@@ -218,16 +263,26 @@ class AIService
             ]);
 
             $response = curl_exec($ch);
+            $curlError = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+
+            if ($curlError) {
+                $this->lastError = "OpenAI connection error: {$curlError}";
+                return null;
+            }
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
                 return $data['choices'][0]['message']['content'] ?? null;
             }
 
+            $data = json_decode($response, true);
+            $errorMsg = $data['error']['message'] ?? "HTTP {$httpCode}";
+            $this->lastError = "OpenAI error: {$errorMsg}";
             return null;
         } catch (\Exception $e) {
+            $this->lastError = 'OpenAI exception: ' . $e->getMessage();
             return null;
         }
     }
@@ -240,6 +295,7 @@ class AIService
         try {
             $apiKey = $this->config['anthropic']['api_key'];
             if (empty($apiKey)) {
+                $this->lastError = 'Anthropic API key not configured.';
                 return null;
             }
 
@@ -267,16 +323,26 @@ class AIService
             ]);
 
             $response = curl_exec($ch);
+            $curlError = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+
+            if ($curlError) {
+                $this->lastError = "Anthropic connection error: {$curlError}";
+                return null;
+            }
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
                 return $data['content'][0]['text'] ?? null;
             }
 
+            $data = json_decode($response, true);
+            $errorMsg = $data['error']['message'] ?? "HTTP {$httpCode}";
+            $this->lastError = "Anthropic error: {$errorMsg}";
             return null;
         } catch (\Exception $e) {
+            $this->lastError = 'Anthropic exception: ' . $e->getMessage();
             return null;
         }
     }

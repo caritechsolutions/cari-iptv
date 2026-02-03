@@ -319,11 +319,13 @@ class SettingsController
         }
 
         $aiService = new AIService();
+        $providerName = $aiService->getProviderName();
+        $model = $aiService->getCurrentModel();
 
         if (!$aiService->isAvailable()) {
             Response::json([
                 'success' => false,
-                'message' => 'AI service is not available. Check your configuration.',
+                'message' => "AI service is not available. Provider: {$providerName}, Model: {$model}. Check your configuration.",
             ]);
             return;
         }
@@ -334,14 +336,20 @@ class SettingsController
         if ($result) {
             Response::json([
                 'success' => true,
-                'message' => 'AI connection successful!',
-                'provider' => $aiService->getProviderName(),
+                'message' => "AI connection successful! ({$providerName})",
+                'provider' => $providerName,
+                'model' => $model,
                 'response' => $result,
             ]);
         } else {
+            $error = $aiService->getLastError();
+            $message = "Failed to generate text via {$providerName} (model: {$model}).";
+            if ($error) {
+                $message .= " Error: {$error}";
+            }
             Response::json([
                 'success' => false,
-                'message' => 'AI service responded but failed to generate text.',
+                'message' => $message,
             ]);
         }
     }
