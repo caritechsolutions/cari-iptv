@@ -543,15 +543,32 @@ install_ollama() {
     if systemctl is-active --quiet ollama 2>/dev/null; then
         log_info "Ollama service is running"
 
-        # Check if default model exists, pull if not
-        if ! ollama list 2>/dev/null | grep -q "llama3.2:1b"; then
-            log_info "Pulling default AI model (llama3.2:1b - this may take a few minutes)..."
-            ollama pull llama3.2:1b 2>/dev/null || {
-                log_warn "Could not pull default model - you can pull models later with: ollama pull llama3.2:1b"
-            }
-        else
-            log_info "Default model (llama3.2:1b) already available"
-        fi
+        # Models to ensure are available
+        # llama3.2:1b  - Fast, lightweight (~1.3GB) - default
+        # llama3.2:3b  - Better quality, still small (~2GB)
+        # gemma2:2b    - Google's model, good text generation (~1.6GB)
+        # qwen2.5:3b   - Alibaba's model, strong multilingual (~2GB)
+        # phi3:mini    - Microsoft's model, good reasoning (~2.3GB)
+
+        local MODELS=("llama3.2:1b" "llama3.2:3b" "gemma2:2b" "qwen2.5:3b" "phi3:mini")
+        local MODEL_NAMES=("Llama 3.2 1B (Fast)" "Llama 3.2 3B (Balanced)" "Gemma 2 2B (Google)" "Qwen 2.5 3B (Multilingual)" "Phi-3 Mini (Microsoft)")
+
+        for i in "${!MODELS[@]}"; do
+            local model="${MODELS[$i]}"
+            local name="${MODEL_NAMES[$i]}"
+
+            if ollama list 2>/dev/null | grep -q "${model}"; then
+                log_info "Model ${model} already available"
+            else
+                log_info "Pulling ${name} (${model})..."
+                ollama pull "${model}" 2>/dev/null || {
+                    log_warn "Could not pull ${model} - you can pull it later with: ollama pull ${model}"
+                }
+            fi
+        done
+
+        log_info "Installed models:"
+        ollama list 2>/dev/null || true
     else
         log_warn "Ollama service not running - you may need to start it manually: sudo systemctl start ollama"
     fi
