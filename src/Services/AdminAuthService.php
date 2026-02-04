@@ -47,6 +47,16 @@ class AdminAuthService
             ];
         }
 
+        // Check email verification
+        if (empty($user['email_verified_at'])) {
+            return [
+                'success' => false,
+                'message' => 'Please verify your email address before logging in. Check your inbox for the activation link.',
+                'needs_verification' => true,
+                'email' => $user['email'],
+            ];
+        }
+
         // Clear failed attempts
         $this->clearFailedAttempts($username);
 
@@ -67,6 +77,11 @@ class AdminAuthService
         // Load permissions
         $permissions = $this->getUserPermissions($user['id'], $user['role']);
         Session::set('admin_permissions', $permissions);
+
+        // Handle "Remember Me" persistent login
+        if ($remember) {
+            $this->createRememberToken($user['id']);
+        }
 
         // Log activity
         $this->logActivity($user['id'], 'login', 'auth', null, null, null, [
@@ -111,11 +126,14 @@ class AdminAuthService
             );
         }
 
+        // Clear remember me cookie and token
+        $this->clearRememberToken();
+
         Session::destroy();
     }
 
     /**
-     * Check if admin is logged in
+     * Check if admin is logged in (session or remember me cookie)
      */
     public function check(): bool
     {
@@ -123,11 +141,19 @@ class AdminAuthService
         $loginTime = Session::get('admin_login_time');
 
         if (!$adminId || !$loginTime) {
+            // Try remember me cookie
+            if ($this->loginFromRememberToken()) {
+                return true;
+            }
             return false;
         }
 
         // Check session timeout
         if (time() - $loginTime > $this->config['session']['lifetime']) {
+            // Try remember me cookie before logging out
+            if ($this->loginFromRememberToken()) {
+                return true;
+            }
             $this->logout();
             return false;
         }
@@ -354,5 +380,246 @@ class AdminAuthService
         $this->logActivity($userId, 'password_change', 'auth');
 
         return ['success' => true, 'message' => 'Password changed successfully.'];
+    }
+
+    /**
+     * Register a new admin account (pending email verification)
+     */
+    public function register(array $data): array
+    {
+        // Check if email already exists
+        $existing = $this->db->fetch(
+            "SELECT id FROM admin_users WHERE email = ?",
+            [$data['email']]
+        );
+        if ($existing) {
+            return ['success' => false, 'message' => 'An account with this email already exists.'];
+        }
+
+        // Check if username already exists
+        $existingUsername = $this->db->fetch(
+            "SELECT id FROM admin_users WHERE username = ?",
+            [$data['username']]
+        );
+        if ($existingUsername) {
+            return ['success' => false, 'message' => 'This username is already taken.'];
+        }
+
+        // Generate email verification token
+        $verificationToken = bin2hex(random_bytes(32));
+
+        // Create the user account (inactive until verified)
+        $this->db->insert('admin_users', [
+            'username' => $data['username'],
+            'email' => $data['email'],
+            'password_hash' => password_hash($data['password'], PASSWORD_BCRYPT),
+            'first_name' => $data['first_name'],
+            'last_name' => $data['last_name'],
+            'date_of_birth' => $data['date_of_birth'] ?: null,
+            'country' => $data['country'] ?: null,
+            'phone' => $data['phone'] ?: null,
+            'role' => 'viewer',
+            'is_active' => 1,
+            'email_verification_token' => hash('sha256', $verificationToken),
+        ]);
+
+        $userId = $this->db->lastInsertId();
+
+        $this->logActivity($userId, 'register', 'auth', 'admin_user', $userId);
+
+        return [
+            'success' => true,
+            'message' => 'Account created. Please check your email to activate your account.',
+            'user_id' => $userId,
+            'verification_token' => $verificationToken,
+        ];
+    }
+
+    /**
+     * Verify email with token
+     */
+    public function verifyEmail(string $token): array
+    {
+        $tokenHash = hash('sha256', $token);
+
+        $user = $this->db->fetch(
+            "SELECT id, email, first_name, username FROM admin_users
+             WHERE email_verification_token = ? AND email_verified_at IS NULL",
+            [$tokenHash]
+        );
+
+        if (!$user) {
+            return ['success' => false, 'message' => 'Invalid or expired verification link.'];
+        }
+
+        // Mark email as verified
+        $this->db->update('admin_users', [
+            'email_verified_at' => date('Y-m-d H:i:s'),
+            'email_verification_token' => null,
+        ], 'id = ?', [$user['id']]);
+
+        $this->logActivity($user['id'], 'email_verified', 'auth', 'admin_user', $user['id']);
+
+        return [
+            'success' => true,
+            'message' => 'Your email has been verified. You can now log in.',
+        ];
+    }
+
+    /**
+     * Resend verification email - generate a new token
+     */
+    public function regenerateVerificationToken(string $email): array
+    {
+        $user = $this->db->fetch(
+            "SELECT id, first_name, username FROM admin_users
+             WHERE email = ? AND email_verified_at IS NULL AND is_active = 1",
+            [$email]
+        );
+
+        if (!$user) {
+            return ['success' => false, 'message' => 'No pending verification found for this email.'];
+        }
+
+        $verificationToken = bin2hex(random_bytes(32));
+
+        $this->db->update('admin_users', [
+            'email_verification_token' => hash('sha256', $verificationToken),
+        ], 'id = ?', [$user['id']]);
+
+        return [
+            'success' => true,
+            'verification_token' => $verificationToken,
+            'user_id' => $user['id'],
+            'name' => $user['first_name'] ?: $user['username'],
+        ];
+    }
+
+    /**
+     * Create a remember me token and set cookie
+     */
+    private function createRememberToken(int $userId): void
+    {
+        $token = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $token);
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
+
+        // Clean up old tokens for this user (keep max 5)
+        $this->db->execute(
+            "DELETE FROM admin_remember_tokens
+             WHERE admin_user_id = ? AND (expires_at < NOW() OR id NOT IN (
+                SELECT id FROM (
+                    SELECT id FROM admin_remember_tokens
+                    WHERE admin_user_id = ?
+                    ORDER BY created_at DESC LIMIT 4
+                ) AS t
+             ))",
+            [$userId, $userId]
+        );
+
+        // Store token
+        $this->db->insert('admin_remember_tokens', [
+            'admin_user_id' => $userId,
+            'token_hash' => $tokenHash,
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
+            'expires_at' => $expiresAt,
+        ]);
+
+        // Set cookie (30 days)
+        $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        setcookie('cari_remember', $userId . '|' . $token, [
+            'expires' => strtotime('+30 days'),
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    /**
+     * Attempt to login from remember me cookie
+     */
+    private function loginFromRememberToken(): bool
+    {
+        if (empty($_COOKIE['cari_remember'])) {
+            return false;
+        }
+
+        $parts = explode('|', $_COOKIE['cari_remember'], 2);
+        if (count($parts) !== 2) {
+            $this->clearRememberToken();
+            return false;
+        }
+
+        [$userId, $token] = $parts;
+        $tokenHash = hash('sha256', $token);
+
+        // Find valid token
+        $record = $this->db->fetch(
+            "SELECT rt.*, au.username, au.email, au.first_name, au.last_name, au.role, au.is_active, au.email_verified_at
+             FROM admin_remember_tokens rt
+             INNER JOIN admin_users au ON rt.admin_user_id = au.id
+             WHERE rt.admin_user_id = ? AND rt.token_hash = ? AND rt.expires_at > NOW()",
+            [$userId, $tokenHash]
+        );
+
+        if (!$record || !$record['is_active'] || empty($record['email_verified_at'])) {
+            $this->clearRememberToken();
+            return false;
+        }
+
+        // Valid token - create session
+        Session::regenerate();
+        Session::set('admin_id', $record['admin_user_id']);
+        Session::set('admin_username', $record['username']);
+        Session::set('admin_role', $record['role']);
+        Session::set('admin_name', trim($record['first_name'] . ' ' . $record['last_name']));
+        Session::set('admin_login_time', time());
+
+        // Load permissions
+        $permissions = $this->getUserPermissions($record['admin_user_id'], $record['role']);
+        Session::set('admin_permissions', $permissions);
+
+        // Update last login
+        $this->db->update('admin_users', [
+            'last_login' => date('Y-m-d H:i:s'),
+            'last_ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+        ], 'id = ?', [$record['admin_user_id']]);
+
+        // Rotate the token for security
+        $this->db->delete('admin_remember_tokens', 'id = ?', [$record['id']]);
+        $this->createRememberToken($record['admin_user_id']);
+
+        // Create session record
+        $this->createSessionRecord($record['admin_user_id']);
+
+        return true;
+    }
+
+    /**
+     * Clear remember me cookie and associated token
+     */
+    private function clearRememberToken(): void
+    {
+        if (!empty($_COOKIE['cari_remember'])) {
+            $parts = explode('|', $_COOKIE['cari_remember'], 2);
+            if (count($parts) === 2) {
+                $tokenHash = hash('sha256', $parts[1]);
+                $this->db->delete(
+                    'admin_remember_tokens',
+                    'admin_user_id = ? AND token_hash = ?',
+                    [$parts[0], $tokenHash]
+                );
+            }
+
+            // Expire the cookie
+            setcookie('cari_remember', '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
     }
 }

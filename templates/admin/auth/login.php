@@ -151,7 +151,6 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            margin-bottom: 1.5rem;
         }
 
         .form-check input[type="checkbox"] {
@@ -189,10 +188,29 @@
             transform: translateY(0);
         }
 
+        .form-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .forgot-link {
+            font-size: 0.8125rem;
+            color: var(--primary-light);
+            text-decoration: none;
+        }
+
+        .forgot-link:hover {
+            text-decoration: underline;
+        }
+
         .login-footer {
             text-align: center;
             margin-top: 1.5rem;
-            font-size: 0.8rem;
+            font-size: 0.875rem;
             color: var(--text-muted);
         }
 
@@ -205,11 +223,73 @@
             text-decoration: underline;
         }
 
+        .login-links {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .login-links a {
+            color: var(--primary-light);
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .login-links a:hover {
+            text-decoration: underline;
+        }
+
+        .login-links .register-link {
+            color: var(--text-muted);
+        }
+
+        .login-links .register-link strong {
+            color: var(--primary-light);
+        }
+
         .version {
             text-align: center;
             margin-top: 2rem;
             font-size: 0.75rem;
             color: var(--text-muted);
+        }
+
+        .resend-form {
+            text-align: center;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .resend-form input[type="email"] {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.8125rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .resend-form input[type="email"]:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .resend-form button {
+            background: none;
+            border: none;
+            color: var(--primary-light);
+            font-size: 0.8125rem;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .resend-form button:hover {
+            color: var(--primary);
         }
 
         /* Animation */
@@ -283,9 +363,12 @@
                     >
                 </div>
 
-                <div class="form-check">
-                    <input type="checkbox" id="remember" name="remember">
-                    <label for="remember">Remember me</label>
+                <div class="form-actions">
+                    <div class="form-check">
+                        <input type="checkbox" id="remember" name="remember">
+                        <label for="remember">Keep me logged in</label>
+                    </div>
+                    <a href="/admin/forgot-password" class="forgot-link">Forgot password?</a>
                 </div>
 
                 <button type="submit" class="btn-login">
@@ -293,9 +376,20 @@
                 </button>
             </form>
 
-            <div class="login-footer">
-                <a href="/admin/forgot-password">Forgot your password?</a>
+            <div class="login-links">
+                <span class="register-link">Don't have an account? <a href="/admin/register"><strong>Register</strong></a></span>
             </div>
+
+            <?php if (!empty($error) && str_contains($error, 'verify your email')): ?>
+            <div class="resend-form">
+                <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 0.5rem;">Didn't receive the email?</p>
+                <form method="POST" action="/admin/resend-verification" style="display: inline;">
+                    <input type="hidden" name="_token" value="<?= htmlspecialchars($csrf) ?>">
+                    <input type="email" name="email" placeholder="Enter your email" required>
+                    <button type="submit">Resend verification email</button>
+                </form>
+            </div>
+            <?php endif; ?>
         </div>
 
         <div class="version">

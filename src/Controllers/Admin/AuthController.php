@@ -283,4 +283,187 @@ class AuthController
         Session::flash('success', 'Your password has been reset. Please log in with your new password.');
         Response::redirect('/admin/login');
     }
+
+    /**
+     * Show registration form
+     */
+    public function showRegister(): void
+    {
+        Response::view('admin/auth/register', [
+            'csrf' => Session::csrf(),
+            'error' => Session::getFlash('error'),
+            'success' => Session::getFlash('success'),
+            'old' => Session::getFlash('old_input') ?? [],
+        ]);
+    }
+
+    /**
+     * Handle registration submission
+     */
+    public function register(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/register');
+            return;
+        }
+
+        $firstName = trim($_POST['first_name'] ?? '');
+        $lastName = trim($_POST['last_name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
+        $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
+        $country = trim($_POST['country'] ?? '');
+        $password = $_POST['password'] ?? '';
+        $passwordConfirm = $_POST['password_confirm'] ?? '';
+
+        // Save old input for re-populating form on error
+        $oldInput = [
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $email,
+            'phone' => $phone,
+            'date_of_birth' => $dateOfBirth,
+            'country' => $country,
+        ];
+
+        // Validation
+        $errors = [];
+
+        if (empty($firstName)) {
+            $errors[] = 'First name is required.';
+        }
+        if (empty($lastName)) {
+            $errors[] = 'Last name is required.';
+        }
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'A valid email address is required.';
+        }
+        if (empty($password) || strlen($password) < 8) {
+            $errors[] = 'Password must be at least 8 characters.';
+        }
+        if ($password !== $passwordConfirm) {
+            $errors[] = 'Passwords do not match.';
+        }
+        if (!empty($dateOfBirth)) {
+            $dob = \DateTime::createFromFormat('Y-m-d', $dateOfBirth);
+            if (!$dob || $dob->format('Y-m-d') !== $dateOfBirth) {
+                $errors[] = 'Invalid date of birth.';
+            }
+        }
+
+        if (!empty($errors)) {
+            Session::flash('error', implode(' ', $errors));
+            Session::flash('old_input', $oldInput);
+            Response::redirect('/admin/register');
+            return;
+        }
+
+        // Generate username from email (part before @)
+        $username = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', explode('@', $email)[0]));
+        // Ensure uniqueness
+        $baseUsername = $username;
+        $counter = 1;
+        while ($this->db->fetch("SELECT id FROM admin_users WHERE username = ?", [$username])) {
+            $username = $baseUsername . $counter;
+            $counter++;
+        }
+
+        $result = $this->auth->register([
+            'username' => $username,
+            'email' => $email,
+            'password' => $password,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'date_of_birth' => $dateOfBirth,
+            'country' => $country,
+            'phone' => $phone,
+        ]);
+
+        if (!$result['success']) {
+            Session::flash('error', $result['message']);
+            Session::flash('old_input', $oldInput);
+            Response::redirect('/admin/register');
+            return;
+        }
+
+        // Send verification email
+        $this->sendVerificationEmail($email, $firstName ?: $username, $result['verification_token']);
+
+        Session::flash('success', 'Account created successfully! Please check your email to activate your account.');
+        Response::redirect('/admin/login');
+    }
+
+    /**
+     * Verify email address
+     */
+    public function verifyEmail(string $token): void
+    {
+        $result = $this->auth->verifyEmail($token);
+
+        if ($result['success']) {
+            Session::flash('success', $result['message']);
+        } else {
+            Session::flash('error', $result['message']);
+        }
+
+        Response::redirect('/admin/login');
+    }
+
+    /**
+     * Resend verification email
+     */
+    public function resendVerification(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/login');
+            return;
+        }
+
+        $email = trim($_POST['email'] ?? '');
+
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Session::flash('error', 'Please provide a valid email address.');
+            Response::redirect('/admin/login');
+            return;
+        }
+
+        $result = $this->auth->regenerateVerificationToken($email);
+
+        if ($result['success']) {
+            $this->sendVerificationEmail($email, $result['name'], $result['verification_token']);
+            Session::flash('success', 'A new verification email has been sent. Please check your inbox.');
+        } else {
+            // Show generic message to prevent email enumeration
+            Session::flash('success', 'If an unverified account exists with that email, a new verification link has been sent.');
+        }
+
+        Response::redirect('/admin/login');
+    }
+
+    /**
+     * Send verification email helper
+     */
+    private function sendVerificationEmail(string $email, string $name, string $verificationToken): void
+    {
+        $settings = new SettingsService();
+        $siteUrl = $settings->get('site_url', '', 'general');
+        if (empty($siteUrl)) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $siteUrl = "{$protocol}://{$_SERVER['HTTP_HOST']}";
+        }
+        $verifyUrl = rtrim($siteUrl, '/') . "/admin/verify-email/{$verificationToken}";
+
+        $emailService = new EmailService();
+
+        if ($emailService->isConfigured()) {
+            $emailService->sendEmailVerification($email, $name, $verifyUrl);
+        } else {
+            // Development mode - show link directly
+            Session::flash('success', "SMTP not configured. Verification link: {$verifyUrl}");
+        }
+    }
 }

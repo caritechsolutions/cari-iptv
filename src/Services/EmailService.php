@@ -306,6 +306,23 @@ class EmailService
     }
 
     /**
+     * Send email verification / account activation email
+     */
+    public function sendEmailVerification(string $to, string $name, string $verifyUrl): bool
+    {
+        $siteName = $this->settings->get('site_name', 'CARI-IPTV', 'general');
+
+        $subject = "{$siteName} - Verify Your Email Address";
+        $body = $this->getEmailTemplate('email-verification', [
+            'site_name' => $siteName,
+            'name' => $name,
+            'verify_url' => $verifyUrl,
+        ]);
+
+        return $this->send($to, $subject, $body);
+    }
+
+    /**
      * Get email template
      */
     private function getEmailTemplate(string $template, array $data = []): string
@@ -334,6 +351,45 @@ class EmailService
             <p>This is a test email from your CARI-IPTV system.</p>
             <p>If you received this email, your SMTP settings are configured correctly.</p>
             <p><strong>Sent at:</strong> {{timestamp}}</p>
+        </div>
+        <div class="footer">
+            <p>This email was sent from {{site_name}}</p>
+        </div>
+    </div>
+</body>
+</html>',
+            'email-verification' => '
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #6366f1; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; }
+        .button { display: inline-block; background: #6366f1; color: white; padding: 14px 35px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; font-size: 16px; }
+        .footer { background: #1e293b; color: #94a3b8; padding: 15px; text-align: center; font-size: 12px; border-radius: 0 0 8px 8px; }
+        .info { background: #eef2ff; border: 1px solid #c7d2fe; padding: 12px; border-radius: 4px; margin-top: 20px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{site_name}}</h1>
+        </div>
+        <div class="content">
+            <h2>Activate Your Account</h2>
+            <p>Hello {{name}},</p>
+            <p>Thank you for registering with {{site_name}}! Please click the button below to verify your email address and activate your account:</p>
+            <p style="text-align: center;">
+                <a href="{{verify_url}}" class="button">Verify Email Address</a>
+            </p>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; font-size: 13px; color: #64748b;">{{verify_url}}</p>
+            <div class="info">
+                <strong>Note:</strong> If you did not create an account, you can safely ignore this email.
+            </div>
         </div>
         <div class="footer">
             <p>This email was sent from {{site_name}}</p>

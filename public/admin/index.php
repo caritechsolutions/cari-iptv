@@ -74,10 +74,14 @@ $router = new Router();
 $router->addMiddleware('auth', [AdminAuthMiddleware::class, 'handle']);
 $router->addMiddleware('guest', [AdminAuthMiddleware::class, 'guest']);
 
-// Guest routes (login, forgot password)
+// Guest routes (login, register, forgot password)
 $router->group(['prefix' => 'admin', 'middleware' => ['guest']], function ($router) {
     $router->get('/login', [AuthController::class, 'showLogin']);
     $router->post('/login', [AuthController::class, 'login']);
+    $router->get('/register', [AuthController::class, 'showRegister']);
+    $router->post('/register', [AuthController::class, 'register']);
+    $router->get('/verify-email/{token}', [AuthController::class, 'verifyEmail']);
+    $router->post('/resend-verification', [AuthController::class, 'resendVerification']);
     $router->get('/forgot-password', [AuthController::class, 'showForgotPassword']);
     $router->post('/forgot-password', [AuthController::class, 'forgotPassword']);
     $router->get('/reset-password/{token}', [AuthController::class, 'showResetPassword']);
