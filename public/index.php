@@ -1,7 +1,7 @@
 <?php
 /**
  * CARI-IPTV Main Entry Point
- * Redirects to admin portal during development
+ * Routes requests to: Admin panel, Content API, or Web Player
  */
 
 // Error reporting
@@ -27,6 +27,17 @@ if (file_exists($envFile)) {
         $_ENV[$key] = $value;
     }
 }
+
+// Autoloader
+spl_autoload_register(function ($class) {
+    $prefix = 'CariIPTV\\';
+    $baseDir = BASE_PATH . '/src/';
+    $len = strlen($prefix);
+    if (strncmp($prefix, $class, $len) !== 0) return;
+    $relativeClass = substr($class, $len);
+    $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
+    if (file_exists($file)) require $file;
+});
 
 // Get the request URI
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -54,6 +65,19 @@ if ($uri === '/api/health') {
     exit;
 }
 
-// Default: redirect to admin
-header('Location: /admin');
-exit;
+// =========================================================================
+// Web Player (public-facing SPA)
+// =========================================================================
+
+$controller = new \CariIPTV\Controllers\Player\PlayerController();
+
+// Login page
+if ($uri === '/login') {
+    $controller->login();
+    exit;
+}
+
+// All other paths serve the SPA app shell.
+// Client-side JavaScript handles routing for:
+//   /  /movies  /series  /live  /search  /my-list  /watch/:type/:id  /categories
+$controller->app();

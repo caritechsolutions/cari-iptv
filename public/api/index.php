@@ -62,6 +62,8 @@ use CariIPTV\Core\Router;
 use CariIPTV\Controllers\Api\ContentController;
 use CariIPTV\Controllers\Api\AppController;
 use CariIPTV\Controllers\Api\EpgController;
+use CariIPTV\Controllers\Api\AuthController;
+use CariIPTV\Middleware\ApiAuthMiddleware;
 
 // Handle CORS preflight
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -76,43 +78,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Create router
 $router = new Router();
 
+// Register API auth middleware
+$router->addMiddleware('api_auth', [ApiAuthMiddleware::class, 'handle']);
+
 // =========================================================================
 // API v1 Routes
 // =========================================================================
 
 $router->group(['prefix' => 'api/v1'], function ($router) {
 
+    // ----- Authentication (public) -----
+    $router->post('/auth/login', [AuthController::class, 'login']);
+    $router->post('/auth/refresh', [AuthController::class, 'refresh']);
+    $router->post('/auth/logout', [AuthController::class, 'logout']);
+
+    // ----- Authenticated user endpoints -----
+    $router->get('/auth/me', [AuthController::class, 'me'], ['api_auth']);
+    $router->post('/auth/watch-progress', [AuthController::class, 'updateWatchProgress'], ['api_auth']);
+    $router->get('/auth/continue-watching', [AuthController::class, 'continueWatching'], ['api_auth']);
+    $router->post('/auth/watchlist/toggle', [AuthController::class, 'toggleWatchlist'], ['api_auth']);
+    $router->get('/auth/watchlist', [AuthController::class, 'getWatchlist'], ['api_auth']);
+
+    // ----- Content (protected — requires Bearer token) -----
+
     // Manifest - version hashes for all content (players check this first)
-    $router->get('/manifest', [ContentController::class, 'manifest']);
+    $router->get('/manifest', [ContentController::class, 'manifest'], ['api_auth']);
 
     // Channels
-    $router->get('/channels', [ContentController::class, 'channels']);
-    $router->get('/channels/{id}', [ContentController::class, 'channel']);
+    $router->get('/channels', [ContentController::class, 'channels'], ['api_auth']);
+    $router->get('/channels/{id}', [ContentController::class, 'channel'], ['api_auth']);
 
     // Movies
-    $router->get('/movies', [ContentController::class, 'movies']);
-    $router->get('/movies/featured', [ContentController::class, 'moviesFeatured']);
-    $router->get('/movies/{id}', [ContentController::class, 'movie']);
+    $router->get('/movies', [ContentController::class, 'movies'], ['api_auth']);
+    $router->get('/movies/featured', [ContentController::class, 'moviesFeatured'], ['api_auth']);
+    $router->get('/movies/{id}', [ContentController::class, 'movie'], ['api_auth']);
 
     // Series / TV Shows
-    $router->get('/series', [ContentController::class, 'seriesList']);
-    $router->get('/series/{id}', [ContentController::class, 'seriesDetail']);
+    $router->get('/series', [ContentController::class, 'seriesList'], ['api_auth']);
+    $router->get('/series/{id}', [ContentController::class, 'seriesDetail'], ['api_auth']);
 
     // Categories
-    $router->get('/categories', [ContentController::class, 'categories']);
+    $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);
 
     // Search
-    $router->get('/search', [ContentController::class, 'search']);
+    $router->get('/search', [ContentController::class, 'search'], ['api_auth']);
 
     // EPG (Electronic Programme Guide)
-    $router->get('/epg', [EpgController::class, 'index']);
-    $router->get('/epg/{channelId}', [EpgController::class, 'channel']);
+    $router->get('/epg', [EpgController::class, 'index'], ['api_auth']);
+    $router->get('/epg/{channelId}', [EpgController::class, 'channel'], ['api_auth']);
 
     // App Configuration (layouts, navigation, pages)
-    $router->get('/app/config/{platform}', [AppController::class, 'config']);
-    $router->get('/app/layout/{platform}', [AppController::class, 'layout']);
-    $router->get('/app/navigation/{platform}', [AppController::class, 'navigation']);
-    $router->get('/app/pages/{platform}', [AppController::class, 'pages']);
+    $router->get('/app/config/{platform}', [AppController::class, 'config'], ['api_auth']);
+    $router->get('/app/layout/{platform}', [AppController::class, 'layout'], ['api_auth']);
+    $router->get('/app/navigation/{platform}', [AppController::class, 'navigation'], ['api_auth']);
+    $router->get('/app/pages/{platform}', [AppController::class, 'pages'], ['api_auth']);
 });
 
 // Custom 404 for API
