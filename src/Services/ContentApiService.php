@@ -654,7 +654,7 @@ class ContentApiService
     private function getAutoContentItems(string $type, string $source, int $limit, ?int $categoryId): array
     {
         $table = $type === 'series' ? 'series' : 'movies';
-        $where = "status IN ('draft', 'published')";
+        $where = "status = 'published'";
         $params = [];
         $order = 'created_at DESC';
 
@@ -759,13 +759,13 @@ class ContentApiService
             'movie' => $this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, title, slug, year, genres, runtime, vote_average,
                         poster_url, backdrop_url, stream_url, synopsis
-                 FROM movies WHERE id = ? AND status IN ('draft', 'published')",
+                 FROM movies WHERE id = ? AND status = 'published'",
                 [$contentId]
             )),
             'series' => $this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, title, slug, year, genres, vote_average,
                         poster_url, backdrop_url, synopsis
-                 FROM series WHERE id = ? AND status IN ('draft', 'published')",
+                 FROM series WHERE id = ? AND status = 'published'",
                 [$contentId]
             )),
             'channel' => $this->safeQuery(fn() => $this->db->fetch(

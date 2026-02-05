@@ -245,6 +245,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/app-layout/{id}/delete', [AppLayoutController::class, 'delete']);
     $router->post('/app-layout/{id}/duplicate', [AppLayoutController::class, 'duplicate']);
     $router->post('/app-layout/{id}/publish', [AppLayoutController::class, 'publish']);
+    $router->post('/app-layout/{id}/unpublish', [AppLayoutController::class, 'unpublish']);
 
     // App Layout Sections
     $router->post('/app-layout/{id}/sections/add', [AppLayoutController::class, 'addSection']);

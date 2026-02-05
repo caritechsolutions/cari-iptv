@@ -156,6 +156,25 @@ class AppLayoutController
     }
 
     /**
+     * Unpublish a layout — set back to draft (AJAX)
+     */
+    public function unpublish(int $id): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $result = $this->layoutService->unpublishLayout($id, $this->auth->id());
+        if ($result) {
+            $this->sendJson(['success' => true, 'message' => 'Layout set back to draft']);
+        } else {
+            $this->sendJson(['success' => false, 'message' => 'Failed to unpublish layout']);
+        }
+    }
+
+    /**
      * Update layout details (AJAX)
      */
     public function update(int $id): void
@@ -451,9 +470,10 @@ class AppLayoutController
         $pageTypes = $this->layoutService->getPageTypes();
         $navigation = $this->layoutService->getNavigationMenus($platform);
 
-        // Get available layouts for linking
+        // Get available layouts for linking — only published layouts
         $availableLayouts = $this->layoutService->getLayouts([
             'platform' => $platform,
+            'status' => 'published',
         ]);
 
         Response::view('admin/app-layout/pages', [

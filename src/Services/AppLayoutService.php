@@ -329,13 +329,7 @@ class AppLayoutService
                 [$layout['platform']]
             );
 
-            // Archive currently published layouts for this platform
-            $this->db->execute(
-                "UPDATE app_layouts SET status = 'archived' WHERE platform = ? AND status = 'published' AND id != ?",
-                [$layout['platform'], $id]
-            );
-
-            // Publish this one
+            // Publish this one and set as default
             $this->db->update('app_layouts', [
                 'status' => 'published',
                 'is_default' => 1,
@@ -348,6 +342,36 @@ class AppLayoutService
             $this->db->rollback();
             return false;
         }
+    }
+
+    /**
+     * Unpublish a layout (set back to draft)
+     */
+    public function unpublishLayout(int $id, int $userId): bool
+    {
+        $layout = $this->getLayout($id);
+        if (!$layout) return false;
+
+        $wasDefault = (bool) $layout['is_default'];
+
+        $this->db->update('app_layouts', [
+            'status' => 'draft',
+            'is_default' => 0,
+            'updated_by' => $userId,
+        ], 'id = ?', [$id]);
+
+        // If this was the default, promote the next published layout
+        if ($wasDefault) {
+            $next = $this->db->fetch(
+                "SELECT id FROM app_layouts WHERE platform = ? AND status = 'published' AND id != ? ORDER BY updated_at DESC LIMIT 1",
+                [$layout['platform'], $id]
+            );
+            if ($next) {
+                $this->db->update('app_layouts', ['is_default' => 1], 'id = ?', [$next['id']]);
+            }
+        }
+
+        return true;
     }
 
     // ========================================================================
@@ -534,7 +558,7 @@ class AppLayoutService
             case 'movie':
                 $sql = "SELECT id, title as name, year, poster_url as image,
                                CONCAT(COALESCE(vote_average, ''), '/10') as meta
-                        FROM movies WHERE status IN ('draft', 'published')";
+                        FROM movies WHERE status = 'published'";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (title LIKE ? OR original_title LIKE ?)";
@@ -547,7 +571,7 @@ class AppLayoutService
 
             case 'series':
                 $sql = "SELECT id, title as name, year, poster_url as image
-                        FROM series WHERE status IN ('draft', 'published')";
+                        FROM series WHERE status = 'published'";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (title LIKE ? OR original_title LIKE ?)";
@@ -694,7 +718,7 @@ class AppLayoutService
 
     private function getAutoMovies(string $source, int $limit, ?int $categoryId): array
     {
-        $where = "status IN ('draft', 'published')";
+        $where = "status = 'published'";
         $params = [];
         $order = 'created_at DESC';
 
@@ -737,7 +761,7 @@ class AppLayoutService
 
     private function getAutoSeries(string $source, int $limit, ?int $categoryId): array
     {
-        $where = "status IN ('draft', 'published')";
+        $where = "status = 'published'";
         $params = [];
         $order = 'created_at DESC';
 
