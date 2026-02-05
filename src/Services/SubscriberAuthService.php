@@ -20,6 +20,119 @@ class SubscriberAuthService
     }
 
     /**
+     * Register a new subscriber account
+     */
+    public function register(array $data): array
+    {
+        $email = trim($data['email'] ?? '');
+        $firstName = trim($data['first_name'] ?? '');
+        $lastName = trim($data['last_name'] ?? '');
+        $password = $data['password'] ?? '';
+        $passwordConfirm = $data['password_confirm'] ?? '';
+        $phone = trim($data['phone'] ?? '');
+        $country = trim($data['country'] ?? '');
+        $birthday = trim($data['birthday'] ?? '');
+
+        // Validation
+        if (empty($firstName)) {
+            return ['success' => false, 'error' => 'First name is required'];
+        }
+        if (empty($lastName)) {
+            return ['success' => false, 'error' => 'Last name is required'];
+        }
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'error' => 'A valid email address is required'];
+        }
+        if (strlen($password) < 8) {
+            return ['success' => false, 'error' => 'Password must be at least 8 characters'];
+        }
+        if ($password !== $passwordConfirm) {
+            return ['success' => false, 'error' => 'Passwords do not match'];
+        }
+
+        // Check if email already exists
+        $existing = $this->db->fetch(
+            "SELECT id FROM subscribers WHERE email = ?",
+            [$email]
+        );
+        if ($existing) {
+            return ['success' => false, 'error' => 'An account with this email already exists'];
+        }
+
+        // Generate username from email (prefix before @)
+        $baseUsername = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', explode('@', $email)[0]));
+        $username = $baseUsername;
+        $counter = 1;
+        while ($this->db->fetch("SELECT id FROM subscribers WHERE username = ?", [$username])) {
+            $username = $baseUsername . $counter;
+            $counter++;
+        }
+
+        // Validate birthday if provided
+        if (!empty($birthday)) {
+            $parsedDate = \DateTime::createFromFormat('Y-m-d', $birthday);
+            if (!$parsedDate) {
+                $birthday = null;
+            }
+        } else {
+            $birthday = null;
+        }
+
+        // Create subscriber
+        $this->db->execute(
+            "INSERT INTO subscribers (username, email, password, first_name, last_name, phone, country, birthday, status, max_connections)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1)",
+            [
+                $username,
+                $email,
+                password_hash($password, PASSWORD_BCRYPT),
+                $firstName,
+                $lastName,
+                $phone ?: null,
+                $country ?: null,
+                $birthday,
+            ]
+        );
+
+        $subscriberId = $this->db->lastInsertId();
+
+        // Fetch the created subscriber for login
+        $subscriber = $this->db->fetch("SELECT * FROM subscribers WHERE id = ?", [$subscriberId]);
+
+        if (!$subscriber) {
+            return ['success' => false, 'error' => 'Registration failed. Please try again.'];
+        }
+
+        // Auto-login: generate tokens
+        $deviceInfo = $data['device_info'] ?? [];
+        $accessToken = $this->jwt->createAccessToken($subscriber);
+        $refreshData = $this->jwt->createRefreshToken();
+
+        $this->db->execute(
+            "INSERT INTO subscriber_tokens (subscriber_id, token_hash, device_name, device_type, ip_address, user_agent, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                $subscriber['id'],
+                $refreshData['hash'],
+                $deviceInfo['device_name'] ?? $this->detectDeviceName(),
+                $deviceInfo['device_type'] ?? 'web',
+                $_SERVER['REMOTE_ADDR'] ?? null,
+                substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
+                $refreshData['expires_at'],
+            ]
+        );
+
+        return [
+            'success' => true,
+            'access_token' => $accessToken,
+            'refresh_token' => $refreshData['token'],
+            'expires_in' => $this->jwt->getAccessTtl(),
+            'token_type' => 'Bearer',
+            'user' => $this->formatSubscriber($subscriber),
+        ];
+    }
+
+    /**
      * Authenticate a subscriber with username/email and password
      */
     public function login(string $identity, string $password, array $deviceInfo = []): array

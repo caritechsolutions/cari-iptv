@@ -60,6 +60,10 @@
                         Sign In
                     </button>
                 </form>
+
+                <div class="login-footer">
+                    Don't have an account? <a href="/register" class="form-link">Register</a>
+                </div>
             </div>
         </div>
     </div>

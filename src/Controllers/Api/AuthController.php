@@ -18,6 +18,46 @@ class AuthController extends BaseApiController
     }
 
     /**
+     * POST /api/v1/auth/register
+     * Body: { first_name, last_name, email, password, password_confirm, phone?, country?, birthday?, device_type? }
+     */
+    public function register(): void
+    {
+        $input = $this->getJsonInput();
+
+        $result = $this->auth->register([
+            'first_name' => $input['first_name'] ?? '',
+            'last_name' => $input['last_name'] ?? '',
+            'email' => $input['email'] ?? '',
+            'password' => $input['password'] ?? '',
+            'password_confirm' => $input['password_confirm'] ?? '',
+            'phone' => $input['phone'] ?? '',
+            'country' => $input['country'] ?? '',
+            'birthday' => $input['birthday'] ?? '',
+            'device_info' => [
+                'device_name' => $input['device_name'] ?? null,
+                'device_type' => $input['device_type'] ?? 'web',
+            ],
+        ]);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 422, 'VALIDATION_ERROR');
+            return;
+        }
+
+        header('Cache-Control: no-store');
+        $this->json([
+            'data' => [
+                'access_token' => $result['access_token'],
+                'refresh_token' => $result['refresh_token'],
+                'expires_in' => $result['expires_in'],
+                'token_type' => $result['token_type'],
+                'user' => $result['user'],
+            ],
+        ], 201);
+    }
+
+    /**
      * POST /api/v1/auth/login
      * Body: { identity, password, device_name?, device_type? }
      */

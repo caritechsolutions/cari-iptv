@@ -77,6 +77,12 @@ if ($uri === '/login') {
     exit;
 }
 
+// Registration page
+if ($uri === '/register') {
+    $controller->register();
+    exit;
+}
+
 // All other paths serve the SPA app shell.
 // Client-side JavaScript handles routing for:
 //   /  /movies  /series  /live  /search  /my-list  /watch/:type/:id  /categories
