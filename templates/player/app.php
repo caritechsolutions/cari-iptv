@@ -55,6 +55,9 @@
                 <div class="header-spacer"></div>
             </header>
 
+            <!-- Top navigation bar (used when nav style is top_bar) -->
+            <nav class="top-nav" id="topNav"></nav>
+
             <!-- Dynamic content area -->
             <div class="app-content" id="appContent">
                 <div class="loading-screen">

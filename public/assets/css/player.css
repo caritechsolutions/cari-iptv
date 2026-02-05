@@ -1519,3 +1519,68 @@ img { max-width: 100%; display: block; }
 @media (max-width: 1024px) {
     .sidebar-backdrop.visible { display: block; }
 }
+
+/* =========================================================================
+   Navigation Style Overrides (admin-configurable via data-nav-style)
+   ========================================================================= */
+
+/* Top navigation bar (hidden by default, shown for top_bar style) */
+.top-nav {
+    display: none;
+    background: var(--p-surface);
+    border-bottom: 1px solid var(--p-border);
+    padding: 0 1rem;
+    gap: 0.25rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.top-nav::-webkit-scrollbar { display: none; }
+
+.top-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: var(--p-text-muted);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: color var(--p-transition), border-color var(--p-transition);
+}
+.top-nav-item:hover { color: var(--p-text); }
+.top-nav-item.active {
+    color: var(--p-primary);
+    border-bottom-color: var(--p-primary);
+}
+.top-nav-item i { font-size: 1.125rem; }
+
+/* ---- Bottom Tab style ---- */
+[data-nav-style="bottom_tab"] .app-sidebar { display: none !important; }
+[data-nav-style="bottom_tab"] .sidebar-backdrop { display: none !important; }
+[data-nav-style="bottom_tab"] .app-main { margin-left: 0 !important; padding-bottom: 60px; }
+[data-nav-style="bottom_tab"] .mobile-tabs { display: flex !important; }
+[data-nav-style="bottom_tab"] .header-menu-btn { display: none !important; }
+[data-nav-style="bottom_tab"] .top-nav { display: none !important; }
+
+/* ---- Top Bar style ---- */
+[data-nav-style="top_bar"] .app-sidebar { display: none !important; }
+[data-nav-style="top_bar"] .sidebar-backdrop { display: none !important; }
+[data-nav-style="top_bar"] .app-main { margin-left: 0 !important; }
+[data-nav-style="top_bar"] .mobile-tabs { display: none !important; }
+[data-nav-style="top_bar"] .header-menu-btn { display: none !important; }
+[data-nav-style="top_bar"] .top-nav { display: flex !important; }
+
+/* ---- Sidebar style (default — responsive breakpoints apply) ---- */
+[data-nav-style="sidebar"] .top-nav { display: none !important; }
+
+/* ---- Icon/Label visibility overrides ---- */
+[data-nav-icons="false"] .nav-item i,
+[data-nav-icons="false"] .mobile-tab i,
+[data-nav-icons="false"] .top-nav-item i { display: none; }
+
+[data-nav-labels="false"] .nav-item span,
+[data-nav-labels="false"] .mobile-tab span,
+[data-nav-labels="false"] .top-nav-item span { display: none; }

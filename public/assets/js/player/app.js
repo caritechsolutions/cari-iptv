@@ -5,6 +5,8 @@
 const CariApp = (function() {
     let appConfig = null;
     let navigation = [];
+    let navStyle = 'sidebar';
+    let navSettings = {};
     let pages = [];
     let shakaPlayer = null;
     let searchTimeout = null;
@@ -82,7 +84,10 @@ const CariApp = (function() {
     async function loadNavigation() {
         try {
             const res = await CariAPI.getNavigation();
-            navigation = res?.data?.items || res?.data || [];
+            const data = res?.data || {};
+            navigation = data.items || [];
+            navSettings = data.settings || {};
+            navStyle = navSettings.style || 'sidebar';
         } catch {
             // Fallback navigation
             navigation = [
@@ -92,10 +97,26 @@ const CariApp = (function() {
                 { label: 'Live TV', icon: 'lucide-tv', slug: 'live', page_type: 'live_tv' },
                 { label: 'My List', icon: 'lucide-bookmark', slug: 'my-list', page_type: 'watchlist' },
             ];
+            navStyle = 'sidebar';
+            navSettings = {};
         }
 
-        renderSidebarNav();
-        renderMobileTabs();
+        // Apply navigation style to layout element
+        const layout = document.getElementById('appLayout');
+        layout.dataset.navStyle = navStyle;
+        if (navSettings.show_icons === false) layout.dataset.navIcons = 'false';
+        if (navSettings.show_labels === false) layout.dataset.navLabels = 'false';
+
+        // Render the appropriate navigation based on style
+        if (navStyle === 'top_bar') {
+            renderTopNav();
+        } else if (navStyle === 'bottom_tab') {
+            renderBottomTabs();
+        } else {
+            // sidebar (default): sidebar on desktop, bottom tabs on mobile
+            renderSidebarNav();
+            renderMobileTabs();
+        }
     }
 
     function renderSidebarNav() {
@@ -117,7 +138,7 @@ const CariApp = (function() {
 
     function renderMobileTabs() {
         const tabs = document.getElementById('mobileTabs');
-        const items = normalizeNav(navigation).slice(0, 5); // max 5 on mobile
+        const items = normalizeNav(navigation).slice(0, 5);
 
         tabs.innerHTML = items.map(item => {
             const path = item.url || ('/' + (item.slug || ''));
@@ -126,6 +147,36 @@ const CariApp = (function() {
                 <i class="${CariUI.esc(icon)}"></i>
                 <span>${CariUI.esc(item.label)}</span>
             </button>`;
+        }).join('');
+    }
+
+    function renderBottomTabs() {
+        const tabs = document.getElementById('mobileTabs');
+        const maxItems = navSettings.max_items || 5;
+        const items = normalizeNav(navigation).slice(0, maxItems);
+
+        tabs.innerHTML = items.map(item => {
+            const path = item.url || ('/' + (item.slug || ''));
+            const icon = item.icon || 'lucide-circle';
+            return `<button class="mobile-tab" data-nav-slug="${CariUI.esc(item.slug || '')}" onclick="CariRouter.navigate('${CariUI.esc(path)}')">
+                <i class="${CariUI.esc(icon)}"></i>
+                <span>${CariUI.esc(item.label)}</span>
+            </button>`;
+        }).join('');
+    }
+
+    function renderTopNav() {
+        const nav = document.getElementById('topNav');
+        if (!nav) return;
+        const items = normalizeNav(navigation);
+
+        nav.innerHTML = items.map(item => {
+            const path = item.url || ('/' + (item.slug || ''));
+            const icon = item.icon || 'lucide-circle';
+            return `<a class="top-nav-item" href="${CariUI.esc(path)}" data-nav-slug="${CariUI.esc(item.slug || '')}" onclick="event.preventDefault(); CariRouter.navigate('${CariUI.esc(path)}')">
+                <i class="${CariUI.esc(icon)}"></i>
+                <span>${CariUI.esc(item.label)}</span>
+            </a>`;
         }).join('');
     }
 
@@ -155,6 +206,9 @@ const CariApp = (function() {
             el.classList.toggle('active', el.dataset.navSlug === slug);
         });
         document.querySelectorAll('.mobile-tab').forEach(el => {
+            el.classList.toggle('active', el.dataset.navSlug === slug);
+        });
+        document.querySelectorAll('.top-nav-item').forEach(el => {
             el.classList.toggle('active', el.dataset.navSlug === slug);
         });
 
