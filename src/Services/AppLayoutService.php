@@ -123,7 +123,7 @@ class AppLayoutService
                 'max_per_layout' => 3,
                 'supports_items' => true,
                 'default_settings' => [
-                    'source' => 'curated',
+                    'source' => 'popular',
                     'columns' => 5,
                     'max_items' => 15,
                     'show_now_playing' => true,
@@ -560,7 +560,7 @@ class AppLayoutService
 
             case 'channel':
                 $sql = "SELECT id, name, channel_number as meta, logo_url as image
-                        FROM channels WHERE is_active = 1";
+                        FROM channels WHERE 1=1";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (name LIKE ? OR key_code LIKE ?)";
@@ -635,12 +635,22 @@ class AppLayoutService
      */
     public function getAutoPopulatedItems(string $sectionType, array $settings): array
     {
+        try {
+            return $this->doGetAutoPopulatedItems($sectionType, $settings);
+        } catch (\Exception $e) {
+            error_log('[AppLayoutService] getAutoPopulatedItems error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function doGetAutoPopulatedItems(string $sectionType, array $settings): array
+    {
         $source = $settings['source'] ?? 'curated';
         if ($source === 'curated') {
             return [];
         }
 
-        $maxItems = (int) ($settings['max_items'] ?? 20);
+        $maxItems = max(1, (int) ($settings['max_items'] ?? 20));
         $contentType = $settings['content_type'] ?? 'movie';
         $categoryId = !empty($settings['category_id']) ? (int) $settings['category_id'] : null;
 
@@ -770,9 +780,9 @@ class AppLayoutService
 
     private function getAutoChannels(string $source, int $limit, ?int $categoryId): array
     {
-        $where = "c.is_active = 1";
+        $where = "1=1";
         $params = [];
-        $order = 'c.channel_number ASC';
+        $order = 'c.channel_number ASC, c.name ASC';
         $join = '';
 
         if ($categoryId) {
@@ -782,21 +792,26 @@ class AppLayoutService
 
         switch ($source) {
             case 'popular':
-                $order = 'c.channel_number ASC';
+                $order = 'c.channel_number ASC, c.name ASC';
                 break;
             case 'category':
                 if (!$categoryId) return [];
-                $order = 'c.channel_number ASC';
+                $order = 'c.channel_number ASC, c.name ASC';
                 break;
         }
 
-        $rows = $this->db->fetchAll(
-            "SELECT c.id, c.name, c.logo_url, c.channel_number
-             FROM channels c {$join}
-             WHERE {$where}
-             ORDER BY {$order} LIMIT {$limit}",
-            $params
-        );
+        try {
+            $rows = $this->db->fetchAll(
+                "SELECT c.id, c.name, c.logo_url, c.channel_number
+                 FROM channels c {$join}
+                 WHERE {$where}
+                 ORDER BY {$order} LIMIT {$limit}",
+                $params
+            );
+        } catch (\Exception $e) {
+            error_log('[AppLayoutService] getAutoChannels error: ' . $e->getMessage());
+            return [];
+        }
 
         $result = [];
         foreach ($rows as $i => $row) {

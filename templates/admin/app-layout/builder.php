@@ -591,7 +591,7 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
                         <?php if ($isAuto): ?>
                             <span class="badge badge-info" style="font-size:0.75rem;">Auto: <?= htmlspecialchars(ucwords(str_replace('_', ' ', $sectionSource))) ?></span>
                         <?php else: ?>
-                            <button class="btn btn-sm btn-secondary" onclick="openContentPicker(<?= $section['id'] ?>)">
+                            <button class="btn btn-sm btn-secondary" onclick="openContentPicker(<?= $section['id'] ?>, '<?= htmlspecialchars($section['section_type']) ?>')">
                                 <i class="lucide-plus"></i> Add Content
                             </button>
                         <?php endif; ?>
@@ -996,11 +996,18 @@ let currentPickerSource = 'library';
 let tmdbSearchType = 'movie';
 let tmdbSearchTimeout = null;
 
-function openContentPicker(sectionId) {
+function openContentPicker(sectionId, sectionType) {
     activeSectionForPicker = sectionId;
-    currentContentType = 'movie';
     currentPickerSource = 'library';
-    tmdbSearchType = 'movie';
+
+    // Default content type based on section type
+    if (sectionType === 'channel_grid') {
+        currentContentType = 'channel';
+        tmdbSearchType = 'movie';
+    } else {
+        currentContentType = 'movie';
+        tmdbSearchType = 'movie';
+    }
 
     // Reset all panels
     document.querySelectorAll('.picker-source-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
@@ -1009,7 +1016,11 @@ function openContentPicker(sectionId) {
     // Reset library search
     document.getElementById('contentSearchInput').value = '';
     document.getElementById('contentResults').innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Type to search or browse content</div>';
-    document.querySelectorAll('#pickerLibrary .content-type-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+
+    // Set active tab based on content type
+    const typeTabMap = { movie: 0, series: 1, channel: 2, category: 3 };
+    const activeIdx = typeTabMap[currentContentType] || 0;
+    document.querySelectorAll('#pickerLibrary .content-type-tab').forEach((t, i) => t.classList.toggle('active', i === activeIdx));
 
     // Reset TMDB search
     document.getElementById('tmdbSearchInput').value = '';
