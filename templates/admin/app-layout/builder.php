@@ -582,7 +582,7 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
 
                 <!-- Items (for types that support them) -->
                 <?php if ($typeDef && $typeDef['supports_items']):
-                    $sectionSettings = json_decode($section['settings'] ?? '{}', true);
+                    $sectionSettings = is_array($section['settings']) ? $section['settings'] : json_decode($section['settings'] ?? '{}', true);
                     $sectionSource = $sectionSettings['source'] ?? 'curated';
                     $isAuto = ($sectionSource !== 'curated');
                 ?>

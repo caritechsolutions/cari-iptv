@@ -200,7 +200,7 @@ class AppLayoutController
         // Resolve items for each section
         foreach ($sections as &$section) {
             $typeInfo = $sectionTypes[$section['section_type']] ?? null;
-            $settings = json_decode($section['settings'] ?? '{}', true);
+            $settings = is_array($section['settings']) ? $section['settings'] : json_decode($section['settings'] ?? '{}', true);
             $source = $settings['source'] ?? 'curated';
 
             if ($typeInfo && $typeInfo['supports_items'] && $source !== 'curated') {
