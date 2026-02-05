@@ -1,0 +1,2460 @@
+/*
+  Icon Font: lucide
+*/
+
+@font-face {
+  font-family: "lucide";
+  src: url("./lucide.woff2") format("woff2"),
+       url("./lucide.woff") format("woff"),
+       url("./lucide.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+[data-icon]:before { content: attr(data-icon); }
+
+[data-icon]:before,
+.lucide-accessibility:before,
+.lucide-activity:before,
+.lucide-activity-square:before,
+.lucide-air-vent:before,
+.lucide-airplay:before,
+.lucide-alarm-check:before,
+.lucide-alarm-clock:before,
+.lucide-alarm-clock-off:before,
+.lucide-alarm-minus:before,
+.lucide-alarm-plus:before,
+.lucide-album:before,
+.lucide-alert-circle:before,
+.lucide-alert-octagon:before,
+.lucide-alert-triangle:before,
+.lucide-align-center:before,
+.lucide-align-center-horizontal:before,
+.lucide-align-center-vertical:before,
+.lucide-align-end-horizontal:before,
+.lucide-align-end-vertical:before,
+.lucide-align-horizontal-distribute-center:before,
+.lucide-align-horizontal-distribute-end:before,
+.lucide-align-horizontal-distribute-start:before,
+.lucide-align-horizontal-justify-center:before,
+.lucide-align-horizontal-justify-end:before,
+.lucide-align-horizontal-justify-start:before,
+.lucide-align-horizontal-space-around:before,
+.lucide-align-horizontal-space-between:before,
+.lucide-align-justify:before,
+.lucide-align-left:before,
+.lucide-align-right:before,
+.lucide-align-start-horizontal:before,
+.lucide-align-start-vertical:before,
+.lucide-align-vertical-distribute-center:before,
+.lucide-align-vertical-distribute-end:before,
+.lucide-align-vertical-distribute-start:before,
+.lucide-align-vertical-justify-center:before,
+.lucide-align-vertical-justify-end:before,
+.lucide-align-vertical-justify-start:before,
+.lucide-align-vertical-space-around:before,
+.lucide-align-vertical-space-between:before,
+.lucide-ampersand:before,
+.lucide-ampersands:before,
+.lucide-anchor:before,
+.lucide-angry:before,
+.lucide-annoyed:before,
+.lucide-antenna:before,
+.lucide-aperture:before,
+.lucide-app-window:before,
+.lucide-apple:before,
+.lucide-archive:before,
+.lucide-archive-restore:before,
+.lucide-area-chart:before,
+.lucide-armchair:before,
+.lucide-arrow-big-down:before,
+.lucide-arrow-big-down-dash:before,
+.lucide-arrow-big-left:before,
+.lucide-arrow-big-left-dash:before,
+.lucide-arrow-big-right:before,
+.lucide-arrow-big-right-dash:before,
+.lucide-arrow-big-up:before,
+.lucide-arrow-big-up-dash:before,
+.lucide-arrow-down:before,
+.lucide-arrow-down-0-1:before,
+.lucide-arrow-down-1-0:before,
+.lucide-arrow-down-a-z:before,
+.lucide-arrow-down-circle:before,
+.lucide-arrow-down-from-line:before,
+.lucide-arrow-down-left:before,
+.lucide-arrow-down-left-from-circle:before,
+.lucide-arrow-down-left-square:before,
+.lucide-arrow-down-narrow-wide:before,
+.lucide-arrow-down-right:before,
+.lucide-arrow-down-right-from-circle:before,
+.lucide-arrow-down-right-square:before,
+.lucide-arrow-down-square:before,
+.lucide-arrow-down-to-dot:before,
+.lucide-arrow-down-to-line:before,
+.lucide-arrow-down-up:before,
+.lucide-arrow-down-wide-narrow:before,
+.lucide-arrow-down-z-a:before,
+.lucide-arrow-left:before,
+.lucide-arrow-left-circle:before,
+.lucide-arrow-left-from-line:before,
+.lucide-arrow-left-right:before,
+.lucide-arrow-left-square:before,
+.lucide-arrow-left-to-line:before,
+.lucide-arrow-right:before,
+.lucide-arrow-right-circle:before,
+.lucide-arrow-right-from-line:before,
+.lucide-arrow-right-left:before,
+.lucide-arrow-right-square:before,
+.lucide-arrow-right-to-line:before,
+.lucide-arrow-up:before,
+.lucide-arrow-up-0-1:before,
+.lucide-arrow-up-1-0:before,
+.lucide-arrow-up-a-z:before,
+.lucide-arrow-up-circle:before,
+.lucide-arrow-up-down:before,
+.lucide-arrow-up-from-dot:before,
+.lucide-arrow-up-from-line:before,
+.lucide-arrow-up-left:before,
+.lucide-arrow-up-left-from-circle:before,
+.lucide-arrow-up-left-square:before,
+.lucide-arrow-up-narrow-wide:before,
+.lucide-arrow-up-right:before,
+.lucide-arrow-up-right-from-circle:before,
+.lucide-arrow-up-right-square:before,
+.lucide-arrow-up-square:before,
+.lucide-arrow-up-to-line:before,
+.lucide-arrow-up-wide-narrow:before,
+.lucide-arrow-up-z-a:before,
+.lucide-arrows-up-from-line:before,
+.lucide-asterisk:before,
+.lucide-at-sign:before,
+.lucide-atom:before,
+.lucide-award:before,
+.lucide-axe:before,
+.lucide-axis-3d:before,
+.lucide-baby:before,
+.lucide-backpack:before,
+.lucide-badge:before,
+.lucide-badge-alert:before,
+.lucide-badge-check:before,
+.lucide-badge-dollar-sign:before,
+.lucide-badge-help:before,
+.lucide-badge-info:before,
+.lucide-badge-minus:before,
+.lucide-badge-percent:before,
+.lucide-badge-plus:before,
+.lucide-badge-x:before,
+.lucide-baggage-claim:before,
+.lucide-ban:before,
+.lucide-banana:before,
+.lucide-banknote:before,
+.lucide-bar-chart:before,
+.lucide-bar-chart-2:before,
+.lucide-bar-chart-3:before,
+.lucide-bar-chart-4:before,
+.lucide-bar-chart-big:before,
+.lucide-bar-chart-horizontal:before,
+.lucide-bar-chart-horizontal-big:before,
+.lucide-baseline:before,
+.lucide-bath:before,
+.lucide-battery:before,
+.lucide-battery-charging:before,
+.lucide-battery-full:before,
+.lucide-battery-low:before,
+.lucide-battery-medium:before,
+.lucide-battery-warning:before,
+.lucide-beaker:before,
+.lucide-bean:before,
+.lucide-bean-off:before,
+.lucide-bed:before,
+.lucide-bed-double:before,
+.lucide-bed-single:before,
+.lucide-beef:before,
+.lucide-beer:before,
+.lucide-bell:before,
+.lucide-bell-dot:before,
+.lucide-bell-minus:before,
+.lucide-bell-off:before,
+.lucide-bell-plus:before,
+.lucide-bell-ring:before,
+.lucide-bike:before,
+.lucide-binary:before,
+.lucide-biohazard:before,
+.lucide-bird:before,
+.lucide-bitcoin:before,
+.lucide-blinds:before,
+.lucide-bluetooth:before,
+.lucide-bluetooth-connected:before,
+.lucide-bluetooth-off:before,
+.lucide-bluetooth-searching:before,
+.lucide-bold:before,
+.lucide-bomb:before,
+.lucide-bone:before,
+.lucide-book:before,
+.lucide-book-copy:before,
+.lucide-book-down:before,
+.lucide-book-key:before,
+.lucide-book-lock:before,
+.lucide-book-marked:before,
+.lucide-book-minus:before,
+.lucide-book-open:before,
+.lucide-book-open-check:before,
+.lucide-book-plus:before,
+.lucide-book-template:before,
+.lucide-book-up:before,
+.lucide-book-up-2:before,
+.lucide-book-x:before,
+.lucide-bookmark:before,
+.lucide-bookmark-minus:before,
+.lucide-bookmark-plus:before,
+.lucide-boom-box:before,
+.lucide-bot:before,
+.lucide-box:before,
+.lucide-box-select:before,
+.lucide-boxes:before,
+.lucide-braces:before,
+.lucide-brackets:before,
+.lucide-brain:before,
+.lucide-brain-circuit:before,
+.lucide-brain-cog:before,
+.lucide-briefcase:before,
+.lucide-bring-to-front:before,
+.lucide-brush:before,
+.lucide-bug:before,
+.lucide-building:before,
+.lucide-building-2:before,
+.lucide-bus:before,
+.lucide-cable:before,
+.lucide-cake:before,
+.lucide-cake-slice:before,
+.lucide-calculator:before,
+.lucide-calendar:before,
+.lucide-calendar-check:before,
+.lucide-calendar-check-2:before,
+.lucide-calendar-clock:before,
+.lucide-calendar-days:before,
+.lucide-calendar-heart:before,
+.lucide-calendar-minus:before,
+.lucide-calendar-off:before,
+.lucide-calendar-plus:before,
+.lucide-calendar-range:before,
+.lucide-calendar-search:before,
+.lucide-calendar-x:before,
+.lucide-calendar-x-2:before,
+.lucide-camera:before,
+.lucide-camera-off:before,
+.lucide-candlestick-chart:before,
+.lucide-candy:before,
+.lucide-candy-cane:before,
+.lucide-candy-off:before,
+.lucide-car:before,
+.lucide-carrot:before,
+.lucide-case-lower:before,
+.lucide-case-sensitive:before,
+.lucide-case-upper:before,
+.lucide-cassette-tape:before,
+.lucide-cast:before,
+.lucide-castle:before,
+.lucide-cat:before,
+.lucide-check:before,
+.lucide-check-check:before,
+.lucide-check-circle:before,
+.lucide-check-circle-2:before,
+.lucide-check-square:before,
+.lucide-chef-hat:before,
+.lucide-cherry:before,
+.lucide-chevron-down:before,
+.lucide-chevron-down-circle:before,
+.lucide-chevron-down-square:before,
+.lucide-chevron-first:before,
+.lucide-chevron-last:before,
+.lucide-chevron-left:before,
+.lucide-chevron-left-circle:before,
+.lucide-chevron-left-square:before,
+.lucide-chevron-right:before,
+.lucide-chevron-right-circle:before,
+.lucide-chevron-right-square:before,
+.lucide-chevron-up:before,
+.lucide-chevron-up-circle:before,
+.lucide-chevron-up-square:before,
+.lucide-chevrons-down:before,
+.lucide-chevrons-down-up:before,
+.lucide-chevrons-left:before,
+.lucide-chevrons-left-right:before,
+.lucide-chevrons-right:before,
+.lucide-chevrons-right-left:before,
+.lucide-chevrons-up:before,
+.lucide-chevrons-up-down:before,
+.lucide-chrome:before,
+.lucide-church:before,
+.lucide-cigarette:before,
+.lucide-cigarette-off:before,
+.lucide-circle:before,
+.lucide-circle-dashed:before,
+.lucide-circle-dollar-sign:before,
+.lucide-circle-dot:before,
+.lucide-circle-dot-dashed:before,
+.lucide-circle-ellipsis:before,
+.lucide-circle-equal:before,
+.lucide-circle-off:before,
+.lucide-circle-slash:before,
+.lucide-circle-slash-2:before,
+.lucide-circuit-board:before,
+.lucide-citrus:before,
+.lucide-clapperboard:before,
+.lucide-clipboard:before,
+.lucide-clipboard-check:before,
+.lucide-clipboard-copy:before,
+.lucide-clipboard-edit:before,
+.lucide-clipboard-list:before,
+.lucide-clipboard-paste:before,
+.lucide-clipboard-signature:before,
+.lucide-clipboard-type:before,
+.lucide-clipboard-x:before,
+.lucide-clock:before,
+.lucide-clock-1:before,
+.lucide-clock-10:before,
+.lucide-clock-11:before,
+.lucide-clock-12:before,
+.lucide-clock-2:before,
+.lucide-clock-3:before,
+.lucide-clock-4:before,
+.lucide-clock-5:before,
+.lucide-clock-6:before,
+.lucide-clock-7:before,
+.lucide-clock-8:before,
+.lucide-clock-9:before,
+.lucide-cloud:before,
+.lucide-cloud-cog:before,
+.lucide-cloud-drizzle:before,
+.lucide-cloud-fog:before,
+.lucide-cloud-hail:before,
+.lucide-cloud-lightning:before,
+.lucide-cloud-moon:before,
+.lucide-cloud-moon-rain:before,
+.lucide-cloud-off:before,
+.lucide-cloud-rain:before,
+.lucide-cloud-rain-wind:before,
+.lucide-cloud-snow:before,
+.lucide-cloud-sun:before,
+.lucide-cloud-sun-rain:before,
+.lucide-cloudy:before,
+.lucide-clover:before,
+.lucide-club:before,
+.lucide-code:before,
+.lucide-code-2:before,
+.lucide-codepen:before,
+.lucide-codesandbox:before,
+.lucide-coffee:before,
+.lucide-cog:before,
+.lucide-coins:before,
+.lucide-columns:before,
+.lucide-combine:before,
+.lucide-command:before,
+.lucide-compass:before,
+.lucide-component:before,
+.lucide-computer:before,
+.lucide-concierge-bell:before,
+.lucide-construction:before,
+.lucide-contact:before,
+.lucide-contact-2:before,
+.lucide-container:before,
+.lucide-contrast:before,
+.lucide-cookie:before,
+.lucide-copy:before,
+.lucide-copy-check:before,
+.lucide-copy-minus:before,
+.lucide-copy-plus:before,
+.lucide-copy-slash:before,
+.lucide-copy-x:before,
+.lucide-copyleft:before,
+.lucide-copyright:before,
+.lucide-corner-down-left:before,
+.lucide-corner-down-right:before,
+.lucide-corner-left-down:before,
+.lucide-corner-left-up:before,
+.lucide-corner-right-down:before,
+.lucide-corner-right-up:before,
+.lucide-corner-up-left:before,
+.lucide-corner-up-right:before,
+.lucide-cpu:before,
+.lucide-creative-commons:before,
+.lucide-credit-card:before,
+.lucide-croissant:before,
+.lucide-crop:before,
+.lucide-cross:before,
+.lucide-crosshair:before,
+.lucide-crown:before,
+.lucide-cup-soda:before,
+.lucide-currency:before,
+.lucide-database:before,
+.lucide-database-backup:before,
+.lucide-delete:before,
+.lucide-dessert:before,
+.lucide-diamond:before,
+.lucide-dice-1:before,
+.lucide-dice-2:before,
+.lucide-dice-3:before,
+.lucide-dice-4:before,
+.lucide-dice-5:before,
+.lucide-dice-6:before,
+.lucide-dices:before,
+.lucide-diff:before,
+.lucide-disc:before,
+.lucide-disc-2:before,
+.lucide-disc-3:before,
+.lucide-divide:before,
+.lucide-divide-circle:before,
+.lucide-divide-square:before,
+.lucide-dna:before,
+.lucide-dna-off:before,
+.lucide-dog:before,
+.lucide-dollar-sign:before,
+.lucide-donut:before,
+.lucide-door-closed:before,
+.lucide-door-open:before,
+.lucide-dot:before,
+.lucide-download:before,
+.lucide-download-cloud:before,
+.lucide-dribbble:before,
+.lucide-droplet:before,
+.lucide-droplets:before,
+.lucide-drumstick:before,
+.lucide-dumbbell:before,
+.lucide-ear:before,
+.lucide-ear-off:before,
+.lucide-egg:before,
+.lucide-egg-fried:before,
+.lucide-egg-off:before,
+.lucide-equal:before,
+.lucide-equal-not:before,
+.lucide-eraser:before,
+.lucide-euro:before,
+.lucide-expand:before,
+.lucide-external-link:before,
+.lucide-eye:before,
+.lucide-eye-off:before,
+.lucide-facebook:before,
+.lucide-factory:before,
+.lucide-fan:before,
+.lucide-fast-forward:before,
+.lucide-feather:before,
+.lucide-ferris-wheel:before,
+.lucide-figma:before,
+.lucide-file:before,
+.lucide-file-archive:before,
+.lucide-file-audio:before,
+.lucide-file-audio-2:before,
+.lucide-file-axis-3d:before,
+.lucide-file-badge:before,
+.lucide-file-badge-2:before,
+.lucide-file-bar-chart:before,
+.lucide-file-bar-chart-2:before,
+.lucide-file-box:before,
+.lucide-file-check:before,
+.lucide-file-check-2:before,
+.lucide-file-clock:before,
+.lucide-file-code:before,
+.lucide-file-code-2:before,
+.lucide-file-cog:before,
+.lucide-file-cog-2:before,
+.lucide-file-diff:before,
+.lucide-file-digit:before,
+.lucide-file-down:before,
+.lucide-file-edit:before,
+.lucide-file-heart:before,
+.lucide-file-image:before,
+.lucide-file-input:before,
+.lucide-file-json:before,
+.lucide-file-json-2:before,
+.lucide-file-key:before,
+.lucide-file-key-2:before,
+.lucide-file-line-chart:before,
+.lucide-file-lock:before,
+.lucide-file-lock-2:before,
+.lucide-file-minus:before,
+.lucide-file-minus-2:before,
+.lucide-file-output:before,
+.lucide-file-pie-chart:before,
+.lucide-file-plus:before,
+.lucide-file-plus-2:before,
+.lucide-file-question:before,
+.lucide-file-scan:before,
+.lucide-file-search:before,
+.lucide-file-search-2:before,
+.lucide-file-signature:before,
+.lucide-file-spreadsheet:before,
+.lucide-file-stack:before,
+.lucide-file-symlink:before,
+.lucide-file-terminal:before,
+.lucide-file-text:before,
+.lucide-file-type:before,
+.lucide-file-type-2:before,
+.lucide-file-up:before,
+.lucide-file-video:before,
+.lucide-file-video-2:before,
+.lucide-file-volume:before,
+.lucide-file-volume-2:before,
+.lucide-file-warning:before,
+.lucide-file-x:before,
+.lucide-file-x-2:before,
+.lucide-files:before,
+.lucide-film:before,
+.lucide-filter:before,
+.lucide-filter-x:before,
+.lucide-fingerprint:before,
+.lucide-fish:before,
+.lucide-fish-off:before,
+.lucide-flag:before,
+.lucide-flag-off:before,
+.lucide-flag-triangle-left:before,
+.lucide-flag-triangle-right:before,
+.lucide-flame:before,
+.lucide-flashlight:before,
+.lucide-flashlight-off:before,
+.lucide-flask-conical:before,
+.lucide-flask-conical-off:before,
+.lucide-flask-round:before,
+.lucide-flip-horizontal:before,
+.lucide-flip-horizontal-2:before,
+.lucide-flip-vertical:before,
+.lucide-flip-vertical-2:before,
+.lucide-flower:before,
+.lucide-flower-2:before,
+.lucide-focus:before,
+.lucide-fold-horizontal:before,
+.lucide-fold-vertical:before,
+.lucide-folder:before,
+.lucide-folder-archive:before,
+.lucide-folder-check:before,
+.lucide-folder-clock:before,
+.lucide-folder-closed:before,
+.lucide-folder-cog:before,
+.lucide-folder-cog-2:before,
+.lucide-folder-dot:before,
+.lucide-folder-down:before,
+.lucide-folder-edit:before,
+.lucide-folder-git:before,
+.lucide-folder-git-2:before,
+.lucide-folder-heart:before,
+.lucide-folder-input:before,
+.lucide-folder-kanban:before,
+.lucide-folder-key:before,
+.lucide-folder-lock:before,
+.lucide-folder-minus:before,
+.lucide-folder-open:before,
+.lucide-folder-open-dot:before,
+.lucide-folder-output:before,
+.lucide-folder-plus:before,
+.lucide-folder-root:before,
+.lucide-folder-search:before,
+.lucide-folder-search-2:before,
+.lucide-folder-symlink:before,
+.lucide-folder-sync:before,
+.lucide-folder-tree:before,
+.lucide-folder-up:before,
+.lucide-folder-x:before,
+.lucide-folders:before,
+.lucide-footprints:before,
+.lucide-forklift:before,
+.lucide-form-input:before,
+.lucide-forward:before,
+.lucide-frame:before,
+.lucide-framer:before,
+.lucide-frown:before,
+.lucide-fuel:before,
+.lucide-function-square:before,
+.lucide-gallery-horizontal:before,
+.lucide-gallery-horizontal-end:before,
+.lucide-gallery-thumbnails:before,
+.lucide-gallery-vertical:before,
+.lucide-gallery-vertical-end:before,
+.lucide-gamepad:before,
+.lucide-gamepad-2:before,
+.lucide-gantt-chart:before,
+.lucide-gantt-chart-square:before,
+.lucide-gauge:before,
+.lucide-gauge-circle:before,
+.lucide-gavel:before,
+.lucide-gem:before,
+.lucide-ghost:before,
+.lucide-gift:before,
+.lucide-git-branch:before,
+.lucide-git-branch-plus:before,
+.lucide-git-commit:before,
+.lucide-git-compare:before,
+.lucide-git-fork:before,
+.lucide-git-merge:before,
+.lucide-git-pull-request:before,
+.lucide-git-pull-request-closed:before,
+.lucide-git-pull-request-draft:before,
+.lucide-github:before,
+.lucide-gitlab:before,
+.lucide-glass-water:before,
+.lucide-glasses:before,
+.lucide-globe:before,
+.lucide-globe-2:before,
+.lucide-goal:before,
+.lucide-grab:before,
+.lucide-graduation-cap:before,
+.lucide-grape:before,
+.lucide-grid:before,
+.lucide-grip:before,
+.lucide-grip-horizontal:before,
+.lucide-grip-vertical:before,
+.lucide-group:before,
+.lucide-hammer:before,
+.lucide-hand:before,
+.lucide-hand-metal:before,
+.lucide-hard-drive:before,
+.lucide-hard-drive-download:before,
+.lucide-hard-drive-upload:before,
+.lucide-hard-hat:before,
+.lucide-hash:before,
+.lucide-haze:before,
+.lucide-hdmi-port:before,
+.lucide-heading:before,
+.lucide-heading-1:before,
+.lucide-heading-2:before,
+.lucide-heading-3:before,
+.lucide-heading-4:before,
+.lucide-heading-5:before,
+.lucide-heading-6:before,
+.lucide-headphones:before,
+.lucide-heart:before,
+.lucide-heart-crack:before,
+.lucide-heart-handshake:before,
+.lucide-heart-off:before,
+.lucide-heart-pulse:before,
+.lucide-help-circle:before,
+.lucide-helping-hand:before,
+.lucide-hexagon:before,
+.lucide-highlighter:before,
+.lucide-history:before,
+.lucide-home:before,
+.lucide-hop:before,
+.lucide-hop-off:before,
+.lucide-hotel:before,
+.lucide-hourglass:before,
+.lucide-ice-cream:before,
+.lucide-ice-cream-2:before,
+.lucide-image:before,
+.lucide-image-minus:before,
+.lucide-image-off:before,
+.lucide-image-plus:before,
+.lucide-import:before,
+.lucide-inbox:before,
+.lucide-indent:before,
+.lucide-indian-rupee:before,
+.lucide-infinity:before,
+.lucide-info:before,
+.lucide-inspect:before,
+.lucide-instagram:before,
+.lucide-italic:before,
+.lucide-iteration-ccw:before,
+.lucide-iteration-cw:before,
+.lucide-japanese-yen:before,
+.lucide-joystick:before,
+.lucide-kanban:before,
+.lucide-kanban-square:before,
+.lucide-kanban-square-dashed:before,
+.lucide-key:before,
+.lucide-key-round:before,
+.lucide-key-square:before,
+.lucide-keyboard:before,
+.lucide-lamp:before,
+.lucide-lamp-ceiling:before,
+.lucide-lamp-desk:before,
+.lucide-lamp-floor:before,
+.lucide-lamp-wall-down:before,
+.lucide-lamp-wall-up:before,
+.lucide-landmark:before,
+.lucide-languages:before,
+.lucide-laptop:before,
+.lucide-laptop-2:before,
+.lucide-lasso:before,
+.lucide-lasso-select:before,
+.lucide-laugh:before,
+.lucide-layers:before,
+.lucide-layout:before,
+.lucide-layout-dashboard:before,
+.lucide-layout-grid:before,
+.lucide-layout-list:before,
+.lucide-layout-panel-left:before,
+.lucide-layout-panel-top:before,
+.lucide-layout-template:before,
+.lucide-leaf:before,
+.lucide-leafy-green:before,
+.lucide-library:before,
+.lucide-life-buoy:before,
+.lucide-ligature:before,
+.lucide-lightbulb:before,
+.lucide-lightbulb-off:before,
+.lucide-line-chart:before,
+.lucide-link:before,
+.lucide-link-2:before,
+.lucide-link-2-off:before,
+.lucide-linkedin:before,
+.lucide-list:before,
+.lucide-list-checks:before,
+.lucide-list-end:before,
+.lucide-list-filter:before,
+.lucide-list-minus:before,
+.lucide-list-music:before,
+.lucide-list-ordered:before,
+.lucide-list-plus:before,
+.lucide-list-restart:before,
+.lucide-list-start:before,
+.lucide-list-todo:before,
+.lucide-list-tree:before,
+.lucide-list-video:before,
+.lucide-list-x:before,
+.lucide-loader:before,
+.lucide-loader-2:before,
+.lucide-locate:before,
+.lucide-locate-fixed:before,
+.lucide-locate-off:before,
+.lucide-lock:before,
+.lucide-log-in:before,
+.lucide-log-out:before,
+.lucide-lollipop:before,
+.lucide-luggage:before,
+.lucide-magnet:before,
+.lucide-mail:before,
+.lucide-mail-check:before,
+.lucide-mail-minus:before,
+.lucide-mail-open:before,
+.lucide-mail-plus:before,
+.lucide-mail-question:before,
+.lucide-mail-search:before,
+.lucide-mail-warning:before,
+.lucide-mail-x:before,
+.lucide-mailbox:before,
+.lucide-mails:before,
+.lucide-map:before,
+.lucide-map-pin:before,
+.lucide-map-pin-off:before,
+.lucide-martini:before,
+.lucide-maximize:before,
+.lucide-maximize-2:before,
+.lucide-medal:before,
+.lucide-megaphone:before,
+.lucide-megaphone-off:before,
+.lucide-meh:before,
+.lucide-memory-stick:before,
+.lucide-menu:before,
+.lucide-menu-square:before,
+.lucide-merge:before,
+.lucide-message-circle:before,
+.lucide-message-square:before,
+.lucide-message-square-dashed:before,
+.lucide-message-square-plus:before,
+.lucide-messages-square:before,
+.lucide-mic:before,
+.lucide-mic-2:before,
+.lucide-mic-off:before,
+.lucide-microscope:before,
+.lucide-microwave:before,
+.lucide-milestone:before,
+.lucide-milk:before,
+.lucide-milk-off:before,
+.lucide-minimize:before,
+.lucide-minimize-2:before,
+.lucide-minus:before,
+.lucide-minus-circle:before,
+.lucide-minus-square:before,
+.lucide-monitor:before,
+.lucide-monitor-check:before,
+.lucide-monitor-dot:before,
+.lucide-monitor-down:before,
+.lucide-monitor-off:before,
+.lucide-monitor-pause:before,
+.lucide-monitor-play:before,
+.lucide-monitor-smartphone:before,
+.lucide-monitor-speaker:before,
+.lucide-monitor-stop:before,
+.lucide-monitor-up:before,
+.lucide-monitor-x:before,
+.lucide-moon:before,
+.lucide-moon-star:before,
+.lucide-more-horizontal:before,
+.lucide-more-vertical:before,
+.lucide-mountain:before,
+.lucide-mountain-snow:before,
+.lucide-mouse:before,
+.lucide-mouse-pointer:before,
+.lucide-mouse-pointer-2:before,
+.lucide-mouse-pointer-click:before,
+.lucide-move:before,
+.lucide-move-3d:before,
+.lucide-move-diagonal:before,
+.lucide-move-diagonal-2:before,
+.lucide-move-down:before,
+.lucide-move-down-left:before,
+.lucide-move-down-right:before,
+.lucide-move-horizontal:before,
+.lucide-move-left:before,
+.lucide-move-right:before,
+.lucide-move-up:before,
+.lucide-move-up-left:before,
+.lucide-move-up-right:before,
+.lucide-move-vertical:before,
+.lucide-music:before,
+.lucide-music-2:before,
+.lucide-music-3:before,
+.lucide-music-4:before,
+.lucide-navigation:before,
+.lucide-navigation-2:before,
+.lucide-navigation-2-off:before,
+.lucide-navigation-off:before,
+.lucide-network:before,
+.lucide-newspaper:before,
+.lucide-nfc:before,
+.lucide-nut:before,
+.lucide-nut-off:before,
+.lucide-octagon:before,
+.lucide-option:before,
+.lucide-orbit:before,
+.lucide-outdent:before,
+.lucide-package:before,
+.lucide-package-2:before,
+.lucide-package-check:before,
+.lucide-package-minus:before,
+.lucide-package-open:before,
+.lucide-package-plus:before,
+.lucide-package-search:before,
+.lucide-package-x:before,
+.lucide-paint-bucket:before,
+.lucide-paintbrush:before,
+.lucide-paintbrush-2:before,
+.lucide-palette:before,
+.lucide-palmtree:before,
+.lucide-panel-bottom:before,
+.lucide-panel-bottom-close:before,
+.lucide-panel-bottom-inactive:before,
+.lucide-panel-bottom-open:before,
+.lucide-panel-left:before,
+.lucide-panel-left-close:before,
+.lucide-panel-left-inactive:before,
+.lucide-panel-left-open:before,
+.lucide-panel-right:before,
+.lucide-panel-right-close:before,
+.lucide-panel-right-inactive:before,
+.lucide-panel-right-open:before,
+.lucide-panel-top:before,
+.lucide-panel-top-close:before,
+.lucide-panel-top-inactive:before,
+.lucide-panel-top-open:before,
+.lucide-paperclip:before,
+.lucide-parentheses:before,
+.lucide-parking-circle:before,
+.lucide-parking-circle-off:before,
+.lucide-parking-square:before,
+.lucide-parking-square-off:before,
+.lucide-party-popper:before,
+.lucide-pause:before,
+.lucide-pause-circle:before,
+.lucide-pause-octagon:before,
+.lucide-pc-case:before,
+.lucide-pen:before,
+.lucide-pen-line:before,
+.lucide-pen-square:before,
+.lucide-pen-tool:before,
+.lucide-pencil:before,
+.lucide-pencil-line:before,
+.lucide-pencil-ruler:before,
+.lucide-percent:before,
+.lucide-person-standing:before,
+.lucide-phone:before,
+.lucide-phone-call:before,
+.lucide-phone-forwarded:before,
+.lucide-phone-incoming:before,
+.lucide-phone-missed:before,
+.lucide-phone-off:before,
+.lucide-phone-outgoing:before,
+.lucide-pi:before,
+.lucide-pi-square:before,
+.lucide-picture-in-picture:before,
+.lucide-picture-in-picture-2:before,
+.lucide-pie-chart:before,
+.lucide-piggy-bank:before,
+.lucide-pilcrow:before,
+.lucide-pilcrow-square:before,
+.lucide-pill:before,
+.lucide-pin:before,
+.lucide-pin-off:before,
+.lucide-pipette:before,
+.lucide-pizza:before,
+.lucide-plane:before,
+.lucide-plane-landing:before,
+.lucide-plane-takeoff:before,
+.lucide-play:before,
+.lucide-play-circle:before,
+.lucide-play-square:before,
+.lucide-plug:before,
+.lucide-plug-2:before,
+.lucide-plug-zap:before,
+.lucide-plug-zap-2:before,
+.lucide-plus:before,
+.lucide-plus-circle:before,
+.lucide-plus-square:before,
+.lucide-pocket:before,
+.lucide-pocket-knife:before,
+.lucide-podcast:before,
+.lucide-pointer:before,
+.lucide-popcorn:before,
+.lucide-popsicle:before,
+.lucide-pound-sterling:before,
+.lucide-power:before,
+.lucide-power-off:before,
+.lucide-presentation:before,
+.lucide-printer:before,
+.lucide-projector:before,
+.lucide-puzzle:before,
+.lucide-qr-code:before,
+.lucide-quote:before,
+.lucide-radar:before,
+.lucide-radiation:before,
+.lucide-radio:before,
+.lucide-radio-receiver:before,
+.lucide-radio-tower:before,
+.lucide-rainbow:before,
+.lucide-rat:before,
+.lucide-ratio:before,
+.lucide-receipt:before,
+.lucide-rectangle-horizontal:before,
+.lucide-rectangle-vertical:before,
+.lucide-recycle:before,
+.lucide-redo:before,
+.lucide-redo-2:before,
+.lucide-redo-dot:before,
+.lucide-refresh-ccw:before,
+.lucide-refresh-ccw-dot:before,
+.lucide-refresh-cw:before,
+.lucide-refresh-cw-off:before,
+.lucide-refrigerator:before,
+.lucide-regex:before,
+.lucide-remove-formatting:before,
+.lucide-repeat:before,
+.lucide-repeat-1:before,
+.lucide-repeat-2:before,
+.lucide-replace:before,
+.lucide-replace-all:before,
+.lucide-reply:before,
+.lucide-reply-all:before,
+.lucide-rewind:before,
+.lucide-rocket:before,
+.lucide-rocking-chair:before,
+.lucide-roller-coaster:before,
+.lucide-rotate-3d:before,
+.lucide-rotate-ccw:before,
+.lucide-rotate-cw:before,
+.lucide-router:before,
+.lucide-rows:before,
+.lucide-rss:before,
+.lucide-ruler:before,
+.lucide-russian-ruble:before,
+.lucide-sailboat:before,
+.lucide-salad:before,
+.lucide-sandwich:before,
+.lucide-satellite:before,
+.lucide-satellite-dish:before,
+.lucide-save:before,
+.lucide-save-all:before,
+.lucide-scale:before,
+.lucide-scale-3d:before,
+.lucide-scaling:before,
+.lucide-scan:before,
+.lucide-scan-face:before,
+.lucide-scan-line:before,
+.lucide-scatter-chart:before,
+.lucide-school:before,
+.lucide-school-2:before,
+.lucide-scissors:before,
+.lucide-scissors-line-dashed:before,
+.lucide-scissors-square:before,
+.lucide-scissors-square-dashed-bottom:before,
+.lucide-screen-share:before,
+.lucide-screen-share-off:before,
+.lucide-scroll:before,
+.lucide-scroll-text:before,
+.lucide-search:before,
+.lucide-search-check:before,
+.lucide-search-code:before,
+.lucide-search-slash:before,
+.lucide-search-x:before,
+.lucide-send:before,
+.lucide-send-horizonal:before,
+.lucide-send-to-back:before,
+.lucide-separator-horizontal:before,
+.lucide-separator-vertical:before,
+.lucide-server:before,
+.lucide-server-cog:before,
+.lucide-server-crash:before,
+.lucide-server-off:before,
+.lucide-settings:before,
+.lucide-settings-2:before,
+.lucide-shapes:before,
+.lucide-share:before,
+.lucide-share-2:before,
+.lucide-sheet:before,
+.lucide-shield:before,
+.lucide-shield-alert:before,
+.lucide-shield-check:before,
+.lucide-shield-close:before,
+.lucide-shield-off:before,
+.lucide-shield-question:before,
+.lucide-ship:before,
+.lucide-shirt:before,
+.lucide-shopping-bag:before,
+.lucide-shopping-basket:before,
+.lucide-shopping-cart:before,
+.lucide-shovel:before,
+.lucide-shower-head:before,
+.lucide-shrink:before,
+.lucide-shrub:before,
+.lucide-shuffle:before,
+.lucide-sigma:before,
+.lucide-sigma-square:before,
+.lucide-signal:before,
+.lucide-signal-high:before,
+.lucide-signal-low:before,
+.lucide-signal-medium:before,
+.lucide-signal-zero:before,
+.lucide-siren:before,
+.lucide-skip-back:before,
+.lucide-skip-forward:before,
+.lucide-skull:before,
+.lucide-slack:before,
+.lucide-slice:before,
+.lucide-sliders:before,
+.lucide-sliders-horizontal:before,
+.lucide-smartphone:before,
+.lucide-smartphone-charging:before,
+.lucide-smartphone-nfc:before,
+.lucide-smile:before,
+.lucide-smile-plus:before,
+.lucide-snowflake:before,
+.lucide-sofa:before,
+.lucide-soup:before,
+.lucide-space:before,
+.lucide-spade:before,
+.lucide-sparkle:before,
+.lucide-sparkles:before,
+.lucide-speaker:before,
+.lucide-spell-check:before,
+.lucide-spell-check-2:before,
+.lucide-spline:before,
+.lucide-split:before,
+.lucide-split-square-horizontal:before,
+.lucide-split-square-vertical:before,
+.lucide-spray-can:before,
+.lucide-sprout:before,
+.lucide-square:before,
+.lucide-square-asterisk:before,
+.lucide-square-code:before,
+.lucide-square-dashed-bottom:before,
+.lucide-square-dashed-bottom-code:before,
+.lucide-square-dot:before,
+.lucide-square-equal:before,
+.lucide-square-slash:before,
+.lucide-square-stack:before,
+.lucide-squirrel:before,
+.lucide-stamp:before,
+.lucide-star:before,
+.lucide-star-half:before,
+.lucide-star-off:before,
+.lucide-step-back:before,
+.lucide-step-forward:before,
+.lucide-stethoscope:before,
+.lucide-sticker:before,
+.lucide-sticky-note:before,
+.lucide-stop-circle:before,
+.lucide-store:before,
+.lucide-stretch-horizontal:before,
+.lucide-stretch-vertical:before,
+.lucide-strikethrough:before,
+.lucide-subscript:before,
+.lucide-subtitles:before,
+.lucide-sun:before,
+.lucide-sun-dim:before,
+.lucide-sun-medium:before,
+.lucide-sun-moon:before,
+.lucide-sun-snow:before,
+.lucide-sunrise:before,
+.lucide-sunset:before,
+.lucide-superscript:before,
+.lucide-swiss-franc:before,
+.lucide-switch-camera:before,
+.lucide-sword:before,
+.lucide-swords:before,
+.lucide-syringe:before,
+.lucide-table:before,
+.lucide-table-2:before,
+.lucide-table-properties:before,
+.lucide-tablet:before,
+.lucide-tablets:before,
+.lucide-tag:before,
+.lucide-tags:before,
+.lucide-tally-1:before,
+.lucide-tally-2:before,
+.lucide-tally-3:before,
+.lucide-tally-4:before,
+.lucide-tally-5:before,
+.lucide-target:before,
+.lucide-tent:before,
+.lucide-terminal:before,
+.lucide-terminal-square:before,
+.lucide-test-tube:before,
+.lucide-test-tube-2:before,
+.lucide-test-tubes:before,
+.lucide-text:before,
+.lucide-text-cursor:before,
+.lucide-text-cursor-input:before,
+.lucide-text-quote:before,
+.lucide-text-select:before,
+.lucide-thermometer:before,
+.lucide-thermometer-snowflake:before,
+.lucide-thermometer-sun:before,
+.lucide-thumbs-down:before,
+.lucide-thumbs-up:before,
+.lucide-ticket:before,
+.lucide-timer:before,
+.lucide-timer-off:before,
+.lucide-timer-reset:before,
+.lucide-toggle-left:before,
+.lucide-toggle-right:before,
+.lucide-tornado:before,
+.lucide-touchpad:before,
+.lucide-touchpad-off:before,
+.lucide-tower-control:before,
+.lucide-toy-brick:before,
+.lucide-train:before,
+.lucide-trash:before,
+.lucide-trash-2:before,
+.lucide-tree-deciduous:before,
+.lucide-tree-pine:before,
+.lucide-trees:before,
+.lucide-trello:before,
+.lucide-trending-down:before,
+.lucide-trending-up:before,
+.lucide-triangle:before,
+.lucide-triangle-right:before,
+.lucide-trophy:before,
+.lucide-truck:before,
+.lucide-tv:before,
+.lucide-tv-2:before,
+.lucide-twitch:before,
+.lucide-twitter:before,
+.lucide-type:before,
+.lucide-umbrella:before,
+.lucide-underline:before,
+.lucide-undo:before,
+.lucide-undo-2:before,
+.lucide-undo-dot:before,
+.lucide-unfold-horizontal:before,
+.lucide-unfold-vertical:before,
+.lucide-ungroup:before,
+.lucide-unlink:before,
+.lucide-unlink-2:before,
+.lucide-unlock:before,
+.lucide-unplug:before,
+.lucide-upload:before,
+.lucide-upload-cloud:before,
+.lucide-usb:before,
+.lucide-user:before,
+.lucide-user-2:before,
+.lucide-user-check:before,
+.lucide-user-check-2:before,
+.lucide-user-circle:before,
+.lucide-user-circle-2:before,
+.lucide-user-cog:before,
+.lucide-user-cog-2:before,
+.lucide-user-minus:before,
+.lucide-user-minus-2:before,
+.lucide-user-plus:before,
+.lucide-user-plus-2:before,
+.lucide-user-square:before,
+.lucide-user-square-2:before,
+.lucide-user-x:before,
+.lucide-user-x-2:before,
+.lucide-users:before,
+.lucide-users-2:before,
+.lucide-utensils:before,
+.lucide-utensils-crossed:before,
+.lucide-utility-pole:before,
+.lucide-variable:before,
+.lucide-vegan:before,
+.lucide-venetian-mask:before,
+.lucide-vibrate:before,
+.lucide-vibrate-off:before,
+.lucide-video:before,
+.lucide-video-off:before,
+.lucide-videotape:before,
+.lucide-view:before,
+.lucide-voicemail:before,
+.lucide-volume:before,
+.lucide-volume-1:before,
+.lucide-volume-2:before,
+.lucide-volume-x:before,
+.lucide-vote:before,
+.lucide-wallet:before,
+.lucide-wallet-2:before,
+.lucide-wallet-cards:before,
+.lucide-wallpaper:before,
+.lucide-wand:before,
+.lucide-wand-2:before,
+.lucide-warehouse:before,
+.lucide-watch:before,
+.lucide-waves:before,
+.lucide-webcam:before,
+.lucide-webhook:before,
+.lucide-wheat:before,
+.lucide-wheat-off:before,
+.lucide-whole-word:before,
+.lucide-wifi:before,
+.lucide-wifi-off:before,
+.lucide-wind:before,
+.lucide-wine:before,
+.lucide-wine-off:before,
+.lucide-workflow:before,
+.lucide-wrap-text:before,
+.lucide-wrench:before,
+.lucide-x:before,
+.lucide-x-circle:before,
+.lucide-x-octagon:before,
+.lucide-x-square:before,
+.lucide-youtube:before,
+.lucide-zap:before,
+.lucide-zap-off:before,
+.lucide-zoom-in:before,
+.lucide-zoom-out:before {
+  display: inline-block;
+  font-family: "lucide";
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1;
+  text-decoration: inherit;
+  text-rendering: optimizeLegibility;
+  text-transform: none;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-smoothing: antialiased;
+}
+
+.lucide-accessibility:before { content: "\f100"; }
+.lucide-activity:before { content: "\f101"; }
+.lucide-activity-square:before { content: "\f102"; }
+.lucide-air-vent:before { content: "\f103"; }
+.lucide-airplay:before { content: "\f104"; }
+.lucide-alarm-check:before { content: "\f105"; }
+.lucide-alarm-clock:before { content: "\f106"; }
+.lucide-alarm-clock-off:before { content: "\f107"; }
+.lucide-alarm-minus:before { content: "\f108"; }
+.lucide-alarm-plus:before { content: "\f109"; }
+.lucide-album:before { content: "\f10a"; }
+.lucide-alert-circle:before { content: "\f10b"; }
+.lucide-alert-octagon:before { content: "\f10c"; }
+.lucide-alert-triangle:before { content: "\f10d"; }
+.lucide-align-center:before { content: "\f10e"; }
+.lucide-align-center-horizontal:before { content: "\f10f"; }
+.lucide-align-center-vertical:before { content: "\f110"; }
+.lucide-align-end-horizontal:before { content: "\f111"; }
+.lucide-align-end-vertical:before { content: "\f112"; }
+.lucide-align-horizontal-distribute-center:before { content: "\f113"; }
+.lucide-align-horizontal-distribute-end:before { content: "\f114"; }
+.lucide-align-horizontal-distribute-start:before { content: "\f115"; }
+.lucide-align-horizontal-justify-center:before { content: "\f116"; }
+.lucide-align-horizontal-justify-end:before { content: "\f117"; }
+.lucide-align-horizontal-justify-start:before { content: "\f118"; }
+.lucide-align-horizontal-space-around:before { content: "\f119"; }
+.lucide-align-horizontal-space-between:before { content: "\f11a"; }
+.lucide-align-justify:before { content: "\f11b"; }
+.lucide-align-left:before { content: "\f11c"; }
+.lucide-align-right:before { content: "\f11d"; }
+.lucide-align-start-horizontal:before { content: "\f11e"; }
+.lucide-align-start-vertical:before { content: "\f11f"; }
+.lucide-align-vertical-distribute-center:before { content: "\f120"; }
+.lucide-align-vertical-distribute-end:before { content: "\f121"; }
+.lucide-align-vertical-distribute-start:before { content: "\f122"; }
+.lucide-align-vertical-justify-center:before { content: "\f123"; }
+.lucide-align-vertical-justify-end:before { content: "\f124"; }
+.lucide-align-vertical-justify-start:before { content: "\f125"; }
+.lucide-align-vertical-space-around:before { content: "\f126"; }
+.lucide-align-vertical-space-between:before { content: "\f127"; }
+.lucide-ampersand:before { content: "\f128"; }
+.lucide-ampersands:before { content: "\f129"; }
+.lucide-anchor:before { content: "\f12a"; }
+.lucide-angry:before { content: "\f12b"; }
+.lucide-annoyed:before { content: "\f12c"; }
+.lucide-antenna:before { content: "\f12d"; }
+.lucide-aperture:before { content: "\f12e"; }
+.lucide-app-window:before { content: "\f12f"; }
+.lucide-apple:before { content: "\f130"; }
+.lucide-archive:before { content: "\f131"; }
+.lucide-archive-restore:before { content: "\f132"; }
+.lucide-area-chart:before { content: "\f133"; }
+.lucide-armchair:before { content: "\f134"; }
+.lucide-arrow-big-down:before { content: "\f135"; }
+.lucide-arrow-big-down-dash:before { content: "\f136"; }
+.lucide-arrow-big-left:before { content: "\f137"; }
+.lucide-arrow-big-left-dash:before { content: "\f138"; }
+.lucide-arrow-big-right:before { content: "\f139"; }
+.lucide-arrow-big-right-dash:before { content: "\f13a"; }
+.lucide-arrow-big-up:before { content: "\f13b"; }
+.lucide-arrow-big-up-dash:before { content: "\f13c"; }
+.lucide-arrow-down:before { content: "\f13d"; }
+.lucide-arrow-down-0-1:before { content: "\f13e"; }
+.lucide-arrow-down-1-0:before { content: "\f13f"; }
+.lucide-arrow-down-a-z:before { content: "\f140"; }
+.lucide-arrow-down-circle:before { content: "\f141"; }
+.lucide-arrow-down-from-line:before { content: "\f142"; }
+.lucide-arrow-down-left:before { content: "\f143"; }
+.lucide-arrow-down-left-from-circle:before { content: "\f144"; }
+.lucide-arrow-down-left-square:before { content: "\f145"; }
+.lucide-arrow-down-narrow-wide:before { content: "\f146"; }
+.lucide-arrow-down-right:before { content: "\f147"; }
+.lucide-arrow-down-right-from-circle:before { content: "\f148"; }
+.lucide-arrow-down-right-square:before { content: "\f149"; }
+.lucide-arrow-down-square:before { content: "\f14a"; }
+.lucide-arrow-down-to-dot:before { content: "\f14b"; }
+.lucide-arrow-down-to-line:before { content: "\f14c"; }
+.lucide-arrow-down-up:before { content: "\f14d"; }
+.lucide-arrow-down-wide-narrow:before { content: "\f14e"; }
+.lucide-arrow-down-z-a:before { content: "\f14f"; }
+.lucide-arrow-left:before { content: "\f150"; }
+.lucide-arrow-left-circle:before { content: "\f151"; }
+.lucide-arrow-left-from-line:before { content: "\f152"; }
+.lucide-arrow-left-right:before { content: "\f153"; }
+.lucide-arrow-left-square:before { content: "\f154"; }
+.lucide-arrow-left-to-line:before { content: "\f155"; }
+.lucide-arrow-right:before { content: "\f156"; }
+.lucide-arrow-right-circle:before { content: "\f157"; }
+.lucide-arrow-right-from-line:before { content: "\f158"; }
+.lucide-arrow-right-left:before { content: "\f159"; }
+.lucide-arrow-right-square:before { content: "\f15a"; }
+.lucide-arrow-right-to-line:before { content: "\f15b"; }
+.lucide-arrow-up:before { content: "\f15c"; }
+.lucide-arrow-up-0-1:before { content: "\f15d"; }
+.lucide-arrow-up-1-0:before { content: "\f15e"; }
+.lucide-arrow-up-a-z:before { content: "\f15f"; }
+.lucide-arrow-up-circle:before { content: "\f160"; }
+.lucide-arrow-up-down:before { content: "\f161"; }
+.lucide-arrow-up-from-dot:before { content: "\f162"; }
+.lucide-arrow-up-from-line:before { content: "\f163"; }
+.lucide-arrow-up-left:before { content: "\f164"; }
+.lucide-arrow-up-left-from-circle:before { content: "\f165"; }
+.lucide-arrow-up-left-square:before { content: "\f166"; }
+.lucide-arrow-up-narrow-wide:before { content: "\f167"; }
+.lucide-arrow-up-right:before { content: "\f168"; }
+.lucide-arrow-up-right-from-circle:before { content: "\f169"; }
+.lucide-arrow-up-right-square:before { content: "\f16a"; }
+.lucide-arrow-up-square:before { content: "\f16b"; }
+.lucide-arrow-up-to-line:before { content: "\f16c"; }
+.lucide-arrow-up-wide-narrow:before { content: "\f16d"; }
+.lucide-arrow-up-z-a:before { content: "\f16e"; }
+.lucide-arrows-up-from-line:before { content: "\f16f"; }
+.lucide-asterisk:before { content: "\f170"; }
+.lucide-at-sign:before { content: "\f171"; }
+.lucide-atom:before { content: "\f172"; }
+.lucide-award:before { content: "\f173"; }
+.lucide-axe:before { content: "\f174"; }
+.lucide-axis-3d:before { content: "\f175"; }
+.lucide-baby:before { content: "\f176"; }
+.lucide-backpack:before { content: "\f177"; }
+.lucide-badge:before { content: "\f178"; }
+.lucide-badge-alert:before { content: "\f179"; }
+.lucide-badge-check:before { content: "\f17a"; }
+.lucide-badge-dollar-sign:before { content: "\f17b"; }
+.lucide-badge-help:before { content: "\f17c"; }
+.lucide-badge-info:before { content: "\f17d"; }
+.lucide-badge-minus:before { content: "\f17e"; }
+.lucide-badge-percent:before { content: "\f17f"; }
+.lucide-badge-plus:before { content: "\f180"; }
+.lucide-badge-x:before { content: "\f181"; }
+.lucide-baggage-claim:before { content: "\f182"; }
+.lucide-ban:before { content: "\f183"; }
+.lucide-banana:before { content: "\f184"; }
+.lucide-banknote:before { content: "\f185"; }
+.lucide-bar-chart:before { content: "\f186"; }
+.lucide-bar-chart-2:before { content: "\f187"; }
+.lucide-bar-chart-3:before { content: "\f188"; }
+.lucide-bar-chart-4:before { content: "\f189"; }
+.lucide-bar-chart-big:before { content: "\f18a"; }
+.lucide-bar-chart-horizontal:before { content: "\f18b"; }
+.lucide-bar-chart-horizontal-big:before { content: "\f18c"; }
+.lucide-baseline:before { content: "\f18d"; }
+.lucide-bath:before { content: "\f18e"; }
+.lucide-battery:before { content: "\f18f"; }
+.lucide-battery-charging:before { content: "\f190"; }
+.lucide-battery-full:before { content: "\f191"; }
+.lucide-battery-low:before { content: "\f192"; }
+.lucide-battery-medium:before { content: "\f193"; }
+.lucide-battery-warning:before { content: "\f194"; }
+.lucide-beaker:before { content: "\f195"; }
+.lucide-bean:before { content: "\f196"; }
+.lucide-bean-off:before { content: "\f197"; }
+.lucide-bed:before { content: "\f198"; }
+.lucide-bed-double:before { content: "\f199"; }
+.lucide-bed-single:before { content: "\f19a"; }
+.lucide-beef:before { content: "\f19b"; }
+.lucide-beer:before { content: "\f19c"; }
+.lucide-bell:before { content: "\f19d"; }
+.lucide-bell-dot:before { content: "\f19e"; }
+.lucide-bell-minus:before { content: "\f19f"; }
+.lucide-bell-off:before { content: "\f1a0"; }
+.lucide-bell-plus:before { content: "\f1a1"; }
+.lucide-bell-ring:before { content: "\f1a2"; }
+.lucide-bike:before { content: "\f1a3"; }
+.lucide-binary:before { content: "\f1a4"; }
+.lucide-biohazard:before { content: "\f1a5"; }
+.lucide-bird:before { content: "\f1a6"; }
+.lucide-bitcoin:before { content: "\f1a7"; }
+.lucide-blinds:before { content: "\f1a8"; }
+.lucide-bluetooth:before { content: "\f1a9"; }
+.lucide-bluetooth-connected:before { content: "\f1aa"; }
+.lucide-bluetooth-off:before { content: "\f1ab"; }
+.lucide-bluetooth-searching:before { content: "\f1ac"; }
+.lucide-bold:before { content: "\f1ad"; }
+.lucide-bomb:before { content: "\f1ae"; }
+.lucide-bone:before { content: "\f1af"; }
+.lucide-book:before { content: "\f1b0"; }
+.lucide-book-copy:before { content: "\f1b1"; }
+.lucide-book-down:before { content: "\f1b2"; }
+.lucide-book-key:before { content: "\f1b3"; }
+.lucide-book-lock:before { content: "\f1b4"; }
+.lucide-book-marked:before { content: "\f1b5"; }
+.lucide-book-minus:before { content: "\f1b6"; }
+.lucide-book-open:before { content: "\f1b7"; }
+.lucide-book-open-check:before { content: "\f1b8"; }
+.lucide-book-plus:before { content: "\f1b9"; }
+.lucide-book-template:before { content: "\f1ba"; }
+.lucide-book-up:before { content: "\f1bb"; }
+.lucide-book-up-2:before { content: "\f1bc"; }
+.lucide-book-x:before { content: "\f1bd"; }
+.lucide-bookmark:before { content: "\f1be"; }
+.lucide-bookmark-minus:before { content: "\f1bf"; }
+.lucide-bookmark-plus:before { content: "\f1c0"; }
+.lucide-boom-box:before { content: "\f1c1"; }
+.lucide-bot:before { content: "\f1c2"; }
+.lucide-box:before { content: "\f1c3"; }
+.lucide-box-select:before { content: "\f1c4"; }
+.lucide-boxes:before { content: "\f1c5"; }
+.lucide-braces:before { content: "\f1c6"; }
+.lucide-brackets:before { content: "\f1c7"; }
+.lucide-brain:before { content: "\f1c8"; }
+.lucide-brain-circuit:before { content: "\f1c9"; }
+.lucide-brain-cog:before { content: "\f1ca"; }
+.lucide-briefcase:before { content: "\f1cb"; }
+.lucide-bring-to-front:before { content: "\f1cc"; }
+.lucide-brush:before { content: "\f1cd"; }
+.lucide-bug:before { content: "\f1ce"; }
+.lucide-building:before { content: "\f1cf"; }
+.lucide-building-2:before { content: "\f1d0"; }
+.lucide-bus:before { content: "\f1d1"; }
+.lucide-cable:before { content: "\f1d2"; }
+.lucide-cake:before { content: "\f1d3"; }
+.lucide-cake-slice:before { content: "\f1d4"; }
+.lucide-calculator:before { content: "\f1d5"; }
+.lucide-calendar:before { content: "\f1d6"; }
+.lucide-calendar-check:before { content: "\f1d7"; }
+.lucide-calendar-check-2:before { content: "\f1d8"; }
+.lucide-calendar-clock:before { content: "\f1d9"; }
+.lucide-calendar-days:before { content: "\f1da"; }
+.lucide-calendar-heart:before { content: "\f1db"; }
+.lucide-calendar-minus:before { content: "\f1dc"; }
+.lucide-calendar-off:before { content: "\f1dd"; }
+.lucide-calendar-plus:before { content: "\f1de"; }
+.lucide-calendar-range:before { content: "\f1df"; }
+.lucide-calendar-search:before { content: "\f1e0"; }
+.lucide-calendar-x:before { content: "\f1e1"; }
+.lucide-calendar-x-2:before { content: "\f1e2"; }
+.lucide-camera:before { content: "\f1e3"; }
+.lucide-camera-off:before { content: "\f1e4"; }
+.lucide-candlestick-chart:before { content: "\f1e5"; }
+.lucide-candy:before { content: "\f1e6"; }
+.lucide-candy-cane:before { content: "\f1e7"; }
+.lucide-candy-off:before { content: "\f1e8"; }
+.lucide-car:before { content: "\f1e9"; }
+.lucide-carrot:before { content: "\f1ea"; }
+.lucide-case-lower:before { content: "\f1eb"; }
+.lucide-case-sensitive:before { content: "\f1ec"; }
+.lucide-case-upper:before { content: "\f1ed"; }
+.lucide-cassette-tape:before { content: "\f1ee"; }
+.lucide-cast:before { content: "\f1ef"; }
+.lucide-castle:before { content: "\f1f0"; }
+.lucide-cat:before { content: "\f1f1"; }
+.lucide-check:before { content: "\f1f2"; }
+.lucide-check-check:before { content: "\f1f3"; }
+.lucide-check-circle:before { content: "\f1f4"; }
+.lucide-check-circle-2:before { content: "\f1f5"; }
+.lucide-check-square:before { content: "\f1f6"; }
+.lucide-chef-hat:before { content: "\f1f7"; }
+.lucide-cherry:before { content: "\f1f8"; }
+.lucide-chevron-down:before { content: "\f1f9"; }
+.lucide-chevron-down-circle:before { content: "\f1fa"; }
+.lucide-chevron-down-square:before { content: "\f1fb"; }
+.lucide-chevron-first:before { content: "\f1fc"; }
+.lucide-chevron-last:before { content: "\f1fd"; }
+.lucide-chevron-left:before { content: "\f1fe"; }
+.lucide-chevron-left-circle:before { content: "\f1ff"; }
+.lucide-chevron-left-square:before { content: "\f200"; }
+.lucide-chevron-right:before { content: "\f201"; }
+.lucide-chevron-right-circle:before { content: "\f202"; }
+.lucide-chevron-right-square:before { content: "\f203"; }
+.lucide-chevron-up:before { content: "\f204"; }
+.lucide-chevron-up-circle:before { content: "\f205"; }
+.lucide-chevron-up-square:before { content: "\f206"; }
+.lucide-chevrons-down:before { content: "\f207"; }
+.lucide-chevrons-down-up:before { content: "\f208"; }
+.lucide-chevrons-left:before { content: "\f209"; }
+.lucide-chevrons-left-right:before { content: "\f20a"; }
+.lucide-chevrons-right:before { content: "\f20b"; }
+.lucide-chevrons-right-left:before { content: "\f20c"; }
+.lucide-chevrons-up:before { content: "\f20d"; }
+.lucide-chevrons-up-down:before { content: "\f20e"; }
+.lucide-chrome:before { content: "\f20f"; }
+.lucide-church:before { content: "\f210"; }
+.lucide-cigarette:before { content: "\f211"; }
+.lucide-cigarette-off:before { content: "\f212"; }
+.lucide-circle:before { content: "\f213"; }
+.lucide-circle-dashed:before { content: "\f214"; }
+.lucide-circle-dollar-sign:before { content: "\f215"; }
+.lucide-circle-dot:before { content: "\f216"; }
+.lucide-circle-dot-dashed:before { content: "\f217"; }
+.lucide-circle-ellipsis:before { content: "\f218"; }
+.lucide-circle-equal:before { content: "\f219"; }
+.lucide-circle-off:before { content: "\f21a"; }
+.lucide-circle-slash:before { content: "\f21b"; }
+.lucide-circle-slash-2:before { content: "\f21c"; }
+.lucide-circuit-board:before { content: "\f21d"; }
+.lucide-citrus:before { content: "\f21e"; }
+.lucide-clapperboard:before { content: "\f21f"; }
+.lucide-clipboard:before { content: "\f220"; }
+.lucide-clipboard-check:before { content: "\f221"; }
+.lucide-clipboard-copy:before { content: "\f222"; }
+.lucide-clipboard-edit:before { content: "\f223"; }
+.lucide-clipboard-list:before { content: "\f224"; }
+.lucide-clipboard-paste:before { content: "\f225"; }
+.lucide-clipboard-signature:before { content: "\f226"; }
+.lucide-clipboard-type:before { content: "\f227"; }
+.lucide-clipboard-x:before { content: "\f228"; }
+.lucide-clock:before { content: "\f229"; }
+.lucide-clock-1:before { content: "\f22a"; }
+.lucide-clock-10:before { content: "\f22b"; }
+.lucide-clock-11:before { content: "\f22c"; }
+.lucide-clock-12:before { content: "\f22d"; }
+.lucide-clock-2:before { content: "\f22e"; }
+.lucide-clock-3:before { content: "\f22f"; }
+.lucide-clock-4:before { content: "\f230"; }
+.lucide-clock-5:before { content: "\f231"; }
+.lucide-clock-6:before { content: "\f232"; }
+.lucide-clock-7:before { content: "\f233"; }
+.lucide-clock-8:before { content: "\f234"; }
+.lucide-clock-9:before { content: "\f235"; }
+.lucide-cloud:before { content: "\f236"; }
+.lucide-cloud-cog:before { content: "\f237"; }
+.lucide-cloud-drizzle:before { content: "\f238"; }
+.lucide-cloud-fog:before { content: "\f239"; }
+.lucide-cloud-hail:before { content: "\f23a"; }
+.lucide-cloud-lightning:before { content: "\f23b"; }
+.lucide-cloud-moon:before { content: "\f23c"; }
+.lucide-cloud-moon-rain:before { content: "\f23d"; }
+.lucide-cloud-off:before { content: "\f23e"; }
+.lucide-cloud-rain:before { content: "\f23f"; }
+.lucide-cloud-rain-wind:before { content: "\f240"; }
+.lucide-cloud-snow:before { content: "\f241"; }
+.lucide-cloud-sun:before { content: "\f242"; }
+.lucide-cloud-sun-rain:before { content: "\f243"; }
+.lucide-cloudy:before { content: "\f244"; }
+.lucide-clover:before { content: "\f245"; }
+.lucide-club:before { content: "\f246"; }
+.lucide-code:before { content: "\f247"; }
+.lucide-code-2:before { content: "\f248"; }
+.lucide-codepen:before { content: "\f249"; }
+.lucide-codesandbox:before { content: "\f24a"; }
+.lucide-coffee:before { content: "\f24b"; }
+.lucide-cog:before { content: "\f24c"; }
+.lucide-coins:before { content: "\f24d"; }
+.lucide-columns:before { content: "\f24e"; }
+.lucide-combine:before { content: "\f24f"; }
+.lucide-command:before { content: "\f250"; }
+.lucide-compass:before { content: "\f251"; }
+.lucide-component:before { content: "\f252"; }
+.lucide-computer:before { content: "\f253"; }
+.lucide-concierge-bell:before { content: "\f254"; }
+.lucide-construction:before { content: "\f255"; }
+.lucide-contact:before { content: "\f256"; }
+.lucide-contact-2:before { content: "\f257"; }
+.lucide-container:before { content: "\f258"; }
+.lucide-contrast:before { content: "\f259"; }
+.lucide-cookie:before { content: "\f25a"; }
+.lucide-copy:before { content: "\f25b"; }
+.lucide-copy-check:before { content: "\f25c"; }
+.lucide-copy-minus:before { content: "\f25d"; }
+.lucide-copy-plus:before { content: "\f25e"; }
+.lucide-copy-slash:before { content: "\f25f"; }
+.lucide-copy-x:before { content: "\f260"; }
+.lucide-copyleft:before { content: "\f261"; }
+.lucide-copyright:before { content: "\f262"; }
+.lucide-corner-down-left:before { content: "\f263"; }
+.lucide-corner-down-right:before { content: "\f264"; }
+.lucide-corner-left-down:before { content: "\f265"; }
+.lucide-corner-left-up:before { content: "\f266"; }
+.lucide-corner-right-down:before { content: "\f267"; }
+.lucide-corner-right-up:before { content: "\f268"; }
+.lucide-corner-up-left:before { content: "\f269"; }
+.lucide-corner-up-right:before { content: "\f26a"; }
+.lucide-cpu:before { content: "\f26b"; }
+.lucide-creative-commons:before { content: "\f26c"; }
+.lucide-credit-card:before { content: "\f26d"; }
+.lucide-croissant:before { content: "\f26e"; }
+.lucide-crop:before { content: "\f26f"; }
+.lucide-cross:before { content: "\f270"; }
+.lucide-crosshair:before { content: "\f271"; }
+.lucide-crown:before { content: "\f272"; }
+.lucide-cup-soda:before { content: "\f273"; }
+.lucide-currency:before { content: "\f274"; }
+.lucide-database:before { content: "\f275"; }
+.lucide-database-backup:before { content: "\f276"; }
+.lucide-delete:before { content: "\f277"; }
+.lucide-dessert:before { content: "\f278"; }
+.lucide-diamond:before { content: "\f279"; }
+.lucide-dice-1:before { content: "\f27a"; }
+.lucide-dice-2:before { content: "\f27b"; }
+.lucide-dice-3:before { content: "\f27c"; }
+.lucide-dice-4:before { content: "\f27d"; }
+.lucide-dice-5:before { content: "\f27e"; }
+.lucide-dice-6:before { content: "\f27f"; }
+.lucide-dices:before { content: "\f280"; }
+.lucide-diff:before { content: "\f281"; }
+.lucide-disc:before { content: "\f282"; }
+.lucide-disc-2:before { content: "\f283"; }
+.lucide-disc-3:before { content: "\f284"; }
+.lucide-divide:before { content: "\f285"; }
+.lucide-divide-circle:before { content: "\f286"; }
+.lucide-divide-square:before { content: "\f287"; }
+.lucide-dna:before { content: "\f288"; }
+.lucide-dna-off:before { content: "\f289"; }
+.lucide-dog:before { content: "\f28a"; }
+.lucide-dollar-sign:before { content: "\f28b"; }
+.lucide-donut:before { content: "\f28c"; }
+.lucide-door-closed:before { content: "\f28d"; }
+.lucide-door-open:before { content: "\f28e"; }
+.lucide-dot:before { content: "\f28f"; }
+.lucide-download:before { content: "\f290"; }
+.lucide-download-cloud:before { content: "\f291"; }
+.lucide-dribbble:before { content: "\f292"; }
+.lucide-droplet:before { content: "\f293"; }
+.lucide-droplets:before { content: "\f294"; }
+.lucide-drumstick:before { content: "\f295"; }
+.lucide-dumbbell:before { content: "\f296"; }
+.lucide-ear:before { content: "\f297"; }
+.lucide-ear-off:before { content: "\f298"; }
+.lucide-egg:before { content: "\f299"; }
+.lucide-egg-fried:before { content: "\f29a"; }
+.lucide-egg-off:before { content: "\f29b"; }
+.lucide-equal:before { content: "\f29c"; }
+.lucide-equal-not:before { content: "\f29d"; }
+.lucide-eraser:before { content: "\f29e"; }
+.lucide-euro:before { content: "\f29f"; }
+.lucide-expand:before { content: "\f2a0"; }
+.lucide-external-link:before { content: "\f2a1"; }
+.lucide-eye:before { content: "\f2a2"; }
+.lucide-eye-off:before { content: "\f2a3"; }
+.lucide-facebook:before { content: "\f2a4"; }
+.lucide-factory:before { content: "\f2a5"; }
+.lucide-fan:before { content: "\f2a6"; }
+.lucide-fast-forward:before { content: "\f2a7"; }
+.lucide-feather:before { content: "\f2a8"; }
+.lucide-ferris-wheel:before { content: "\f2a9"; }
+.lucide-figma:before { content: "\f2aa"; }
+.lucide-file:before { content: "\f2ab"; }
+.lucide-file-archive:before { content: "\f2ac"; }
+.lucide-file-audio:before { content: "\f2ad"; }
+.lucide-file-audio-2:before { content: "\f2ae"; }
+.lucide-file-axis-3d:before { content: "\f2af"; }
+.lucide-file-badge:before { content: "\f2b0"; }
+.lucide-file-badge-2:before { content: "\f2b1"; }
+.lucide-file-bar-chart:before { content: "\f2b2"; }
+.lucide-file-bar-chart-2:before { content: "\f2b3"; }
+.lucide-file-box:before { content: "\f2b4"; }
+.lucide-file-check:before { content: "\f2b5"; }
+.lucide-file-check-2:before { content: "\f2b6"; }
+.lucide-file-clock:before { content: "\f2b7"; }
+.lucide-file-code:before { content: "\f2b8"; }
+.lucide-file-code-2:before { content: "\f2b9"; }
+.lucide-file-cog:before { content: "\f2ba"; }
+.lucide-file-cog-2:before { content: "\f2bb"; }
+.lucide-file-diff:before { content: "\f2bc"; }
+.lucide-file-digit:before { content: "\f2bd"; }
+.lucide-file-down:before { content: "\f2be"; }
+.lucide-file-edit:before { content: "\f2bf"; }
+.lucide-file-heart:before { content: "\f2c0"; }
+.lucide-file-image:before { content: "\f2c1"; }
+.lucide-file-input:before { content: "\f2c2"; }
+.lucide-file-json:before { content: "\f2c3"; }
+.lucide-file-json-2:before { content: "\f2c4"; }
+.lucide-file-key:before { content: "\f2c5"; }
+.lucide-file-key-2:before { content: "\f2c6"; }
+.lucide-file-line-chart:before { content: "\f2c7"; }
+.lucide-file-lock:before { content: "\f2c8"; }
+.lucide-file-lock-2:before { content: "\f2c9"; }
+.lucide-file-minus:before { content: "\f2ca"; }
+.lucide-file-minus-2:before { content: "\f2cb"; }
+.lucide-file-output:before { content: "\f2cc"; }
+.lucide-file-pie-chart:before { content: "\f2cd"; }
+.lucide-file-plus:before { content: "\f2ce"; }
+.lucide-file-plus-2:before { content: "\f2cf"; }
+.lucide-file-question:before { content: "\f2d0"; }
+.lucide-file-scan:before { content: "\f2d1"; }
+.lucide-file-search:before { content: "\f2d2"; }
+.lucide-file-search-2:before { content: "\f2d3"; }
+.lucide-file-signature:before { content: "\f2d4"; }
+.lucide-file-spreadsheet:before { content: "\f2d5"; }
+.lucide-file-stack:before { content: "\f2d6"; }
+.lucide-file-symlink:before { content: "\f2d7"; }
+.lucide-file-terminal:before { content: "\f2d8"; }
+.lucide-file-text:before { content: "\f2d9"; }
+.lucide-file-type:before { content: "\f2da"; }
+.lucide-file-type-2:before { content: "\f2db"; }
+.lucide-file-up:before { content: "\f2dc"; }
+.lucide-file-video:before { content: "\f2dd"; }
+.lucide-file-video-2:before { content: "\f2de"; }
+.lucide-file-volume:before { content: "\f2df"; }
+.lucide-file-volume-2:before { content: "\f2e0"; }
+.lucide-file-warning:before { content: "\f2e1"; }
+.lucide-file-x:before { content: "\f2e2"; }
+.lucide-file-x-2:before { content: "\f2e3"; }
+.lucide-files:before { content: "\f2e4"; }
+.lucide-film:before { content: "\f2e5"; }
+.lucide-filter:before { content: "\f2e6"; }
+.lucide-filter-x:before { content: "\f2e7"; }
+.lucide-fingerprint:before { content: "\f2e8"; }
+.lucide-fish:before { content: "\f2e9"; }
+.lucide-fish-off:before { content: "\f2ea"; }
+.lucide-flag:before { content: "\f2eb"; }
+.lucide-flag-off:before { content: "\f2ec"; }
+.lucide-flag-triangle-left:before { content: "\f2ed"; }
+.lucide-flag-triangle-right:before { content: "\f2ee"; }
+.lucide-flame:before { content: "\f2ef"; }
+.lucide-flashlight:before { content: "\f2f0"; }
+.lucide-flashlight-off:before { content: "\f2f1"; }
+.lucide-flask-conical:before { content: "\f2f2"; }
+.lucide-flask-conical-off:before { content: "\f2f3"; }
+.lucide-flask-round:before { content: "\f2f4"; }
+.lucide-flip-horizontal:before { content: "\f2f5"; }
+.lucide-flip-horizontal-2:before { content: "\f2f6"; }
+.lucide-flip-vertical:before { content: "\f2f7"; }
+.lucide-flip-vertical-2:before { content: "\f2f8"; }
+.lucide-flower:before { content: "\f2f9"; }
+.lucide-flower-2:before { content: "\f2fa"; }
+.lucide-focus:before { content: "\f2fb"; }
+.lucide-fold-horizontal:before { content: "\f2fc"; }
+.lucide-fold-vertical:before { content: "\f2fd"; }
+.lucide-folder:before { content: "\f2fe"; }
+.lucide-folder-archive:before { content: "\f2ff"; }
+.lucide-folder-check:before { content: "\f300"; }
+.lucide-folder-clock:before { content: "\f301"; }
+.lucide-folder-closed:before { content: "\f302"; }
+.lucide-folder-cog:before { content: "\f303"; }
+.lucide-folder-cog-2:before { content: "\f304"; }
+.lucide-folder-dot:before { content: "\f305"; }
+.lucide-folder-down:before { content: "\f306"; }
+.lucide-folder-edit:before { content: "\f307"; }
+.lucide-folder-git:before { content: "\f308"; }
+.lucide-folder-git-2:before { content: "\f309"; }
+.lucide-folder-heart:before { content: "\f30a"; }
+.lucide-folder-input:before { content: "\f30b"; }
+.lucide-folder-kanban:before { content: "\f30c"; }
+.lucide-folder-key:before { content: "\f30d"; }
+.lucide-folder-lock:before { content: "\f30e"; }
+.lucide-folder-minus:before { content: "\f30f"; }
+.lucide-folder-open:before { content: "\f310"; }
+.lucide-folder-open-dot:before { content: "\f311"; }
+.lucide-folder-output:before { content: "\f312"; }
+.lucide-folder-plus:before { content: "\f313"; }
+.lucide-folder-root:before { content: "\f314"; }
+.lucide-folder-search:before { content: "\f315"; }
+.lucide-folder-search-2:before { content: "\f316"; }
+.lucide-folder-symlink:before { content: "\f317"; }
+.lucide-folder-sync:before { content: "\f318"; }
+.lucide-folder-tree:before { content: "\f319"; }
+.lucide-folder-up:before { content: "\f31a"; }
+.lucide-folder-x:before { content: "\f31b"; }
+.lucide-folders:before { content: "\f31c"; }
+.lucide-footprints:before { content: "\f31d"; }
+.lucide-forklift:before { content: "\f31e"; }
+.lucide-form-input:before { content: "\f31f"; }
+.lucide-forward:before { content: "\f320"; }
+.lucide-frame:before { content: "\f321"; }
+.lucide-framer:before { content: "\f322"; }
+.lucide-frown:before { content: "\f323"; }
+.lucide-fuel:before { content: "\f324"; }
+.lucide-function-square:before { content: "\f325"; }
+.lucide-gallery-horizontal:before { content: "\f326"; }
+.lucide-gallery-horizontal-end:before { content: "\f327"; }
+.lucide-gallery-thumbnails:before { content: "\f328"; }
+.lucide-gallery-vertical:before { content: "\f329"; }
+.lucide-gallery-vertical-end:before { content: "\f32a"; }
+.lucide-gamepad:before { content: "\f32b"; }
+.lucide-gamepad-2:before { content: "\f32c"; }
+.lucide-gantt-chart:before { content: "\f32d"; }
+.lucide-gantt-chart-square:before { content: "\f32e"; }
+.lucide-gauge:before { content: "\f32f"; }
+.lucide-gauge-circle:before { content: "\f330"; }
+.lucide-gavel:before { content: "\f331"; }
+.lucide-gem:before { content: "\f332"; }
+.lucide-ghost:before { content: "\f333"; }
+.lucide-gift:before { content: "\f334"; }
+.lucide-git-branch:before { content: "\f335"; }
+.lucide-git-branch-plus:before { content: "\f336"; }
+.lucide-git-commit:before { content: "\f337"; }
+.lucide-git-compare:before { content: "\f338"; }
+.lucide-git-fork:before { content: "\f339"; }
+.lucide-git-merge:before { content: "\f33a"; }
+.lucide-git-pull-request:before { content: "\f33b"; }
+.lucide-git-pull-request-closed:before { content: "\f33c"; }
+.lucide-git-pull-request-draft:before { content: "\f33d"; }
+.lucide-github:before { content: "\f33e"; }
+.lucide-gitlab:before { content: "\f33f"; }
+.lucide-glass-water:before { content: "\f340"; }
+.lucide-glasses:before { content: "\f341"; }
+.lucide-globe:before { content: "\f342"; }
+.lucide-globe-2:before { content: "\f343"; }
+.lucide-goal:before { content: "\f344"; }
+.lucide-grab:before { content: "\f345"; }
+.lucide-graduation-cap:before { content: "\f346"; }
+.lucide-grape:before { content: "\f347"; }
+.lucide-grid:before { content: "\f348"; }
+.lucide-grip:before { content: "\f349"; }
+.lucide-grip-horizontal:before { content: "\f34a"; }
+.lucide-grip-vertical:before { content: "\f34b"; }
+.lucide-group:before { content: "\f34c"; }
+.lucide-hammer:before { content: "\f34d"; }
+.lucide-hand:before { content: "\f34e"; }
+.lucide-hand-metal:before { content: "\f34f"; }
+.lucide-hard-drive:before { content: "\f350"; }
+.lucide-hard-drive-download:before { content: "\f351"; }
+.lucide-hard-drive-upload:before { content: "\f352"; }
+.lucide-hard-hat:before { content: "\f353"; }
+.lucide-hash:before { content: "\f354"; }
+.lucide-haze:before { content: "\f355"; }
+.lucide-hdmi-port:before { content: "\f356"; }
+.lucide-heading:before { content: "\f357"; }
+.lucide-heading-1:before { content: "\f358"; }
+.lucide-heading-2:before { content: "\f359"; }
+.lucide-heading-3:before { content: "\f35a"; }
+.lucide-heading-4:before { content: "\f35b"; }
+.lucide-heading-5:before { content: "\f35c"; }
+.lucide-heading-6:before { content: "\f35d"; }
+.lucide-headphones:before { content: "\f35e"; }
+.lucide-heart:before { content: "\f35f"; }
+.lucide-heart-crack:before { content: "\f360"; }
+.lucide-heart-handshake:before { content: "\f361"; }
+.lucide-heart-off:before { content: "\f362"; }
+.lucide-heart-pulse:before { content: "\f363"; }
+.lucide-help-circle:before { content: "\f364"; }
+.lucide-helping-hand:before { content: "\f365"; }
+.lucide-hexagon:before { content: "\f366"; }
+.lucide-highlighter:before { content: "\f367"; }
+.lucide-history:before { content: "\f368"; }
+.lucide-home:before { content: "\f369"; }
+.lucide-hop:before { content: "\f36a"; }
+.lucide-hop-off:before { content: "\f36b"; }
+.lucide-hotel:before { content: "\f36c"; }
+.lucide-hourglass:before { content: "\f36d"; }
+.lucide-ice-cream:before { content: "\f36e"; }
+.lucide-ice-cream-2:before { content: "\f36f"; }
+.lucide-image:before { content: "\f370"; }
+.lucide-image-minus:before { content: "\f371"; }
+.lucide-image-off:before { content: "\f372"; }
+.lucide-image-plus:before { content: "\f373"; }
+.lucide-import:before { content: "\f374"; }
+.lucide-inbox:before { content: "\f375"; }
+.lucide-indent:before { content: "\f376"; }
+.lucide-indian-rupee:before { content: "\f377"; }
+.lucide-infinity:before { content: "\f378"; }
+.lucide-info:before { content: "\f379"; }
+.lucide-inspect:before { content: "\f37a"; }
+.lucide-instagram:before { content: "\f37b"; }
+.lucide-italic:before { content: "\f37c"; }
+.lucide-iteration-ccw:before { content: "\f37d"; }
+.lucide-iteration-cw:before { content: "\f37e"; }
+.lucide-japanese-yen:before { content: "\f37f"; }
+.lucide-joystick:before { content: "\f380"; }
+.lucide-kanban:before { content: "\f381"; }
+.lucide-kanban-square:before { content: "\f382"; }
+.lucide-kanban-square-dashed:before { content: "\f383"; }
+.lucide-key:before { content: "\f384"; }
+.lucide-key-round:before { content: "\f385"; }
+.lucide-key-square:before { content: "\f386"; }
+.lucide-keyboard:before { content: "\f387"; }
+.lucide-lamp:before { content: "\f388"; }
+.lucide-lamp-ceiling:before { content: "\f389"; }
+.lucide-lamp-desk:before { content: "\f38a"; }
+.lucide-lamp-floor:before { content: "\f38b"; }
+.lucide-lamp-wall-down:before { content: "\f38c"; }
+.lucide-lamp-wall-up:before { content: "\f38d"; }
+.lucide-landmark:before { content: "\f38e"; }
+.lucide-languages:before { content: "\f38f"; }
+.lucide-laptop:before { content: "\f390"; }
+.lucide-laptop-2:before { content: "\f391"; }
+.lucide-lasso:before { content: "\f392"; }
+.lucide-lasso-select:before { content: "\f393"; }
+.lucide-laugh:before { content: "\f394"; }
+.lucide-layers:before { content: "\f395"; }
+.lucide-layout:before { content: "\f396"; }
+.lucide-layout-dashboard:before { content: "\f397"; }
+.lucide-layout-grid:before { content: "\f398"; }
+.lucide-layout-list:before { content: "\f399"; }
+.lucide-layout-panel-left:before { content: "\f39a"; }
+.lucide-layout-panel-top:before { content: "\f39b"; }
+.lucide-layout-template:before { content: "\f39c"; }
+.lucide-leaf:before { content: "\f39d"; }
+.lucide-leafy-green:before { content: "\f39e"; }
+.lucide-library:before { content: "\f39f"; }
+.lucide-life-buoy:before { content: "\f3a0"; }
+.lucide-ligature:before { content: "\f3a1"; }
+.lucide-lightbulb:before { content: "\f3a2"; }
+.lucide-lightbulb-off:before { content: "\f3a3"; }
+.lucide-line-chart:before { content: "\f3a4"; }
+.lucide-link:before { content: "\f3a5"; }
+.lucide-link-2:before { content: "\f3a6"; }
+.lucide-link-2-off:before { content: "\f3a7"; }
+.lucide-linkedin:before { content: "\f3a8"; }
+.lucide-list:before { content: "\f3a9"; }
+.lucide-list-checks:before { content: "\f3aa"; }
+.lucide-list-end:before { content: "\f3ab"; }
+.lucide-list-filter:before { content: "\f3ac"; }
+.lucide-list-minus:before { content: "\f3ad"; }
+.lucide-list-music:before { content: "\f3ae"; }
+.lucide-list-ordered:before { content: "\f3af"; }
+.lucide-list-plus:before { content: "\f3b0"; }
+.lucide-list-restart:before { content: "\f3b1"; }
+.lucide-list-start:before { content: "\f3b2"; }
+.lucide-list-todo:before { content: "\f3b3"; }
+.lucide-list-tree:before { content: "\f3b4"; }
+.lucide-list-video:before { content: "\f3b5"; }
+.lucide-list-x:before { content: "\f3b6"; }
+.lucide-loader:before { content: "\f3b7"; }
+.lucide-loader-2:before { content: "\f3b8"; }
+.lucide-locate:before { content: "\f3b9"; }
+.lucide-locate-fixed:before { content: "\f3ba"; }
+.lucide-locate-off:before { content: "\f3bb"; }
+.lucide-lock:before { content: "\f3bc"; }
+.lucide-log-in:before { content: "\f3bd"; }
+.lucide-log-out:before { content: "\f3be"; }
+.lucide-lollipop:before { content: "\f3bf"; }
+.lucide-luggage:before { content: "\f3c0"; }
+.lucide-magnet:before { content: "\f3c1"; }
+.lucide-mail:before { content: "\f3c2"; }
+.lucide-mail-check:before { content: "\f3c3"; }
+.lucide-mail-minus:before { content: "\f3c4"; }
+.lucide-mail-open:before { content: "\f3c5"; }
+.lucide-mail-plus:before { content: "\f3c6"; }
+.lucide-mail-question:before { content: "\f3c7"; }
+.lucide-mail-search:before { content: "\f3c8"; }
+.lucide-mail-warning:before { content: "\f3c9"; }
+.lucide-mail-x:before { content: "\f3ca"; }
+.lucide-mailbox:before { content: "\f3cb"; }
+.lucide-mails:before { content: "\f3cc"; }
+.lucide-map:before { content: "\f3cd"; }
+.lucide-map-pin:before { content: "\f3ce"; }
+.lucide-map-pin-off:before { content: "\f3cf"; }
+.lucide-martini:before { content: "\f3d0"; }
+.lucide-maximize:before { content: "\f3d1"; }
+.lucide-maximize-2:before { content: "\f3d2"; }
+.lucide-medal:before { content: "\f3d3"; }
+.lucide-megaphone:before { content: "\f3d4"; }
+.lucide-megaphone-off:before { content: "\f3d5"; }
+.lucide-meh:before { content: "\f3d6"; }
+.lucide-memory-stick:before { content: "\f3d7"; }
+.lucide-menu:before { content: "\f3d8"; }
+.lucide-menu-square:before { content: "\f3d9"; }
+.lucide-merge:before { content: "\f3da"; }
+.lucide-message-circle:before { content: "\f3db"; }
+.lucide-message-square:before { content: "\f3dc"; }
+.lucide-message-square-dashed:before { content: "\f3dd"; }
+.lucide-message-square-plus:before { content: "\f3de"; }
+.lucide-messages-square:before { content: "\f3df"; }
+.lucide-mic:before { content: "\f3e0"; }
+.lucide-mic-2:before { content: "\f3e1"; }
+.lucide-mic-off:before { content: "\f3e2"; }
+.lucide-microscope:before { content: "\f3e3"; }
+.lucide-microwave:before { content: "\f3e4"; }
+.lucide-milestone:before { content: "\f3e5"; }
+.lucide-milk:before { content: "\f3e6"; }
+.lucide-milk-off:before { content: "\f3e7"; }
+.lucide-minimize:before { content: "\f3e8"; }
+.lucide-minimize-2:before { content: "\f3e9"; }
+.lucide-minus:before { content: "\f3ea"; }
+.lucide-minus-circle:before { content: "\f3eb"; }
+.lucide-minus-square:before { content: "\f3ec"; }
+.lucide-monitor:before { content: "\f3ed"; }
+.lucide-monitor-check:before { content: "\f3ee"; }
+.lucide-monitor-dot:before { content: "\f3ef"; }
+.lucide-monitor-down:before { content: "\f3f0"; }
+.lucide-monitor-off:before { content: "\f3f1"; }
+.lucide-monitor-pause:before { content: "\f3f2"; }
+.lucide-monitor-play:before { content: "\f3f3"; }
+.lucide-monitor-smartphone:before { content: "\f3f4"; }
+.lucide-monitor-speaker:before { content: "\f3f5"; }
+.lucide-monitor-stop:before { content: "\f3f6"; }
+.lucide-monitor-up:before { content: "\f3f7"; }
+.lucide-monitor-x:before { content: "\f3f8"; }
+.lucide-moon:before { content: "\f3f9"; }
+.lucide-moon-star:before { content: "\f3fa"; }
+.lucide-more-horizontal:before { content: "\f3fb"; }
+.lucide-more-vertical:before { content: "\f3fc"; }
+.lucide-mountain:before { content: "\f3fd"; }
+.lucide-mountain-snow:before { content: "\f3fe"; }
+.lucide-mouse:before { content: "\f3ff"; }
+.lucide-mouse-pointer:before { content: "\f400"; }
+.lucide-mouse-pointer-2:before { content: "\f401"; }
+.lucide-mouse-pointer-click:before { content: "\f402"; }
+.lucide-move:before { content: "\f403"; }
+.lucide-move-3d:before { content: "\f404"; }
+.lucide-move-diagonal:before { content: "\f405"; }
+.lucide-move-diagonal-2:before { content: "\f406"; }
+.lucide-move-down:before { content: "\f407"; }
+.lucide-move-down-left:before { content: "\f408"; }
+.lucide-move-down-right:before { content: "\f409"; }
+.lucide-move-horizontal:before { content: "\f40a"; }
+.lucide-move-left:before { content: "\f40b"; }
+.lucide-move-right:before { content: "\f40c"; }
+.lucide-move-up:before { content: "\f40d"; }
+.lucide-move-up-left:before { content: "\f40e"; }
+.lucide-move-up-right:before { content: "\f40f"; }
+.lucide-move-vertical:before { content: "\f410"; }
+.lucide-music:before { content: "\f411"; }
+.lucide-music-2:before { content: "\f412"; }
+.lucide-music-3:before { content: "\f413"; }
+.lucide-music-4:before { content: "\f414"; }
+.lucide-navigation:before { content: "\f415"; }
+.lucide-navigation-2:before { content: "\f416"; }
+.lucide-navigation-2-off:before { content: "\f417"; }
+.lucide-navigation-off:before { content: "\f418"; }
+.lucide-network:before { content: "\f419"; }
+.lucide-newspaper:before { content: "\f41a"; }
+.lucide-nfc:before { content: "\f41b"; }
+.lucide-nut:before { content: "\f41c"; }
+.lucide-nut-off:before { content: "\f41d"; }
+.lucide-octagon:before { content: "\f41e"; }
+.lucide-option:before { content: "\f41f"; }
+.lucide-orbit:before { content: "\f420"; }
+.lucide-outdent:before { content: "\f421"; }
+.lucide-package:before { content: "\f422"; }
+.lucide-package-2:before { content: "\f423"; }
+.lucide-package-check:before { content: "\f424"; }
+.lucide-package-minus:before { content: "\f425"; }
+.lucide-package-open:before { content: "\f426"; }
+.lucide-package-plus:before { content: "\f427"; }
+.lucide-package-search:before { content: "\f428"; }
+.lucide-package-x:before { content: "\f429"; }
+.lucide-paint-bucket:before { content: "\f42a"; }
+.lucide-paintbrush:before { content: "\f42b"; }
+.lucide-paintbrush-2:before { content: "\f42c"; }
+.lucide-palette:before { content: "\f42d"; }
+.lucide-palmtree:before { content: "\f42e"; }
+.lucide-panel-bottom:before { content: "\f42f"; }
+.lucide-panel-bottom-close:before { content: "\f430"; }
+.lucide-panel-bottom-inactive:before { content: "\f431"; }
+.lucide-panel-bottom-open:before { content: "\f432"; }
+.lucide-panel-left:before { content: "\f433"; }
+.lucide-panel-left-close:before { content: "\f434"; }
+.lucide-panel-left-inactive:before { content: "\f435"; }
+.lucide-panel-left-open:before { content: "\f436"; }
+.lucide-panel-right:before { content: "\f437"; }
+.lucide-panel-right-close:before { content: "\f438"; }
+.lucide-panel-right-inactive:before { content: "\f439"; }
+.lucide-panel-right-open:before { content: "\f43a"; }
+.lucide-panel-top:before { content: "\f43b"; }
+.lucide-panel-top-close:before { content: "\f43c"; }
+.lucide-panel-top-inactive:before { content: "\f43d"; }
+.lucide-panel-top-open:before { content: "\f43e"; }
+.lucide-paperclip:before { content: "\f43f"; }
+.lucide-parentheses:before { content: "\f440"; }
+.lucide-parking-circle:before { content: "\f441"; }
+.lucide-parking-circle-off:before { content: "\f442"; }
+.lucide-parking-square:before { content: "\f443"; }
+.lucide-parking-square-off:before { content: "\f444"; }
+.lucide-party-popper:before { content: "\f445"; }
+.lucide-pause:before { content: "\f446"; }
+.lucide-pause-circle:before { content: "\f447"; }
+.lucide-pause-octagon:before { content: "\f448"; }
+.lucide-pc-case:before { content: "\f449"; }
+.lucide-pen:before { content: "\f44a"; }
+.lucide-pen-line:before { content: "\f44b"; }
+.lucide-pen-square:before { content: "\f44c"; }
+.lucide-pen-tool:before { content: "\f44d"; }
+.lucide-pencil:before { content: "\f44e"; }
+.lucide-pencil-line:before { content: "\f44f"; }
+.lucide-pencil-ruler:before { content: "\f450"; }
+.lucide-percent:before { content: "\f451"; }
+.lucide-person-standing:before { content: "\f452"; }
+.lucide-phone:before { content: "\f453"; }
+.lucide-phone-call:before { content: "\f454"; }
+.lucide-phone-forwarded:before { content: "\f455"; }
+.lucide-phone-incoming:before { content: "\f456"; }
+.lucide-phone-missed:before { content: "\f457"; }
+.lucide-phone-off:before { content: "\f458"; }
+.lucide-phone-outgoing:before { content: "\f459"; }
+.lucide-pi:before { content: "\f45a"; }
+.lucide-pi-square:before { content: "\f45b"; }
+.lucide-picture-in-picture:before { content: "\f45c"; }
+.lucide-picture-in-picture-2:before { content: "\f45d"; }
+.lucide-pie-chart:before { content: "\f45e"; }
+.lucide-piggy-bank:before { content: "\f45f"; }
+.lucide-pilcrow:before { content: "\f460"; }
+.lucide-pilcrow-square:before { content: "\f461"; }
+.lucide-pill:before { content: "\f462"; }
+.lucide-pin:before { content: "\f463"; }
+.lucide-pin-off:before { content: "\f464"; }
+.lucide-pipette:before { content: "\f465"; }
+.lucide-pizza:before { content: "\f466"; }
+.lucide-plane:before { content: "\f467"; }
+.lucide-plane-landing:before { content: "\f468"; }
+.lucide-plane-takeoff:before { content: "\f469"; }
+.lucide-play:before { content: "\f46a"; }
+.lucide-play-circle:before { content: "\f46b"; }
+.lucide-play-square:before { content: "\f46c"; }
+.lucide-plug:before { content: "\f46d"; }
+.lucide-plug-2:before { content: "\f46e"; }
+.lucide-plug-zap:before { content: "\f46f"; }
+.lucide-plug-zap-2:before { content: "\f470"; }
+.lucide-plus:before { content: "\f471"; }
+.lucide-plus-circle:before { content: "\f472"; }
+.lucide-plus-square:before { content: "\f473"; }
+.lucide-pocket:before { content: "\f474"; }
+.lucide-pocket-knife:before { content: "\f475"; }
+.lucide-podcast:before { content: "\f476"; }
+.lucide-pointer:before { content: "\f477"; }
+.lucide-popcorn:before { content: "\f478"; }
+.lucide-popsicle:before { content: "\f479"; }
+.lucide-pound-sterling:before { content: "\f47a"; }
+.lucide-power:before { content: "\f47b"; }
+.lucide-power-off:before { content: "\f47c"; }
+.lucide-presentation:before { content: "\f47d"; }
+.lucide-printer:before { content: "\f47e"; }
+.lucide-projector:before { content: "\f47f"; }
+.lucide-puzzle:before { content: "\f480"; }
+.lucide-qr-code:before { content: "\f481"; }
+.lucide-quote:before { content: "\f482"; }
+.lucide-radar:before { content: "\f483"; }
+.lucide-radiation:before { content: "\f484"; }
+.lucide-radio:before { content: "\f485"; }
+.lucide-radio-receiver:before { content: "\f486"; }
+.lucide-radio-tower:before { content: "\f487"; }
+.lucide-rainbow:before { content: "\f488"; }
+.lucide-rat:before { content: "\f489"; }
+.lucide-ratio:before { content: "\f48a"; }
+.lucide-receipt:before { content: "\f48b"; }
+.lucide-rectangle-horizontal:before { content: "\f48c"; }
+.lucide-rectangle-vertical:before { content: "\f48d"; }
+.lucide-recycle:before { content: "\f48e"; }
+.lucide-redo:before { content: "\f48f"; }
+.lucide-redo-2:before { content: "\f490"; }
+.lucide-redo-dot:before { content: "\f491"; }
+.lucide-refresh-ccw:before { content: "\f492"; }
+.lucide-refresh-ccw-dot:before { content: "\f493"; }
+.lucide-refresh-cw:before { content: "\f494"; }
+.lucide-refresh-cw-off:before { content: "\f495"; }
+.lucide-refrigerator:before { content: "\f496"; }
+.lucide-regex:before { content: "\f497"; }
+.lucide-remove-formatting:before { content: "\f498"; }
+.lucide-repeat:before { content: "\f499"; }
+.lucide-repeat-1:before { content: "\f49a"; }
+.lucide-repeat-2:before { content: "\f49b"; }
+.lucide-replace:before { content: "\f49c"; }
+.lucide-replace-all:before { content: "\f49d"; }
+.lucide-reply:before { content: "\f49e"; }
+.lucide-reply-all:before { content: "\f49f"; }
+.lucide-rewind:before { content: "\f4a0"; }
+.lucide-rocket:before { content: "\f4a1"; }
+.lucide-rocking-chair:before { content: "\f4a2"; }
+.lucide-roller-coaster:before { content: "\f4a3"; }
+.lucide-rotate-3d:before { content: "\f4a4"; }
+.lucide-rotate-ccw:before { content: "\f4a5"; }
+.lucide-rotate-cw:before { content: "\f4a6"; }
+.lucide-router:before { content: "\f4a7"; }
+.lucide-rows:before { content: "\f4a8"; }
+.lucide-rss:before { content: "\f4a9"; }
+.lucide-ruler:before { content: "\f4aa"; }
+.lucide-russian-ruble:before { content: "\f4ab"; }
+.lucide-sailboat:before { content: "\f4ac"; }
+.lucide-salad:before { content: "\f4ad"; }
+.lucide-sandwich:before { content: "\f4ae"; }
+.lucide-satellite:before { content: "\f4af"; }
+.lucide-satellite-dish:before { content: "\f4b0"; }
+.lucide-save:before { content: "\f4b1"; }
+.lucide-save-all:before { content: "\f4b2"; }
+.lucide-scale:before { content: "\f4b3"; }
+.lucide-scale-3d:before { content: "\f4b4"; }
+.lucide-scaling:before { content: "\f4b5"; }
+.lucide-scan:before { content: "\f4b6"; }
+.lucide-scan-face:before { content: "\f4b7"; }
+.lucide-scan-line:before { content: "\f4b8"; }
+.lucide-scatter-chart:before { content: "\f4b9"; }
+.lucide-school:before { content: "\f4ba"; }
+.lucide-school-2:before { content: "\f4bb"; }
+.lucide-scissors:before { content: "\f4bc"; }
+.lucide-scissors-line-dashed:before { content: "\f4bd"; }
+.lucide-scissors-square:before { content: "\f4be"; }
+.lucide-scissors-square-dashed-bottom:before { content: "\f4bf"; }
+.lucide-screen-share:before { content: "\f4c0"; }
+.lucide-screen-share-off:before { content: "\f4c1"; }
+.lucide-scroll:before { content: "\f4c2"; }
+.lucide-scroll-text:before { content: "\f4c3"; }
+.lucide-search:before { content: "\f4c4"; }
+.lucide-search-check:before { content: "\f4c5"; }
+.lucide-search-code:before { content: "\f4c6"; }
+.lucide-search-slash:before { content: "\f4c7"; }
+.lucide-search-x:before { content: "\f4c8"; }
+.lucide-send:before { content: "\f4c9"; }
+.lucide-send-horizonal:before { content: "\f4ca"; }
+.lucide-send-to-back:before { content: "\f4cb"; }
+.lucide-separator-horizontal:before { content: "\f4cc"; }
+.lucide-separator-vertical:before { content: "\f4cd"; }
+.lucide-server:before { content: "\f4ce"; }
+.lucide-server-cog:before { content: "\f4cf"; }
+.lucide-server-crash:before { content: "\f4d0"; }
+.lucide-server-off:before { content: "\f4d1"; }
+.lucide-settings:before { content: "\f4d2"; }
+.lucide-settings-2:before { content: "\f4d3"; }
+.lucide-shapes:before { content: "\f4d4"; }
+.lucide-share:before { content: "\f4d5"; }
+.lucide-share-2:before { content: "\f4d6"; }
+.lucide-sheet:before { content: "\f4d7"; }
+.lucide-shield:before { content: "\f4d8"; }
+.lucide-shield-alert:before { content: "\f4d9"; }
+.lucide-shield-check:before { content: "\f4da"; }
+.lucide-shield-close:before { content: "\f4db"; }
+.lucide-shield-off:before { content: "\f4dc"; }
+.lucide-shield-question:before { content: "\f4dd"; }
+.lucide-ship:before { content: "\f4de"; }
+.lucide-shirt:before { content: "\f4df"; }
+.lucide-shopping-bag:before { content: "\f4e0"; }
+.lucide-shopping-basket:before { content: "\f4e1"; }
+.lucide-shopping-cart:before { content: "\f4e2"; }
+.lucide-shovel:before { content: "\f4e3"; }
+.lucide-shower-head:before { content: "\f4e4"; }
+.lucide-shrink:before { content: "\f4e5"; }
+.lucide-shrub:before { content: "\f4e6"; }
+.lucide-shuffle:before { content: "\f4e7"; }
+.lucide-sigma:before { content: "\f4e8"; }
+.lucide-sigma-square:before { content: "\f4e9"; }
+.lucide-signal:before { content: "\f4ea"; }
+.lucide-signal-high:before { content: "\f4eb"; }
+.lucide-signal-low:before { content: "\f4ec"; }
+.lucide-signal-medium:before { content: "\f4ed"; }
+.lucide-signal-zero:before { content: "\f4ee"; }
+.lucide-siren:before { content: "\f4ef"; }
+.lucide-skip-back:before { content: "\f4f0"; }
+.lucide-skip-forward:before { content: "\f4f1"; }
+.lucide-skull:before { content: "\f4f2"; }
+.lucide-slack:before { content: "\f4f3"; }
+.lucide-slice:before { content: "\f4f4"; }
+.lucide-sliders:before { content: "\f4f5"; }
+.lucide-sliders-horizontal:before { content: "\f4f6"; }
+.lucide-smartphone:before { content: "\f4f7"; }
+.lucide-smartphone-charging:before { content: "\f4f8"; }
+.lucide-smartphone-nfc:before { content: "\f4f9"; }
+.lucide-smile:before { content: "\f4fa"; }
+.lucide-smile-plus:before { content: "\f4fb"; }
+.lucide-snowflake:before { content: "\f4fc"; }
+.lucide-sofa:before { content: "\f4fd"; }
+.lucide-soup:before { content: "\f4fe"; }
+.lucide-space:before { content: "\f4ff"; }
+.lucide-spade:before { content: "\f500"; }
+.lucide-sparkle:before { content: "\f501"; }
+.lucide-sparkles:before { content: "\f502"; }
+.lucide-speaker:before { content: "\f503"; }
+.lucide-spell-check:before { content: "\f504"; }
+.lucide-spell-check-2:before { content: "\f505"; }
+.lucide-spline:before { content: "\f506"; }
+.lucide-split:before { content: "\f507"; }
+.lucide-split-square-horizontal:before { content: "\f508"; }
+.lucide-split-square-vertical:before { content: "\f509"; }
+.lucide-spray-can:before { content: "\f50a"; }
+.lucide-sprout:before { content: "\f50b"; }
+.lucide-square:before { content: "\f50c"; }
+.lucide-square-asterisk:before { content: "\f50d"; }
+.lucide-square-code:before { content: "\f50e"; }
+.lucide-square-dashed-bottom:before { content: "\f50f"; }
+.lucide-square-dashed-bottom-code:before { content: "\f510"; }
+.lucide-square-dot:before { content: "\f511"; }
+.lucide-square-equal:before { content: "\f512"; }
+.lucide-square-slash:before { content: "\f513"; }
+.lucide-square-stack:before { content: "\f514"; }
+.lucide-squirrel:before { content: "\f515"; }
+.lucide-stamp:before { content: "\f516"; }
+.lucide-star:before { content: "\f517"; }
+.lucide-star-half:before { content: "\f518"; }
+.lucide-star-off:before { content: "\f519"; }
+.lucide-step-back:before { content: "\f51a"; }
+.lucide-step-forward:before { content: "\f51b"; }
+.lucide-stethoscope:before { content: "\f51c"; }
+.lucide-sticker:before { content: "\f51d"; }
+.lucide-sticky-note:before { content: "\f51e"; }
+.lucide-stop-circle:before { content: "\f51f"; }
+.lucide-store:before { content: "\f520"; }
+.lucide-stretch-horizontal:before { content: "\f521"; }
+.lucide-stretch-vertical:before { content: "\f522"; }
+.lucide-strikethrough:before { content: "\f523"; }
+.lucide-subscript:before { content: "\f524"; }
+.lucide-subtitles:before { content: "\f525"; }
+.lucide-sun:before { content: "\f526"; }
+.lucide-sun-dim:before { content: "\f527"; }
+.lucide-sun-medium:before { content: "\f528"; }
+.lucide-sun-moon:before { content: "\f529"; }
+.lucide-sun-snow:before { content: "\f52a"; }
+.lucide-sunrise:before { content: "\f52b"; }
+.lucide-sunset:before { content: "\f52c"; }
+.lucide-superscript:before { content: "\f52d"; }
+.lucide-swiss-franc:before { content: "\f52e"; }
+.lucide-switch-camera:before { content: "\f52f"; }
+.lucide-sword:before { content: "\f530"; }
+.lucide-swords:before { content: "\f531"; }
+.lucide-syringe:before { content: "\f532"; }
+.lucide-table:before { content: "\f533"; }
+.lucide-table-2:before { content: "\f534"; }
+.lucide-table-properties:before { content: "\f535"; }
+.lucide-tablet:before { content: "\f536"; }
+.lucide-tablets:before { content: "\f537"; }
+.lucide-tag:before { content: "\f538"; }
+.lucide-tags:before { content: "\f539"; }
+.lucide-tally-1:before { content: "\f53a"; }
+.lucide-tally-2:before { content: "\f53b"; }
+.lucide-tally-3:before { content: "\f53c"; }
+.lucide-tally-4:before { content: "\f53d"; }
+.lucide-tally-5:before { content: "\f53e"; }
+.lucide-target:before { content: "\f53f"; }
+.lucide-tent:before { content: "\f540"; }
+.lucide-terminal:before { content: "\f541"; }
+.lucide-terminal-square:before { content: "\f542"; }
+.lucide-test-tube:before { content: "\f543"; }
+.lucide-test-tube-2:before { content: "\f544"; }
+.lucide-test-tubes:before { content: "\f545"; }
+.lucide-text:before { content: "\f546"; }
+.lucide-text-cursor:before { content: "\f547"; }
+.lucide-text-cursor-input:before { content: "\f548"; }
+.lucide-text-quote:before { content: "\f549"; }
+.lucide-text-select:before { content: "\f54a"; }
+.lucide-thermometer:before { content: "\f54b"; }
+.lucide-thermometer-snowflake:before { content: "\f54c"; }
+.lucide-thermometer-sun:before { content: "\f54d"; }
+.lucide-thumbs-down:before { content: "\f54e"; }
+.lucide-thumbs-up:before { content: "\f54f"; }
+.lucide-ticket:before { content: "\f550"; }
+.lucide-timer:before { content: "\f551"; }
+.lucide-timer-off:before { content: "\f552"; }
+.lucide-timer-reset:before { content: "\f553"; }
+.lucide-toggle-left:before { content: "\f554"; }
+.lucide-toggle-right:before { content: "\f555"; }
+.lucide-tornado:before { content: "\f556"; }
+.lucide-touchpad:before { content: "\f557"; }
+.lucide-touchpad-off:before { content: "\f558"; }
+.lucide-tower-control:before { content: "\f559"; }
+.lucide-toy-brick:before { content: "\f55a"; }
+.lucide-train:before { content: "\f55b"; }
+.lucide-trash:before { content: "\f55c"; }
+.lucide-trash-2:before { content: "\f55d"; }
+.lucide-tree-deciduous:before { content: "\f55e"; }
+.lucide-tree-pine:before { content: "\f55f"; }
+.lucide-trees:before { content: "\f560"; }
+.lucide-trello:before { content: "\f561"; }
+.lucide-trending-down:before { content: "\f562"; }
+.lucide-trending-up:before { content: "\f563"; }
+.lucide-triangle:before { content: "\f564"; }
+.lucide-triangle-right:before { content: "\f565"; }
+.lucide-trophy:before { content: "\f566"; }
+.lucide-truck:before { content: "\f567"; }
+.lucide-tv:before { content: "\f568"; }
+.lucide-tv-2:before { content: "\f569"; }
+.lucide-twitch:before { content: "\f56a"; }
+.lucide-twitter:before { content: "\f56b"; }
+.lucide-type:before { content: "\f56c"; }
+.lucide-umbrella:before { content: "\f56d"; }
+.lucide-underline:before { content: "\f56e"; }
+.lucide-undo:before { content: "\f56f"; }
+.lucide-undo-2:before { content: "\f570"; }
+.lucide-undo-dot:before { content: "\f571"; }
+.lucide-unfold-horizontal:before { content: "\f572"; }
+.lucide-unfold-vertical:before { content: "\f573"; }
+.lucide-ungroup:before { content: "\f574"; }
+.lucide-unlink:before { content: "\f575"; }
+.lucide-unlink-2:before { content: "\f576"; }
+.lucide-unlock:before { content: "\f577"; }
+.lucide-unplug:before { content: "\f578"; }
+.lucide-upload:before { content: "\f579"; }
+.lucide-upload-cloud:before { content: "\f57a"; }
+.lucide-usb:before { content: "\f57b"; }
+.lucide-user:before { content: "\f57c"; }
+.lucide-user-2:before { content: "\f57d"; }
+.lucide-user-check:before { content: "\f57e"; }
+.lucide-user-check-2:before { content: "\f57f"; }
+.lucide-user-circle:before { content: "\f580"; }
+.lucide-user-circle-2:before { content: "\f581"; }
+.lucide-user-cog:before { content: "\f582"; }
+.lucide-user-cog-2:before { content: "\f583"; }
+.lucide-user-minus:before { content: "\f584"; }
+.lucide-user-minus-2:before { content: "\f585"; }
+.lucide-user-plus:before { content: "\f586"; }
+.lucide-user-plus-2:before { content: "\f587"; }
+.lucide-user-square:before { content: "\f588"; }
+.lucide-user-square-2:before { content: "\f589"; }
+.lucide-user-x:before { content: "\f58a"; }
+.lucide-user-x-2:before { content: "\f58b"; }
+.lucide-users:before { content: "\f58c"; }
+.lucide-users-2:before { content: "\f58d"; }
+.lucide-utensils:before { content: "\f58e"; }
+.lucide-utensils-crossed:before { content: "\f58f"; }
+.lucide-utility-pole:before { content: "\f590"; }
+.lucide-variable:before { content: "\f591"; }
+.lucide-vegan:before { content: "\f592"; }
+.lucide-venetian-mask:before { content: "\f593"; }
+.lucide-vibrate:before { content: "\f594"; }
+.lucide-vibrate-off:before { content: "\f595"; }
+.lucide-video:before { content: "\f596"; }
+.lucide-video-off:before { content: "\f597"; }
+.lucide-videotape:before { content: "\f598"; }
+.lucide-view:before { content: "\f599"; }
+.lucide-voicemail:before { content: "\f59a"; }
+.lucide-volume:before { content: "\f59b"; }
+.lucide-volume-1:before { content: "\f59c"; }
+.lucide-volume-2:before { content: "\f59d"; }
+.lucide-volume-x:before { content: "\f59e"; }
+.lucide-vote:before { content: "\f59f"; }
+.lucide-wallet:before { content: "\f5a0"; }
+.lucide-wallet-2:before { content: "\f5a1"; }
+.lucide-wallet-cards:before { content: "\f5a2"; }
+.lucide-wallpaper:before { content: "\f5a3"; }
+.lucide-wand:before { content: "\f5a4"; }
+.lucide-wand-2:before { content: "\f5a5"; }
+.lucide-warehouse:before { content: "\f5a6"; }
+.lucide-watch:before { content: "\f5a7"; }
+.lucide-waves:before { content: "\f5a8"; }
+.lucide-webcam:before { content: "\f5a9"; }
+.lucide-webhook:before { content: "\f5aa"; }
+.lucide-wheat:before { content: "\f5ab"; }
+.lucide-wheat-off:before { content: "\f5ac"; }
+.lucide-whole-word:before { content: "\f5ad"; }
+.lucide-wifi:before { content: "\f5ae"; }
+.lucide-wifi-off:before { content: "\f5af"; }
+.lucide-wind:before { content: "\f5b0"; }
+.lucide-wine:before { content: "\f5b1"; }
+.lucide-wine-off:before { content: "\f5b2"; }
+.lucide-workflow:before { content: "\f5b3"; }
+.lucide-wrap-text:before { content: "\f5b4"; }
+.lucide-wrench:before { content: "\f5b5"; }
+.lucide-x:before { content: "\f5b6"; }
+.lucide-x-circle:before { content: "\f5b7"; }
+.lucide-x-octagon:before { content: "\f5b8"; }
+.lucide-x-square:before { content: "\f5b9"; }
+.lucide-youtube:before { content: "\f5ba"; }
+.lucide-zap:before { content: "\f5bb"; }
+.lucide-zap-off:before { content: "\f5bc"; }
+.lucide-zoom-in:before { content: "\f5bd"; }
+.lucide-zoom-out:before { content: "\f5be"; }

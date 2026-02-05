@@ -13,6 +13,7 @@ use CariIPTV\Services\ChannelService;
 use CariIPTV\Services\MetadataService;
 use CariIPTV\Services\AIService;
 use CariIPTV\Services\ImageService;
+use CariIPTV\Services\IptvOrgService;
 
 class ChannelController
 {
@@ -115,41 +116,47 @@ class ChannelController
         // Remove validation errors key before database insert
         unset($data['errors']);
 
-        // Handle logo upload
-        if (!empty($_FILES['logo']['name'])) {
-            $logoUrl = $this->channelService->uploadLogo($_FILES['logo'], 'logo');
-            if ($logoUrl) {
-                $data['logo_url'] = $logoUrl;
-            }
-        } elseif (!empty($_POST['logo_url_external'])) {
-            // Handle external logo URL (from Fanart.tv search)
-            $externalLogo = $this->processExternalLogo($_POST['logo_url_external']);
-            if ($externalLogo) {
-                $data['logo_url'] = $externalLogo;
-            }
-        }
-
-        // Handle landscape logo upload
-        if (!empty($_FILES['logo_landscape']['name'])) {
-            $landscapeUrl = $this->channelService->uploadLogo($_FILES['logo_landscape'], 'landscape');
-            if ($landscapeUrl) {
-                $data['logo_landscape_url'] = $landscapeUrl;
-            }
-        } elseif (!empty($_POST['logo_landscape_url_external'])) {
-            // Handle external landscape logo URL
-            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape');
-            if ($externalLandscape) {
-                $data['logo_landscape_url'] = $externalLandscape;
-            }
-        }
-
         // Handle description
         if (isset($_POST['description'])) {
             $data['description'] = trim($_POST['description']);
         }
 
         try {
+            // Create channel first (logos processed after so we have the channel ID for WebP paths)
             $channelId = $this->channelService->createChannel($data);
+
+            // Handle logo upload with WebP conversion
+            $logoUpdate = [];
+
+            if (!empty($_FILES['logo']['name'])) {
+                $logoUrl = $this->processUploadedLogo($_FILES['logo'], $channelId, 'logo');
+                if ($logoUrl) {
+                    $logoUpdate['logo_url'] = $logoUrl;
+                }
+            } elseif (!empty($_POST['logo_url_external'])) {
+                $externalLogo = $this->processExternalLogo($_POST['logo_url_external'], 'logo', $channelId);
+                if ($externalLogo) {
+                    $logoUpdate['logo_url'] = $externalLogo;
+                }
+            }
+
+            // Handle landscape logo upload with WebP conversion
+            if (!empty($_FILES['logo_landscape']['name'])) {
+                $landscapeUrl = $this->processUploadedLogo($_FILES['logo_landscape'], $channelId, 'landscape');
+                if ($landscapeUrl) {
+                    $logoUpdate['logo_landscape_url'] = $landscapeUrl;
+                }
+            } elseif (!empty($_POST['logo_landscape_url_external'])) {
+                $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape', $channelId);
+                if ($externalLandscape) {
+                    $logoUpdate['logo_landscape_url'] = $externalLandscape;
+                }
+            }
+
+            // Update channel with processed logo paths
+            if (!empty($logoUpdate)) {
+                $this->channelService->updateChannel($channelId, $logoUpdate);
+            }
 
             // Log activity
             $this->auth->logActivity(
@@ -187,6 +194,29 @@ class ChannelController
         $servers = $this->channelService->getStreamingServers();
         $contentOwners = $this->channelService->getContentOwners();
 
+        // Fetch EPG mapping and programme data for this channel
+        $epgMappings = $this->db->fetchAll(
+            "SELECT m.epg_channel_id, m.epg_channel_name, m.programme_count,
+                    s.name as source_name, s.type as source_type, s.id as source_id
+             FROM epg_channel_map m
+             INNER JOIN epg_sources s ON m.epg_source_id = s.id
+             WHERE m.channel_id = ? AND m.is_mapped = 1
+             ORDER BY s.name",
+            [$id]
+        );
+
+        $epgNowNext = [];
+        if (!empty($epgMappings)) {
+            $epgNowNext = $this->db->fetchAll(
+                "SELECT title, subtitle, description, start_time, end_time, category
+                 FROM epg_programs
+                 WHERE channel_id = ? AND end_time > NOW()
+                 ORDER BY start_time ASC
+                 LIMIT 5",
+                [$id]
+            );
+        }
+
         Response::view('admin/channels/form', [
             'pageTitle' => 'Edit Channel',
             'channel' => $channel,
@@ -194,6 +224,8 @@ class ChannelController
             'packages' => $packages,
             'servers' => $servers,
             'contentOwners' => $contentOwners,
+            'epgMappings' => $epgMappings,
+            'epgNowNext' => $epgNowNext,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -229,21 +261,18 @@ class ChannelController
         // Remove validation errors key before database update
         unset($data['errors']);
 
-        // Handle logo upload
+        // Handle logo upload with WebP conversion
         if (!empty($_FILES['logo']['name'])) {
-            $logoUrl = $this->channelService->uploadLogo($_FILES['logo'], 'logo');
+            $logoUrl = $this->processUploadedLogo($_FILES['logo'], $id, 'logo');
             if ($logoUrl) {
-                // Delete old logo
                 if (!empty($channel['logo_url'])) {
                     $this->channelService->deleteLogo($channel['logo_url']);
                 }
                 $data['logo_url'] = $logoUrl;
             }
         } elseif (!empty($_POST['logo_url_external'])) {
-            // Handle external logo URL (from Fanart.tv search)
-            $externalLogo = $this->processExternalLogo($_POST['logo_url_external']);
+            $externalLogo = $this->processExternalLogo($_POST['logo_url_external'], 'logo', $id);
             if ($externalLogo) {
-                // Delete old logo
                 if (!empty($channel['logo_url'])) {
                     $this->channelService->deleteLogo($channel['logo_url']);
                 }
@@ -251,21 +280,18 @@ class ChannelController
             }
         }
 
-        // Handle landscape logo upload
+        // Handle landscape logo upload with WebP conversion
         if (!empty($_FILES['logo_landscape']['name'])) {
-            $landscapeUrl = $this->channelService->uploadLogo($_FILES['logo_landscape'], 'landscape');
+            $landscapeUrl = $this->processUploadedLogo($_FILES['logo_landscape'], $id, 'landscape');
             if ($landscapeUrl) {
-                // Delete old landscape logo
                 if (!empty($channel['logo_landscape_url'])) {
                     $this->channelService->deleteLogo($channel['logo_landscape_url']);
                 }
                 $data['logo_landscape_url'] = $landscapeUrl;
             }
         } elseif (!empty($_POST['logo_landscape_url_external'])) {
-            // Handle external landscape logo URL
-            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape');
+            $externalLandscape = $this->processExternalLogo($_POST['logo_landscape_url_external'], 'landscape', $id);
             if ($externalLandscape) {
-                // Delete old landscape logo
                 if (!empty($channel['logo_landscape_url'])) {
                     $this->channelService->deleteLogo($channel['logo_landscape_url']);
                 }
@@ -498,8 +524,11 @@ class ChannelController
         // Content owner
         $validated['content_owner_id'] = !empty($data['content_owner_id']) ? (int) $data['content_owner_id'] : null;
 
-        // EPG channel ID
-        $validated['epg_channel_id'] = trim($data['epg_channel_id'] ?? '') ?: null;
+        // EPG channel ID — only set if explicitly provided (e.g. IPTV.org import)
+        // The channel form no longer has this field; mapping is managed via EPG Management
+        if (isset($data['epg_channel_id'])) {
+            $validated['epg_channel_id'] = trim($data['epg_channel_id']) ?: null;
+        }
 
         // External ID
         $validated['external_id'] = trim($data['external_id'] ?? '') ?: null;
@@ -633,9 +662,9 @@ class ChannelController
     }
 
     /**
-     * Process external logo URL (download and save)
+     * Process external logo URL (download, convert to WebP)
      */
-    private function processExternalLogo(string $url, string $type = 'logo'): ?string
+    private function processExternalLogo(string $url, string $type = 'logo', ?int $channelId = null): ?string
     {
         if (empty($url)) {
             return null;
@@ -643,20 +672,202 @@ class ChannelController
 
         try {
             $imageService = new ImageService();
-            $result = $imageService->processFromUrl($url, 'channel', null, $type);
+            $result = $imageService->processFromUrl($url, 'channel', $channelId, $type);
 
             if ($result && $result['success'] && !empty($result['variants'])) {
-                // Return the medium size variant, or landscape for landscape type
                 if ($type === 'landscape' && isset($result['variants']['landscape'])) {
                     return $result['variants']['landscape'];
                 }
                 return $result['variants']['medium'] ?? $result['variants']['large'] ?? array_values($result['variants'])[0] ?? null;
             }
         } catch (\Exception $e) {
-            // Log error but don't fail
             error_log('Failed to process external logo: ' . $e->getMessage());
         }
 
         return null;
+    }
+
+    /**
+     * Process uploaded logo file (resize, convert to WebP)
+     */
+    private function processUploadedLogo(array $file, int $channelId, string $type = 'logo'): ?string
+    {
+        if (empty($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
+            return null;
+        }
+
+        try {
+            $imageService = new ImageService();
+            $result = $imageService->processUpload($file, 'channel', $channelId, $type);
+
+            if ($result && $result['success'] && !empty($result['variants'])) {
+                if ($type === 'landscape' && isset($result['variants']['landscape'])) {
+                    return $result['variants']['landscape'];
+                }
+                return $result['variants']['medium'] ?? $result['variants']['large'] ?? array_values($result['variants'])[0] ?? null;
+            }
+        } catch (\Exception $e) {
+            error_log('Failed to process uploaded logo: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    // ========================================================================
+    // IPTV-ORG IMPORT
+    // ========================================================================
+
+    /**
+     * Search iptv-org channels (AJAX)
+     */
+    public function searchIptvOrg(): void
+    {
+        $service = new IptvOrgService();
+
+        $filters = [
+            'search' => $_POST['search'] ?? '',
+            'country' => $_POST['country'] ?? '',
+            'category' => $_POST['category'] ?? '',
+            'limit' => 100,
+        ];
+
+        $result = $service->searchChannels($filters);
+        Response::json($result);
+    }
+
+    /**
+     * Get iptv-org countries list (AJAX)
+     */
+    public function iptvOrgCountries(): void
+    {
+        $service = new IptvOrgService();
+        Response::json([
+            'success' => true,
+            'countries' => $service->getCountries(),
+            'categories' => $service->getCategories(),
+        ]);
+    }
+
+    /**
+     * Import selected iptv-org channels (AJAX)
+     */
+    public function importIptvOrg(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $channelsJson = $_POST['channels'] ?? '[]';
+        $channels = json_decode($channelsJson, true);
+
+        if (empty($channels) || !is_array($channels)) {
+            Response::json(['success' => false, 'message' => 'No channels selected']);
+            return;
+        }
+
+        $imported = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        foreach ($channels as $ch) {
+            if (empty($ch['name']) || empty($ch['stream_url'])) {
+                $errors++;
+                continue;
+            }
+
+            // Check if channel already exists by name or stream URL
+            $existing = $this->db->fetch(
+                "SELECT id FROM channels WHERE name = ? OR stream_url = ?",
+                [$ch['name'], $ch['stream_url']]
+            );
+
+            if ($existing) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $slug = $this->channelService->generateSlug($ch['name']);
+                $keyCode = $this->channelService->generateKeyCode();
+
+                $data = [
+                    'name' => $ch['name'],
+                    'slug' => $slug,
+                    'key_code' => $keyCode,
+                    'stream_url' => $ch['stream_url'],
+                    'country' => $ch['country'] ?? null,
+                    'language' => $ch['language'] ?? null,
+                    'epg_channel_id' => $ch['iptv_org_id'] ?? null,
+                    'external_id' => $ch['iptv_org_id'] ?? null,
+                    'is_active' => 1,
+                    'is_published' => 0,
+                    'sort_order' => 0,
+                ];
+
+                // Set quality flags
+                $quality = strtolower($ch['quality'] ?? '');
+                if (str_contains($quality, '4k') || str_contains($quality, '2160')) {
+                    $data['is_4k'] = 1;
+                    $data['is_hd'] = 1;
+                } elseif (str_contains($quality, '1080') || str_contains($quality, '720')) {
+                    $data['is_hd'] = 1;
+                }
+
+                $channelId = $this->channelService->createChannel($data);
+
+                // Process logo with WebP conversion
+                if (!empty($ch['logo_url'])) {
+                    $localLogo = $this->processExternalLogo($ch['logo_url'], 'logo', $channelId);
+                    if ($localLogo) {
+                        $this->channelService->updateChannel($channelId, ['logo_url' => $localLogo]);
+                    }
+                }
+
+                // Map categories
+                if (!empty($ch['categories'])) {
+                    $categoryIds = [];
+                    foreach ($ch['categories'] as $catName) {
+                        $cat = $this->db->fetch(
+                            "SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND type = 'live'",
+                            [$catName]
+                        );
+                        if ($cat) {
+                            $categoryIds[] = $cat['id'];
+                        }
+                    }
+                    if (!empty($categoryIds)) {
+                        $this->channelService->saveChannelCategories($channelId, $categoryIds, $categoryIds[0]);
+                    }
+                }
+
+                $imported++;
+            } catch (\Exception $e) {
+                error_log('IPTV-org import error: ' . $e->getMessage());
+                $errors++;
+            }
+        }
+
+        $this->auth->logActivity(
+            $this->auth->id(),
+            'import',
+            'channels',
+            'iptv-org',
+            null,
+            ['imported' => $imported, 'skipped' => $skipped, 'errors' => $errors]
+        );
+
+        $message = "{$imported} channel(s) imported.";
+        if ($skipped > 0) $message .= " {$skipped} already existed.";
+        if ($errors > 0) $message .= " {$errors} error(s).";
+
+        Response::json([
+            'success' => true,
+            'message' => $message,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ]);
     }
 }

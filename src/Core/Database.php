@@ -96,6 +96,14 @@ class Database
     }
 
     /**
+     * Execute a statement and return affected row count
+     */
+    public function execute(string $sql, array $params = []): int
+    {
+        return $this->query($sql, $params)->rowCount();
+    }
+
+    /**
      * Insert a row and return the ID
      */
     public function insert(string $table, array $data): int
@@ -146,6 +154,14 @@ class Database
     public function exists(string $table, string $where, array $params = []): bool
     {
         return $this->count($table, $where, $params) > 0;
+    }
+
+    /**
+     * Get last insert ID
+     */
+    public function lastInsertId(): int
+    {
+        return (int) $this->pdo->lastInsertId();
     }
 
     /**

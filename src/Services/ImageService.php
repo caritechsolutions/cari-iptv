@@ -29,6 +29,18 @@ class ImageService
             'small' => ['width' => 120, 'height' => 60],
             'medium' => ['width' => 200, 'height' => 100],
         ],
+        'layout' => [
+            'thumb' => ['width' => 150, 'height' => 225],
+            'banner' => ['width' => 1280, 'height' => 720],
+            'poster' => ['width' => 342, 'height' => 513],
+        ],
+        'ad' => [
+            'banner_large' => ['width' => 728, 'height' => 90],
+            'banner_medium' => ['width' => 468, 'height' => 60],
+            'banner_leaderboard' => ['width' => 970, 'height' => 250],
+            'banner_square' => ['width' => 300, 'height' => 250],
+            'full' => ['width' => 1920, 'height' => 1080],
+        ],
     ];
 
     private int $quality = 85;

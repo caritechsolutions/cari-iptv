@@ -245,9 +245,15 @@ class SettingsController
     public function updateAI(): void
     {
         $token = $_POST['_token'] ?? '';
+        $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest';
+
         if (!Session::validateCsrf($token)) {
-            Session::flash('error', 'Invalid request. Please try again.');
-            Response::redirect('/admin/settings');
+            if ($isAjax) {
+                Response::json(['success' => false, 'message' => 'Invalid request. Please try again.']);
+            } else {
+                Session::flash('error', 'Invalid request. Please try again.');
+                Response::redirect('/admin/settings');
+            }
             return;
         }
 
@@ -258,10 +264,14 @@ class SettingsController
         $newOpenAIKey = trim($_POST['openai_api_key'] ?? '');
         $newAnthropicKey = trim($_POST['anthropic_api_key'] ?? '');
 
+        // Preserve current Ollama model if not submitted
+        $currentOllamaModel = $this->settings->get('ollama_model', 'llama3.2:1b', 'ai');
+        $newOllamaModel = trim($_POST['ollama_model'] ?? '');
+
         $this->settings->setMany([
             'provider' => $_POST['ai_provider'] ?? 'ollama',
             'ollama_url' => trim($_POST['ollama_url'] ?? 'http://localhost:11434'),
-            'ollama_model' => trim($_POST['ollama_model'] ?? 'llama3.2:1b'),
+            'ollama_model' => !empty($newOllamaModel) ? $newOllamaModel : $currentOllamaModel,
             'openai_api_key' => !empty($newOpenAIKey) ? $newOpenAIKey : $currentOpenAIKey,
             'openai_model' => trim($_POST['openai_model'] ?? 'gpt-4o-mini'),
             'anthropic_api_key' => !empty($newAnthropicKey) ? $newAnthropicKey : $currentAnthropicKey,
@@ -271,8 +281,19 @@ class SettingsController
 
         $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'ai']);
 
-        Session::flash('success', 'AI settings updated successfully.');
-        Response::redirect('/admin/settings');
+        if ($isAjax) {
+            $provider = $_POST['ai_provider'] ?? 'ollama';
+            $providerNames = ['ollama' => 'Ollama (Local)', 'openai' => 'OpenAI', 'anthropic' => 'Anthropic'];
+            Response::json([
+                'success' => true,
+                'message' => 'AI settings saved.',
+                'provider' => $provider,
+                'provider_name' => $providerNames[$provider] ?? $provider,
+            ]);
+        } else {
+            Session::flash('success', 'AI settings updated successfully.');
+            Response::redirect('/admin/settings');
+        }
     }
 
     /**
@@ -319,11 +340,13 @@ class SettingsController
         }
 
         $aiService = new AIService();
+        $providerName = $aiService->getProviderName();
+        $model = $aiService->getCurrentModel();
 
         if (!$aiService->isAvailable()) {
             Response::json([
                 'success' => false,
-                'message' => 'AI service is not available. Check your configuration.',
+                'message' => "AI service is not available. Provider: {$providerName}, Model: {$model}. Check your configuration.",
             ]);
             return;
         }
@@ -334,14 +357,20 @@ class SettingsController
         if ($result) {
             Response::json([
                 'success' => true,
-                'message' => 'AI connection successful!',
-                'provider' => $aiService->getProviderName(),
+                'message' => "AI connection successful! ({$providerName})",
+                'provider' => $providerName,
+                'model' => $model,
                 'response' => $result,
             ]);
         } else {
+            $error = $aiService->getLastError();
+            $message = "Failed to generate text via {$providerName} (model: {$model}).";
+            if ($error) {
+                $message .= " Error: {$error}";
+            }
             Response::json([
                 'success' => false,
-                'message' => 'AI service responded but failed to generate text.',
+                'message' => $message,
             ]);
         }
     }

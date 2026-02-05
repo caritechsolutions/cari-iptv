@@ -991,6 +991,210 @@ class MetadataService
     }
 
     /**
+     * Get TV show videos from TMDB (including trailers)
+     */
+    public function getTVShowVideos(int $tmdbId): array
+    {
+        if (!$this->isTmdbConfigured()) {
+            return [];
+        }
+
+        try {
+            $url = self::TMDB_API . '/tv/' . $tmdbId . '/videos?api_key=' . $this->config['tmdb']['api_key'];
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $videos = [];
+
+                foreach ($data['results'] ?? [] as $video) {
+                    if ($video['site'] === 'YouTube') {
+                        $videos[] = [
+                            'key' => $video['key'],
+                            'name' => $video['name'],
+                            'type' => $video['type'],
+                            'url' => 'https://www.youtube.com/watch?v=' . $video['key'],
+                            'embed_url' => 'https://www.youtube.com/embed/' . $video['key'],
+                        ];
+                    }
+                }
+
+                return $videos;
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get TV show season details from TMDB
+     */
+    public function getTVSeasonDetails(int $tmdbId, int $seasonNumber): ?array
+    {
+        if (!$this->isTmdbConfigured()) {
+            return null;
+        }
+
+        try {
+            $url = self::TMDB_API . '/tv/' . $tmdbId . '/season/' . $seasonNumber . '?' . http_build_query([
+                'api_key' => $this->config['tmdb']['api_key'],
+            ]);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+
+                $episodes = [];
+                foreach ($data['episodes'] ?? [] as $ep) {
+                    $episodes[] = [
+                        'id' => $ep['id'],
+                        'episode_number' => $ep['episode_number'],
+                        'name' => $ep['name'],
+                        'overview' => $ep['overview'] ?? '',
+                        'air_date' => $ep['air_date'] ?? null,
+                        'runtime' => $ep['runtime'] ?? null,
+                        'still' => !empty($ep['still_path']) ? self::TMDB_IMAGE_BASE . '/w300' . $ep['still_path'] : null,
+                        'vote_average' => $ep['vote_average'] ?? null,
+                    ];
+                }
+
+                return [
+                    'id' => $data['id'] ?? null,
+                    'season_number' => $data['season_number'],
+                    'name' => $data['name'],
+                    'overview' => $data['overview'] ?? '',
+                    'poster' => !empty($data['poster_path']) ? self::TMDB_IMAGE_BASE . '/w342' . $data['poster_path'] : null,
+                    'air_date' => $data['air_date'] ?? null,
+                    'episodes' => $episodes,
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Get TV show artwork from Fanart.tv
+     */
+    public function getTVShowArtwork(int $tmdbId): array
+    {
+        if (!$this->isFanartConfigured()) {
+            return [];
+        }
+
+        try {
+            $url = self::FANART_TV_API . '/tv/' . $tmdbId . '?api_key=' . $this->config['fanart_tv']['api_key'];
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+
+                $artwork = [
+                    'posters' => [],
+                    'backdrops' => [],
+                    'logos' => [],
+                    'banners' => [],
+                    'characterart' => [],
+                ];
+
+                // TV posters
+                if (!empty($data['tvposter'])) {
+                    foreach (array_slice($data['tvposter'], 0, 10) as $img) {
+                        $artwork['posters'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // Show backgrounds
+                if (!empty($data['showbackground'])) {
+                    foreach (array_slice($data['showbackground'], 0, 10) as $img) {
+                        $artwork['backdrops'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // HD TV logos
+                if (!empty($data['hdtvlogo'])) {
+                    foreach (array_slice($data['hdtvlogo'], 0, 5) as $img) {
+                        $artwork['logos'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                } elseif (!empty($data['clearlogo'])) {
+                    foreach (array_slice($data['clearlogo'], 0, 5) as $img) {
+                        $artwork['logos'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // TV banners
+                if (!empty($data['tvbanner'])) {
+                    foreach (array_slice($data['tvbanner'], 0, 5) as $img) {
+                        $artwork['banners'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                // Character art
+                if (!empty($data['characterart'])) {
+                    foreach (array_slice($data['characterart'], 0, 5) as $img) {
+                        $artwork['characterart'][] = [
+                            'url' => $img['url'],
+                            'lang' => $img['lang'] ?? 'en',
+                        ];
+                    }
+                }
+
+                return $artwork;
+            }
+
+            return [];
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
      * Get movie artwork from Fanart.tv
      */
     public function getMovieArtwork(int $tmdbId): array

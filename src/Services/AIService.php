@@ -11,6 +11,7 @@ class AIService
     private SettingsService $settings;
     private string $provider;
     private array $config;
+    private ?string $lastError = null;
 
     // Provider constants
     public const PROVIDER_OLLAMA = 'ollama';
@@ -121,10 +122,33 @@ class AIService
     }
 
     /**
+     * Get the last error message
+     */
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    /**
+     * Get the current model for the active provider
+     */
+    public function getCurrentModel(): string
+    {
+        return match ($this->provider) {
+            self::PROVIDER_OLLAMA => $this->config['ollama']['model'] ?? 'unknown',
+            self::PROVIDER_OPENAI => $this->config['openai']['model'] ?? 'unknown',
+            self::PROVIDER_ANTHROPIC => $this->config['anthropic']['model'] ?? 'unknown',
+            default => 'unknown',
+        };
+    }
+
+    /**
      * Generate text completion
      */
     public function complete(string $prompt, array $options = []): ?string
     {
+        $this->lastError = null;
+
         switch ($this->provider) {
             case self::PROVIDER_OLLAMA:
                 return $this->completeOllama($prompt, $options);
@@ -149,6 +173,11 @@ class AIService
             $url = rtrim($this->config['ollama']['url'], '/') . '/api/generate';
             $model = $options['model'] ?? $this->config['ollama']['model'];
 
+            if (empty($model)) {
+                $this->lastError = 'No Ollama model configured. Go to Settings > AI and select a model.';
+                return null;
+            }
+
             $payload = [
                 'model' => $model,
                 'prompt' => $prompt,
@@ -169,16 +198,31 @@ class AIService
             ]);
 
             $response = curl_exec($ch);
+            $curlError = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            if ($httpCode === 200) {
-                $data = json_decode($response, true);
-                return $data['response'] ?? null;
+            if ($curlError) {
+                $this->lastError = "Ollama connection error: {$curlError}";
+                return null;
             }
 
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                $text = $data['response'] ?? null;
+                if ($text === null) {
+                    $this->lastError = 'Ollama returned 200 but no response text. Raw: ' . substr($response, 0, 200);
+                }
+                return $text;
+            }
+
+            // Parse Ollama error message
+            $data = json_decode($response, true);
+            $errorMsg = $data['error'] ?? "HTTP {$httpCode}";
+            $this->lastError = "Ollama error (model: {$model}): {$errorMsg}";
             return null;
         } catch (\Exception $e) {
+            $this->lastError = 'Ollama exception: ' . $e->getMessage();
             return null;
         }
     }
@@ -191,6 +235,7 @@ class AIService
         try {
             $apiKey = $this->config['openai']['api_key'];
             if (empty($apiKey)) {
+                $this->lastError = 'OpenAI API key not configured.';
                 return null;
             }
 
@@ -218,16 +263,26 @@ class AIService
             ]);
 
             $response = curl_exec($ch);
+            $curlError = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+
+            if ($curlError) {
+                $this->lastError = "OpenAI connection error: {$curlError}";
+                return null;
+            }
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
                 return $data['choices'][0]['message']['content'] ?? null;
             }
 
+            $data = json_decode($response, true);
+            $errorMsg = $data['error']['message'] ?? "HTTP {$httpCode}";
+            $this->lastError = "OpenAI error: {$errorMsg}";
             return null;
         } catch (\Exception $e) {
+            $this->lastError = 'OpenAI exception: ' . $e->getMessage();
             return null;
         }
     }
@@ -240,6 +295,7 @@ class AIService
         try {
             $apiKey = $this->config['anthropic']['api_key'];
             if (empty($apiKey)) {
+                $this->lastError = 'Anthropic API key not configured.';
                 return null;
             }
 
@@ -267,18 +323,136 @@ class AIService
             ]);
 
             $response = curl_exec($ch);
+            $curlError = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+
+            if ($curlError) {
+                $this->lastError = "Anthropic connection error: {$curlError}";
+                return null;
+            }
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
                 return $data['content'][0]['text'] ?? null;
             }
 
+            $data = json_decode($response, true);
+            $errorMsg = $data['error']['message'] ?? "HTTP {$httpCode}";
+            $this->lastError = "Anthropic error: {$errorMsg}";
             return null;
         } catch (\Exception $e) {
+            $this->lastError = 'Anthropic exception: ' . $e->getMessage();
             return null;
         }
+    }
+
+    /**
+     * Generate ad text content
+     */
+    public function generateAdText(string $prompt, string $adType = 'text_scroller', array $context = []): ?string
+    {
+        $systemPrompt = "You are an advertising copywriter for an IPTV/streaming platform in the Caribbean market. ";
+
+        switch ($adType) {
+            case 'text_scroller':
+                $systemPrompt .= "Write a short, attention-grabbing scrolling ticker text for a TV overlay ad. "
+                    . "Keep it to 1-2 sentences, under 120 characters. No quotes or formatting. Just the text.";
+                break;
+            case 'banner':
+                $systemPrompt .= "Write short ad copy for a banner image ad. Include a headline (under 8 words) "
+                    . "and a brief tagline (under 15 words). Format as: HEADLINE | TAGLINE";
+                break;
+            case 'pre_roll':
+            case 'mid_roll':
+                $systemPrompt .= "Write a video ad script for a 15-30 second spot. Include: "
+                    . "HOOK (opening line), BODY (key message), CTA (call to action). "
+                    . "Format each on a new line with the label.";
+                break;
+            default:
+                $systemPrompt .= "Write compelling ad copy. Keep it concise and action-oriented.";
+        }
+
+        if (!empty($context['advertiser'])) {
+            $systemPrompt .= " The advertiser is: " . $context['advertiser'] . ".";
+        }
+        if (!empty($context['campaign_name'])) {
+            $systemPrompt .= " Campaign: " . $context['campaign_name'] . ".";
+        }
+
+        $fullPrompt = $systemPrompt . "\n\nUser request: " . $prompt;
+
+        return $this->complete($fullPrompt, ['max_tokens' => 300, 'temperature' => 0.8]);
+    }
+
+    /**
+     * Generate image via DALL-E 3 (OpenAI)
+     */
+    public function generateImage(string $prompt, array $options = []): ?array
+    {
+        $apiKey = $this->config['openai']['api_key'] ?? '';
+        if (empty($apiKey)) {
+            return ['success' => false, 'error' => 'OpenAI API key not configured. Set it in Settings > AI.'];
+        }
+
+        $size = $options['size'] ?? '1024x1024';
+        $quality = $options['quality'] ?? 'standard';
+
+        // Allowed DALL-E 3 sizes
+        $allowedSizes = ['1024x1024', '1792x1024', '1024x1792'];
+        if (!in_array($size, $allowedSizes)) {
+            $size = '1024x1024';
+        }
+
+        $payload = [
+            'model' => 'dall-e-3',
+            'prompt' => $prompt,
+            'n' => 1,
+            'size' => $size,
+            'quality' => $quality,
+            'response_format' => 'url',
+        ];
+
+        $ch = curl_init('https://api.openai.com/v1/images/generations');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiKey,
+            ],
+            CURLOPT_TIMEOUT => 120,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError) {
+            return ['success' => false, 'error' => 'Connection error: ' . $curlError];
+        }
+
+        $data = json_decode($response, true);
+
+        if ($httpCode !== 200) {
+            $errorMsg = $data['error']['message'] ?? 'Image generation failed (HTTP ' . $httpCode . ')';
+            return ['success' => false, 'error' => $errorMsg];
+        }
+
+        $imageUrl = $data['data'][0]['url'] ?? null;
+        $revisedPrompt = $data['data'][0]['revised_prompt'] ?? null;
+
+        if (!$imageUrl) {
+            return ['success' => false, 'error' => 'No image URL returned'];
+        }
+
+        return [
+            'success' => true,
+            'url' => $imageUrl,
+            'revised_prompt' => $revisedPrompt,
+        ];
     }
 
     /**

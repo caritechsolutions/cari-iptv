@@ -56,6 +56,13 @@ use CariIPTV\Controllers\Admin\AdminUserController;
 use CariIPTV\Controllers\Admin\SettingsController;
 use CariIPTV\Controllers\Admin\ChannelController;
 use CariIPTV\Controllers\Admin\MovieController;
+use CariIPTV\Controllers\Admin\SeriesController;
+use CariIPTV\Controllers\Admin\CategoryController;
+use CariIPTV\Controllers\Admin\EpgController;
+use CariIPTV\Controllers\Admin\AppLayoutController;
+use CariIPTV\Controllers\Admin\AdController;
+use CariIPTV\Controllers\Admin\SubscriberController;
+use CariIPTV\Controllers\Admin\PackageController;
 
 // Initialize session
 Session::start();
@@ -67,10 +74,14 @@ $router = new Router();
 $router->addMiddleware('auth', [AdminAuthMiddleware::class, 'handle']);
 $router->addMiddleware('guest', [AdminAuthMiddleware::class, 'guest']);
 
-// Guest routes (login, forgot password)
+// Guest routes (login, register, forgot password)
 $router->group(['prefix' => 'admin', 'middleware' => ['guest']], function ($router) {
     $router->get('/login', [AuthController::class, 'showLogin']);
     $router->post('/login', [AuthController::class, 'login']);
+    $router->get('/register', [AuthController::class, 'showRegister']);
+    $router->post('/register', [AuthController::class, 'register']);
+    $router->get('/verify-email/{token}', [AuthController::class, 'verifyEmail']);
+    $router->post('/resend-verification', [AuthController::class, 'resendVerification']);
     $router->get('/forgot-password', [AuthController::class, 'showForgotPassword']);
     $router->post('/forgot-password', [AuthController::class, 'forgotPassword']);
     $router->get('/reset-password/{token}', [AuthController::class, 'showResetPassword']);
@@ -82,6 +93,10 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     // Dashboard
     $router->get('/', [DashboardController::class, 'index']);
     $router->get('/dashboard', [DashboardController::class, 'index']);
+    $router->post('/dashboard/widgets/add', [DashboardController::class, 'addWidget']);
+    $router->post('/dashboard/widgets/remove', [DashboardController::class, 'removeWidget']);
+    $router->post('/dashboard/widgets/reorder', [DashboardController::class, 'reorderWidgets']);
+    $router->get('/dashboard/widgets/data', [DashboardController::class, 'widgetData']);
 
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
@@ -131,6 +146,11 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/channels/search-logos', [ChannelController::class, 'searchLogos']);
     $router->post('/channels/generate-description', [ChannelController::class, 'generateDescription']);
 
+    // Channel IPTV-org Import
+    $router->post('/channels/search-iptv-org', [ChannelController::class, 'searchIptvOrg']);
+    $router->get('/channels/iptv-org-countries', [ChannelController::class, 'iptvOrgCountries']);
+    $router->post('/channels/import-iptv-org', [ChannelController::class, 'importIptvOrg']);
+
     // Movie Management
     $router->get('/movies', [MovieController::class, 'index']);
     $router->get('/movies/create', [MovieController::class, 'create']);
@@ -159,8 +179,174 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/movies/import-free', [MovieController::class, 'importFreeContent']);
     $router->post('/movies/{id}/process-images', [MovieController::class, 'processMovieImages']);
 
-    // TODO: Add more routes as we build out the admin panel
-    // Series management coming next
+    // TV Shows (Series) Management
+    $router->get('/series', [SeriesController::class, 'index']);
+    $router->get('/series/create', [SeriesController::class, 'create']);
+    $router->post('/series/store', [SeriesController::class, 'store']);
+    $router->get('/series/{id}/edit', [SeriesController::class, 'edit']);
+    $router->post('/series/{id}/update', [SeriesController::class, 'update']);
+    $router->post('/series/{id}/delete', [SeriesController::class, 'delete']);
+    $router->post('/series/{id}/toggle-featured', [SeriesController::class, 'toggleFeatured']);
+    $router->post('/series/{id}/status', [SeriesController::class, 'updateStatus']);
+    $router->post('/series/bulk', [SeriesController::class, 'bulkAction']);
+
+    // TV Shows Metadata Search
+    $router->post('/series/search-tmdb', [SeriesController::class, 'searchTmdb']);
+    $router->post('/series/tmdb-details', [SeriesController::class, 'getTmdbDetails']);
+    $router->post('/series/search-fanart', [SeriesController::class, 'searchFanart']);
+    $router->post('/series/search-trailers', [SeriesController::class, 'searchTrailers']);
+    $router->post('/series/import-tmdb', [SeriesController::class, 'importFromTmdb']);
+    $router->post('/series/{id}/process-images', [SeriesController::class, 'processShowImages']);
+
+    // TV Shows Seasons
+    $router->get('/series/{id}/seasons', [SeriesController::class, 'seasons']);
+    $router->post('/series/{id}/seasons/add', [SeriesController::class, 'addSeason']);
+    $router->post('/series/{id}/seasons/{seasonId}/update', [SeriesController::class, 'updateSeason']);
+    $router->post('/series/{id}/seasons/{seasonId}/delete', [SeriesController::class, 'deleteSeason']);
+    $router->post('/series/{id}/seasons/{seasonId}/fetch-tmdb', [SeriesController::class, 'fetchSeasonTmdb']);
+    $router->post('/series/{id}/seasons/import', [SeriesController::class, 'importSeasons']);
+
+    // TV Shows Episodes
+    $router->get('/series/{id}/seasons/{seasonId}/episodes', [SeriesController::class, 'episodes']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/add', [SeriesController::class, 'addEpisode']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/update', [SeriesController::class, 'updateEpisode']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/delete', [SeriesController::class, 'deleteEpisode']);
+
+    // TV Shows Season Trailers
+    $router->post('/series/{id}/seasons/{seasonId}/trailers/add', [SeriesController::class, 'addTrailer']);
+    $router->post('/series/{id}/seasons/{seasonId}/trailers/{trailerId}/remove', [SeriesController::class, 'removeTrailer']);
+
+    // Categories Management
+    $router->get('/categories', [CategoryController::class, 'index']);
+    $router->post('/categories/store', [CategoryController::class, 'store']);
+    $router->post('/categories/{id}/update', [CategoryController::class, 'update']);
+    $router->post('/categories/{id}/delete', [CategoryController::class, 'delete']);
+    $router->post('/categories/{id}/toggle-active', [CategoryController::class, 'toggleActive']);
+    $router->post('/categories/update-order', [CategoryController::class, 'updateOrder']);
+
+    // EPG Management
+    $router->get('/epg', [EpgController::class, 'index']);
+    $router->get('/epg/programmes', [EpgController::class, 'programmes']);
+    $router->post('/epg/store', [EpgController::class, 'store']);
+    $router->post('/epg/{id}/update', [EpgController::class, 'update']);
+    $router->post('/epg/{id}/delete', [EpgController::class, 'delete']);
+    $router->post('/epg/{id}/fetch', [EpgController::class, 'fetch']);
+    $router->post('/epg/{id}/upload', [EpgController::class, 'upload']);
+    $router->get('/epg/{id}/mappings', [EpgController::class, 'mappings']);
+    $router->post('/epg/save-mapping', [EpgController::class, 'saveMapping']);
+    $router->post('/epg/{id}/auto-map', [EpgController::class, 'autoMap']);
+    $router->post('/epg/cleanup', [EpgController::class, 'cleanup']);
+
+    // App Layout Management
+    $router->get('/app-layout', [AppLayoutController::class, 'index']);
+    $router->post('/app-layout/store', [AppLayoutController::class, 'store']);
+    $router->get('/app-layout/search-content', [AppLayoutController::class, 'searchContent']);
+    $router->get('/app-layout/search-tmdb', [AppLayoutController::class, 'searchTmdb']);
+    $router->post('/app-layout/import-tmdb-item', [AppLayoutController::class, 'importTmdbItem']);
+    $router->post('/app-layout/upload-item-image', [AppLayoutController::class, 'uploadItemImage']);
+    $router->get('/app-layout/{id}/builder', [AppLayoutController::class, 'builder']);
+    $router->post('/app-layout/{id}/update', [AppLayoutController::class, 'update']);
+    $router->post('/app-layout/{id}/delete', [AppLayoutController::class, 'delete']);
+    $router->post('/app-layout/{id}/duplicate', [AppLayoutController::class, 'duplicate']);
+    $router->post('/app-layout/{id}/publish', [AppLayoutController::class, 'publish']);
+
+    // App Layout Sections
+    $router->post('/app-layout/{id}/sections/add', [AppLayoutController::class, 'addSection']);
+    $router->post('/app-layout/{id}/sections/reorder', [AppLayoutController::class, 'reorderSections']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/update', [AppLayoutController::class, 'updateSection']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/delete', [AppLayoutController::class, 'deleteSection']);
+
+    // App Layout Section Items
+    $router->post('/app-layout/{id}/sections/{sectionId}/items/add', [AppLayoutController::class, 'addItem']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/items/reorder', [AppLayoutController::class, 'reorderItems']);
+    $router->post('/app-layout/{id}/sections/{sectionId}/items/{itemId}/remove', [AppLayoutController::class, 'removeItem']);
+
+    // App Pages
+    $router->get('/app-layout/pages', [AppLayoutController::class, 'pages']);
+    $router->post('/app-layout/pages/store', [AppLayoutController::class, 'storePage']);
+    $router->post('/app-layout/pages/reorder', [AppLayoutController::class, 'reorderPages']);
+    $router->post('/app-layout/pages/{id}/update', [AppLayoutController::class, 'updatePage']);
+    $router->post('/app-layout/pages/{id}/delete', [AppLayoutController::class, 'deletePage']);
+
+    // App Navigation
+    $router->post('/app-layout/navigation/save', [AppLayoutController::class, 'saveNavigation']);
+    $router->post('/app-layout/navigation/items/add', [AppLayoutController::class, 'addNavItem']);
+    $router->post('/app-layout/navigation/items/reorder', [AppLayoutController::class, 'reorderNavItems']);
+    $router->post('/app-layout/navigation/items/{id}/update', [AppLayoutController::class, 'updateNavItem']);
+    $router->post('/app-layout/navigation/items/{id}/remove', [AppLayoutController::class, 'removeNavItem']);
+
+    // Advertising - Campaigns
+    $router->get('/ads', [AdController::class, 'index']);
+    $router->get('/ads/create', [AdController::class, 'create']);
+    $router->post('/ads/store', [AdController::class, 'store']);
+    $router->get('/ads/{id}/edit', [AdController::class, 'edit']);
+    $router->post('/ads/{id}/update', [AdController::class, 'update']);
+    $router->post('/ads/{id}/delete', [AdController::class, 'delete']);
+    $router->post('/ads/{id}/toggle-status', [AdController::class, 'toggleStatus']);
+    $router->post('/ads/bulk', [AdController::class, 'bulkAction']);
+
+    // Advertising - Creatives
+    $router->post('/ads/{id}/creatives/add', [AdController::class, 'addCreative']);
+    $router->post('/ads/{id}/creatives/{creativeId}/update', [AdController::class, 'updateCreative']);
+    $router->post('/ads/{id}/creatives/{creativeId}/delete', [AdController::class, 'deleteCreative']);
+
+    // Advertising - Placements & Targeting
+    $router->post('/ads/{id}/placements/add', [AdController::class, 'addPlacement']);
+    $router->post('/ads/{id}/placements/{placementId}/update', [AdController::class, 'updatePlacement']);
+    $router->post('/ads/{id}/placements/{placementId}/delete', [AdController::class, 'deletePlacement']);
+
+    // Advertising - Zones
+    $router->get('/ads/zones', [AdController::class, 'zones']);
+    $router->post('/ads/zones/store', [AdController::class, 'storeZone']);
+    $router->post('/ads/zones/{id}/update', [AdController::class, 'updateZone']);
+    $router->post('/ads/zones/{id}/toggle', [AdController::class, 'toggleZone']);
+    $router->post('/ads/zones/{id}/delete', [AdController::class, 'deleteZone']);
+
+    // Advertising - Reports
+    $router->get('/ads/reports', [AdController::class, 'reports']);
+    $router->get('/ads/{id}/report', [AdController::class, 'campaignReport']);
+
+    // Advertising - AI & Uploads
+    $router->post('/ads/ai/generate-text', [AdController::class, 'generateAdText']);
+    $router->post('/ads/ai/generate-image', [AdController::class, 'generateAdImage']);
+    $router->post('/ads/upload/image', [AdController::class, 'uploadAdImage']);
+    $router->post('/ads/upload/video', [AdController::class, 'uploadAdVideo']);
+
+    // Advertising - Ad Serving API
+    $router->get('/ads/api/serve', [AdController::class, 'serve']);
+    $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);
+    $router->post('/ads/api/event', [AdController::class, 'recordEvent']);
+    $router->get('/ads/api/vast', [AdController::class, 'vastXml']);
+
+    // Subscriber Management
+    $router->get('/subscribers', [SubscriberController::class, 'index']);
+    $router->get('/subscribers/{id}/show', [SubscriberController::class, 'show']);
+    $router->post('/subscribers/store', [SubscriberController::class, 'store']);
+    $router->post('/subscribers/{id}/update', [SubscriberController::class, 'update']);
+    $router->post('/subscribers/{id}/delete', [SubscriberController::class, 'delete']);
+    $router->post('/subscribers/{id}/toggle-status', [SubscriberController::class, 'toggleStatus']);
+    $router->post('/subscribers/bulk', [SubscriberController::class, 'bulkAction']);
+
+    // Subscriber Groups
+    $router->post('/subscribers/groups/store', [SubscriberController::class, 'storeGroup']);
+    $router->post('/subscribers/groups/{id}/update', [SubscriberController::class, 'updateGroup']);
+    $router->post('/subscribers/groups/{id}/delete', [SubscriberController::class, 'deleteGroup']);
+
+    // Packages & Content Groups
+    $router->get('/packages', [PackageController::class, 'index']);
+    $router->get('/packages/search-content', [PackageController::class, 'searchContent']);
+    $router->post('/packages/store', [PackageController::class, 'storePackage']);
+    $router->get('/packages/{id}/show', [PackageController::class, 'showPackage']);
+    $router->post('/packages/{id}/update', [PackageController::class, 'updatePackage']);
+    $router->post('/packages/{id}/delete', [PackageController::class, 'deletePackage']);
+
+    // Content Groups
+    $router->post('/packages/groups/store', [PackageController::class, 'storeGroup']);
+    $router->get('/packages/groups/{id}/show', [PackageController::class, 'showGroup']);
+    $router->post('/packages/groups/{id}/update', [PackageController::class, 'updateGroup']);
+    $router->post('/packages/groups/{id}/delete', [PackageController::class, 'deleteGroup']);
+    $router->post('/packages/groups/{id}/content/add', [PackageController::class, 'addGroupContent']);
+    $router->post('/packages/groups/{id}/content/{iid}/remove', [PackageController::class, 'removeGroupContent']);
 });
 
 // Dispatch the request

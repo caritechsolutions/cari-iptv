@@ -58,6 +58,9 @@ class Response
             $data = self::injectSiteSettings($data);
         }
 
+        // Save layout name before extract/include can overwrite it
+        $__layoutName = $layout;
+
         extract($data);
 
         $templatePath = dirname(__DIR__, 2) . '/templates/' . $template . '.php';
@@ -66,12 +69,12 @@ class Response
             throw new \RuntimeException("Template not found: $template");
         }
 
-        if ($layout) {
+        if ($__layoutName) {
             ob_start();
             include $templatePath;
             $content = ob_get_clean();
 
-            $layoutPath = dirname(__DIR__, 2) . '/templates/layouts/' . $layout . '.php';
+            $layoutPath = dirname(__DIR__, 2) . '/templates/layouts/' . $__layoutName . '.php';
             if (file_exists($layoutPath)) {
                 include $layoutPath;
             } else {

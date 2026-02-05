@@ -11,8 +11,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.263.1/font/lucide.min.css">
+    <!-- Icons (local Lucide font) -->
+    <link rel="stylesheet" href="/assets/fonts/lucide/lucide.css">
 
     <style>
         :root {
@@ -687,33 +687,57 @@
                         <i class="lucide-film"></i>
                         <span>Movies</span>
                     </a>
-                    <a href="/admin/series" class="nav-item <?= in_array($pageTitle ?? '', ['Series', 'Add Series', 'Edit Series']) ? 'active' : '' ?>">
+                    <a href="/admin/series" class="nav-item <?= str_contains($pageTitle ?? '', 'TV Show') || str_contains($pageTitle ?? '', 'Seasons') || str_contains($pageTitle ?? '', 'Season ') ? 'active' : '' ?>">
                         <i class="lucide-clapperboard"></i>
-                        <span>Series</span>
-                    </a>
-                    <a href="/admin/epg" class="nav-item <?= in_array($pageTitle ?? '', ['EPG', 'EPG Management']) ? 'active' : '' ?>">
-                        <i class="lucide-calendar"></i>
-                        <span>EPG</span>
+                        <span>TV Shows</span>
                     </a>
                     <a href="/admin/categories" class="nav-item <?= in_array($pageTitle ?? '', ['Categories', 'Add Category', 'Edit Category']) ? 'active' : '' ?>">
                         <i class="lucide-folder"></i>
                         <span>Categories</span>
                     </a>
+                    <a href="/admin/epg" class="nav-item <?= in_array($pageTitle ?? '', ['EPG', 'EPG Management']) ? 'active' : '' ?>">
+                        <i class="lucide-calendar"></i>
+                        <span>EPG</span>
+                    </a>
+                    <a href="/admin/app-layout" class="nav-item <?= ($pageTitle ?? '') === 'App Layout' || str_starts_with($pageTitle ?? '', 'Edit Layout') ? 'active' : '' ?>">
+                        <i class="lucide-layout"></i>
+                        <span>App Layout</span>
+                    </a>
+                    <a href="/admin/app-layout/pages" class="nav-item <?= ($pageTitle ?? '') === 'Pages & Navigation' ? 'active' : '' ?>">
+                        <i class="lucide-navigation"></i>
+                        <span>Pages & Nav</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Advertising</div>
+                    <a href="/admin/ads" class="nav-item <?= in_array($pageTitle ?? '', ['Advertising', 'Create Campaign', 'Edit Campaign']) ? 'active' : '' ?>">
+                        <i class="lucide-megaphone"></i>
+                        <span>Campaigns</span>
+                    </a>
+                    <a href="/admin/ads/zones" class="nav-item <?= ($pageTitle ?? '') === 'Ad Zones' ? 'active' : '' ?>">
+                        <i class="lucide-layout"></i>
+                        <span>Ad Zones</span>
+                    </a>
+                    <a href="/admin/ads/reports" class="nav-item <?= ($pageTitle ?? '') === 'Ad Reports' ? 'active' : '' ?>">
+                        <i class="lucide-bar-chart-2"></i>
+                        <span>Ad Reports</span>
+                    </a>
                 </div>
 
                 <div class="nav-section">
                     <div class="nav-section-title">Subscribers</div>
-                    <a href="/admin/users" class="nav-item">
+                    <a href="/admin/subscribers" class="nav-item <?= ($pageTitle ?? '') === 'Subscribers' ? 'active' : '' ?>">
                         <i class="lucide-users"></i>
-                        <span>Users</span>
+                        <span>Subscribers</span>
                     </a>
-                    <a href="/admin/subscriptions" class="nav-item">
-                        <i class="lucide-credit-card"></i>
-                        <span>Subscriptions</span>
-                    </a>
-                    <a href="/admin/packages" class="nav-item">
+                    <a href="/admin/packages" class="nav-item <?= ($pageTitle ?? '') === 'Packages' && ($tab ?? '') !== 'groups' ? 'active' : '' ?>">
                         <i class="lucide-package"></i>
                         <span>Packages</span>
+                    </a>
+                    <a href="/admin/packages?tab=groups" class="nav-item <?= ($pageTitle ?? '') === 'Packages' && ($tab ?? '') === 'groups' ? 'active' : '' ?>">
+                        <i class="lucide-layers"></i>
+                        <span>Content Groups</span>
                     </a>
                 </div>
 

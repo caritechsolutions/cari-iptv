@@ -5,236 +5,131 @@
 
 namespace CariIPTV\Controllers\Admin;
 
-use CariIPTV\Core\Database;
 use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
+use CariIPTV\Services\DashboardService;
 
 class DashboardController
 {
-    private Database $db;
     private AdminAuthService $auth;
+    private DashboardService $dashboardService;
 
     public function __construct()
     {
-        $this->db = Database::getInstance();
         $this->auth = new AdminAuthService();
+        $this->dashboardService = new DashboardService();
     }
 
     /**
-     * Show dashboard
+     * Show dashboard with dynamic widgets
      */
     public function index(): void
     {
-        $stats = $this->getStats();
-        $recentActivity = $this->getRecentActivity();
-        $activeStreams = $this->getActiveStreams();
-        $popularContent = $this->getPopularContent();
-        $recentUsers = $this->getRecentUsers();
-        $chartData = $this->getChartData();
+        $user = $this->auth->user();
+        $userId = (int) $user['id'];
+        $activeWidgets = $this->dashboardService->getUserWidgets($userId);
+        $allWidgets = DashboardService::getAvailableWidgets();
+        $widgetData = $this->dashboardService->getMultipleWidgetData($activeWidgets);
 
         Response::view('admin/dashboard/index', [
-            'pageTitle' => 'Dashboard',
-            'stats' => $stats,
-            'recentActivity' => $recentActivity,
-            'activeStreams' => $activeStreams,
-            'popularContent' => $popularContent,
-            'recentUsers' => $recentUsers,
-            'chartData' => $chartData,
-            'user' => $this->auth->user(),
+            'pageTitle'     => 'Dashboard',
+            'user'          => $user,
+            'csrf'          => Session::csrf(),
+            'activeWidgets' => $activeWidgets,
+            'allWidgets'    => $allWidgets,
+            'widgetData'    => $widgetData,
         ], 'admin');
     }
 
     /**
-     * Get platform statistics
+     * Add a widget to user's dashboard
      */
-    private function getStats(): array
+    public function addWidget(): void
     {
-        // Total subscribers
-        $totalUsers = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM users"
-        );
+        Session::validateCsrf($_POST['_token'] ?? '');
 
-        // Active subscribers
-        $activeUsers = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM users WHERE status = 'active'"
-        );
+        $widget = trim($_POST['widget'] ?? '');
+        $all = DashboardService::getAvailableWidgets();
 
-        // Total channels
-        $totalChannels = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM channels WHERE is_active = 1"
-        );
-
-        // Total VOD
-        $totalVod = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM vod_assets WHERE is_active = 1"
-        );
-
-        // Active subscriptions
-        $activeSubscriptions = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM subscriptions WHERE status = 'active'"
-        );
-
-        // Current active streams (last 5 minutes)
-        $activeStreams = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM stream_sessions
-             WHERE ended_at IS NULL AND last_heartbeat > DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
-        );
-
-        // Today's views
-        $todayViews = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM analytics_events
-             WHERE event_type = 'play' AND DATE(created_at) = CURDATE()"
-        );
-
-        // Revenue this month (based on active subscriptions)
-        $monthlyRevenue = $this->db->fetchColumn(
-            "SELECT COALESCE(SUM(p.price), 0) FROM subscriptions s
-             INNER JOIN packages p ON s.package_id = p.id
-             WHERE s.status = 'active'
-             AND MONTH(s.start_date) = MONTH(CURDATE())
-             AND YEAR(s.start_date) = YEAR(CURDATE())"
-        );
-
-        // Calculate growth (new users this month vs last month)
-        $newUsersThisMonth = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM users
-             WHERE MONTH(created_at) = MONTH(CURDATE())
-             AND YEAR(created_at) = YEAR(CURDATE())"
-        );
-
-        $newUsersLastMonth = $this->db->fetchColumn(
-            "SELECT COUNT(*) FROM users
-             WHERE MONTH(created_at) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-             AND YEAR(created_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))"
-        );
-
-        $userGrowth = $newUsersLastMonth > 0
-            ? round((($newUsersThisMonth - $newUsersLastMonth) / $newUsersLastMonth) * 100, 1)
-            : ($newUsersThisMonth > 0 ? 100 : 0);
-
-        return [
-            'total_users' => (int) $totalUsers,
-            'active_users' => (int) $activeUsers,
-            'total_channels' => (int) $totalChannels,
-            'total_vod' => (int) $totalVod,
-            'active_subscriptions' => (int) $activeSubscriptions,
-            'active_streams' => (int) $activeStreams,
-            'today_views' => (int) $todayViews,
-            'monthly_revenue' => (float) $monthlyRevenue,
-            'user_growth' => $userGrowth,
-            'new_users_month' => (int) $newUsersThisMonth,
-        ];
-    }
-
-    /**
-     * Get recent admin activity
-     */
-    private function getRecentActivity(): array
-    {
-        return $this->db->fetchAll(
-            "SELECT al.*, au.username, au.first_name, au.last_name
-             FROM admin_activity_log al
-             LEFT JOIN admin_users au ON al.admin_user_id = au.id
-             WHERE al.action != 'login_failed'
-             ORDER BY al.created_at DESC
-             LIMIT 10"
-        );
-    }
-
-    /**
-     * Get active streams
-     */
-    private function getActiveStreams(): array
-    {
-        return $this->db->fetchAll(
-            "SELECT ss.*, u.email, u.first_name, u.last_name,
-                    CASE
-                        WHEN ss.content_type = 'channel' THEN (SELECT name FROM channels WHERE id = ss.content_id)
-                        WHEN ss.content_type = 'vod' THEN (SELECT title FROM vod_assets WHERE id = ss.content_id)
-                        ELSE 'Unknown'
-                    END as content_name
-             FROM stream_sessions ss
-             INNER JOIN users u ON ss.user_id = u.id
-             WHERE ss.ended_at IS NULL
-             AND ss.last_heartbeat > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-             ORDER BY ss.started_at DESC
-             LIMIT 10"
-        );
-    }
-
-    /**
-     * Get popular content (last 7 days)
-     */
-    private function getPopularContent(): array
-    {
-        return $this->db->fetchAll(
-            "SELECT
-                ae.content_type,
-                ae.content_id,
-                COUNT(*) as view_count,
-                CASE
-                    WHEN ae.content_type = 'channel' THEN (SELECT name FROM channels WHERE id = ae.content_id)
-                    WHEN ae.content_type = 'vod' THEN (SELECT title FROM vod_assets WHERE id = ae.content_id)
-                    ELSE 'Unknown'
-                END as content_name
-             FROM analytics_events ae
-             WHERE ae.event_type = 'play'
-             AND ae.created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
-             GROUP BY ae.content_type, ae.content_id
-             ORDER BY view_count DESC
-             LIMIT 10"
-        );
-    }
-
-    /**
-     * Get recent users
-     */
-    private function getRecentUsers(): array
-    {
-        return $this->db->fetchAll(
-            "SELECT u.*, s.status as subscription_status, p.name as package_name
-             FROM users u
-             LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
-             LEFT JOIN packages p ON s.package_id = p.id
-             ORDER BY u.created_at DESC
-             LIMIT 5"
-        );
-    }
-
-    /**
-     * Get chart data for the last 7 days
-     */
-    private function getChartData(): array
-    {
-        $days = [];
-        $views = [];
-        $newUsers = [];
-
-        for ($i = 6; $i >= 0; $i--) {
-            $date = date('Y-m-d', strtotime("-$i days"));
-            $days[] = date('M j', strtotime($date));
-
-            // Views per day
-            $dayViews = $this->db->fetchColumn(
-                "SELECT COUNT(*) FROM analytics_events
-                 WHERE event_type = 'play' AND DATE(created_at) = ?",
-                [$date]
-            );
-            $views[] = (int) $dayViews;
-
-            // New users per day
-            $dayUsers = $this->db->fetchColumn(
-                "SELECT COUNT(*) FROM users WHERE DATE(created_at) = ?",
-                [$date]
-            );
-            $newUsers[] = (int) $dayUsers;
+        if (!isset($all[$widget])) {
+            Response::json(['success' => false, 'message' => 'Invalid widget'], 400);
+            return;
         }
 
-        return [
-            'labels' => $days,
-            'views' => $views,
-            'new_users' => $newUsers,
-        ];
+        $user = $this->auth->user();
+        $userId = (int) $user['id'];
+        $current = $this->dashboardService->getUserWidgets($userId);
+
+        if (in_array($widget, $current)) {
+            Response::json(['success' => false, 'message' => 'Widget already on dashboard'], 422);
+            return;
+        }
+
+        $current[] = $widget;
+        $this->dashboardService->saveUserWidgets($userId, $current);
+
+        // Return the widget data so the frontend can render it immediately
+        $data = $this->dashboardService->getWidgetData($widget);
+        $meta = $all[$widget];
+        Response::json(['success' => true, 'message' => 'Widget added', 'widget' => $widget, 'data' => $data, 'meta' => $meta]);
+    }
+
+    /**
+     * Remove a widget from user's dashboard
+     */
+    public function removeWidget(): void
+    {
+        Session::validateCsrf($_POST['_token'] ?? '');
+
+        $widget = trim($_POST['widget'] ?? '');
+        $user = $this->auth->user();
+        $userId = (int) $user['id'];
+        $current = $this->dashboardService->getUserWidgets($userId);
+
+        $current = array_values(array_filter($current, fn($w) => $w !== $widget));
+        $this->dashboardService->saveUserWidgets($userId, $current);
+
+        Response::json(['success' => true, 'message' => 'Widget removed']);
+    }
+
+    /**
+     * Reorder widgets via drag-and-drop
+     */
+    public function reorderWidgets(): void
+    {
+        Session::validateCsrf($_POST['_token'] ?? '');
+
+        $order = $_POST['order'] ?? [];
+        if (!is_array($order)) {
+            Response::json(['success' => false, 'message' => 'Invalid order'], 400);
+            return;
+        }
+
+        $all = DashboardService::getAvailableWidgets();
+        $order = array_values(array_filter($order, fn($w) => isset($all[$w])));
+
+        $user = $this->auth->user();
+        $userId = (int) $user['id'];
+        $this->dashboardService->saveUserWidgets($userId, $order);
+
+        Response::json(['success' => true, 'message' => 'Order saved']);
+    }
+
+    /**
+     * Get fresh data for a single widget (AJAX)
+     */
+    public function widgetData(): void
+    {
+        $widget = trim($_GET['widget'] ?? '');
+        $all = DashboardService::getAvailableWidgets();
+
+        if (!isset($all[$widget])) {
+            Response::json(['success' => false, 'message' => 'Invalid widget'], 400);
+            return;
+        }
+
+        $data = $this->dashboardService->getWidgetData($widget);
+        Response::json(['success' => true, 'data' => $data, 'meta' => $all[$widget]]);
     }
 }

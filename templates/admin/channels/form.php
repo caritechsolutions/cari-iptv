@@ -403,40 +403,158 @@
 
     <!-- EPG Tab -->
     <div class="tab-content" id="tab-epg">
-        <div class="card mb-3">
-            <div class="card-header">
-                <h3 class="card-title">EPG Settings</h3>
-            </div>
-            <div class="card-body">
-                <div class="form-group">
-                    <label class="form-label" for="epg_channel_id">EPG Channel ID</label>
-                    <input type="text" id="epg_channel_id" name="epg_channel_id" class="form-input"
-                           value="<?= htmlspecialchars($channel['epg_channel_id'] ?? '') ?>"
-                           placeholder="Channel ID from EPG source (XMLTV)">
-                    <small class="form-help">This ID must match the channel ID in your EPG/XMLTV data</small>
-                </div>
+        <?php
+        $epgMappings = $epgMappings ?? [];
+        $epgNowNext = $epgNowNext ?? [];
+        $isMapped = !empty($epgMappings);
+        ?>
 
-                <?php if (!empty($channel['epg_last_update'])): ?>
-                    <div class="info-section">
-                        <h4>EPG Status</h4>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="info-label">Last Update</span>
-                                <span class="info-value"><?= date('M j, Y g:i a', strtotime($channel['epg_last_update'])) ?></span>
+        <?php if ($channel && $isMapped): ?>
+            <!-- Mapped Sources -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="lucide-link" style="width:16px;height:16px;"></i> EPG Sources</h3>
+                    <a href="/admin/epg" class="btn btn-secondary btn-sm"><i class="lucide-settings"></i> Manage EPG</a>
+                </div>
+                <div class="card-body">
+                    <div class="epg-sources-list">
+                        <?php foreach ($epgMappings as $mapping): ?>
+                            <div class="epg-source-row">
+                                <div class="epg-source-info">
+                                    <span class="epg-source-dot"></span>
+                                    <div>
+                                        <strong><?= htmlspecialchars($mapping['source_name']) ?></strong>
+                                        <span class="epg-source-meta">
+                                            <?php
+                                            $typeBadge = match($mapping['source_type']) {
+                                                'eit' => 'EIT/DVB',
+                                                'xmltv_file' => 'XMLTV File',
+                                                'xmltv_url' => 'XMLTV URL',
+                                                default => $mapping['source_type'],
+                                            };
+                                            ?>
+                                            <?= $typeBadge ?>
+                                            <?php if ($mapping['epg_channel_name']): ?>
+                                                &middot; <?= htmlspecialchars($mapping['epg_channel_name']) ?>
+                                            <?php endif; ?>
+                                            &middot; ID: <code><?= htmlspecialchars($mapping['epg_channel_id']) ?></code>
+                                        </span>
+                                    </div>
+                                </div>
+                                <span class="badge badge-info"><?= number_format($mapping['programme_count']) ?> programmes</span>
                             </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <?php if (!empty($channel['epg_last_update'])): ?>
+                        <div class="epg-last-update">
+                            <i class="lucide-clock" style="width:14px;height:14px;"></i>
+                            Last EPG update: <?= date('M j, Y g:i a', strtotime($channel['epg_last_update'])) ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Now/Next Programme Guide -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="lucide-tv" style="width:16px;height:16px;"></i> Programme Guide</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <?php if (!empty($epgNowNext)): ?>
+                        <div class="epg-schedule-list">
+                            <?php
+                            $now = new DateTime();
+                            $shownNow = false;
+                            foreach ($epgNowNext as $i => $prog):
+                                $start = new DateTime($prog['start_time']);
+                                $end = new DateTime($prog['end_time']);
+                                $isLive = $start <= $now && $end > $now;
+                                if ($isLive) $shownNow = true;
+                            ?>
+                                <div class="epg-programme <?= $isLive ? 'epg-programme-live' : '' ?>">
+                                    <div class="epg-time">
+                                        <span class="epg-time-start"><?= $start->format('H:i') ?></span>
+                                        <span class="epg-time-end"><?= $end->format('H:i') ?></span>
+                                    </div>
+                                    <div class="epg-programme-info">
+                                        <div class="epg-programme-title">
+                                            <?php if ($isLive): ?>
+                                                <span class="badge badge-success" style="font-size: 10px; margin-right: 4px;">NOW</span>
+                                            <?php elseif (!$shownNow && $i === 0): ?>
+                                                <span class="badge badge-warning" style="font-size: 10px; margin-right: 4px;">NEXT</span>
+                                            <?php elseif ($shownNow && !$isLive && $i > 0):
+                                                $prevEnd = new DateTime($epgNowNext[$i-1]['end_time'] ?? '');
+                                                $prevIsLive = (new DateTime($epgNowNext[$i-1]['start_time'])) <= $now && $prevEnd > $now;
+                                                if ($prevIsLive): ?>
+                                                    <span class="badge badge-warning" style="font-size: 10px; margin-right: 4px;">NEXT</span>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                            <?= htmlspecialchars($prog['title']) ?>
+                                        </div>
+                                        <?php if ($prog['subtitle']): ?>
+                                            <div class="epg-programme-subtitle"><?= htmlspecialchars($prog['subtitle']) ?></div>
+                                        <?php endif; ?>
+                                        <?php if ($prog['description']): ?>
+                                            <div class="epg-programme-desc"><?= htmlspecialchars(mb_strimwidth($prog['description'], 0, 150, '...')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($prog['category']): ?>
+                                        <span class="badge badge-secondary" style="font-size: 10px; align-self: flex-start;"><?= htmlspecialchars($prog['category']) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+                            <p>No upcoming programmes. Run a fetch from the <a href="/admin/epg" style="color: var(--primary);">EPG management</a> page to import programme data.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+        <?php elseif ($channel): ?>
+            <!-- Not Mapped -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="lucide-calendar" style="width:16px;height:16px;"></i> Programme Guide</h3>
+                </div>
+                <div class="card-body">
+                    <div class="epg-not-mapped">
+                        <div class="epg-not-mapped-icon">
+                            <i class="lucide-unlink"></i>
+                        </div>
+                        <h4>No EPG Source Mapped</h4>
+                        <p>This channel is not linked to any EPG source. To see programme guide data here:</p>
+                        <ol class="epg-setup-steps">
+                            <li>Go to <a href="/admin/epg">EPG Management</a></li>
+                            <li>Add an EPG source (EIT stream, XMLTV file, or XMLTV URL)</li>
+                            <li>Click <strong>Fetch</strong> to import programme data</li>
+                            <li>Click <strong>Map</strong> and select <strong><?= htmlspecialchars($channel['name']) ?></strong> from the dropdown for the matching service</li>
+                        </ol>
+                        <a href="/admin/epg" class="btn btn-primary btn-sm" style="margin-top: 0.75rem;">
+                            <i class="lucide-radio-tower"></i> Go to EPG Management
+                        </a>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
+            <!-- New channel -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="lucide-calendar" style="width:16px;height:16px;"></i> Programme Guide</h3>
+                </div>
+                <div class="card-body">
+                    <div class="epg-notice">
+                        <i class="lucide-info"></i>
+                        <div>
+                            <strong>EPG Configuration</strong>
+                            <p>Save this channel first, then link it to an EPG source via the <a href="/admin/epg" style="color: var(--primary);">EPG Management</a> page.</p>
                         </div>
                     </div>
-                <?php endif; ?>
-
-                <div class="epg-notice">
-                    <i class="lucide-info"></i>
-                    <div>
-                        <strong>EPG Data</strong>
-                        <p>EPG data is imported separately via the EPG management section. Configure the EPG Channel ID above to link this channel with program guide data.</p>
-                    </div>
                 </div>
             </div>
-        </div>
+        <?php endif; ?>
     </div>
 
     <!-- Availability Tab -->
@@ -852,6 +970,7 @@
     color: var(--text-primary);
 }
 
+/* EPG Tab Styles */
 .epg-notice {
     display: flex;
     gap: 1rem;
@@ -876,6 +995,179 @@
     font-size: 0.875rem;
     color: var(--text-secondary);
     margin: 0;
+}
+
+.epg-sources-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.epg-source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: var(--bg-hover);
+    border-radius: 8px;
+}
+
+.epg-source-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.epg-source-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+}
+
+.epg-source-meta {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.epg-source-meta code {
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+}
+
+.epg-last-update {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.epg-schedule-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.epg-programme {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.epg-programme:last-child {
+    border-bottom: none;
+}
+
+.epg-programme-live {
+    background: rgba(99, 102, 241, 0.08);
+    border-left: 3px solid var(--primary);
+}
+
+.epg-time {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 50px;
+    flex-shrink: 0;
+}
+
+.epg-time-start {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.epg-time-end {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.epg-programme-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.epg-programme-title {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.epg-programme-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.epg-programme-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.epg-not-mapped {
+    text-align: center;
+    padding: 1.5rem 1rem;
+}
+
+.epg-not-mapped-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.1);
+    margin-bottom: 1rem;
+}
+
+.epg-not-mapped-icon i {
+    font-size: 1.5rem;
+    color: var(--danger);
+}
+
+.epg-not-mapped h4 {
+    margin: 0 0 0.5rem;
+    color: var(--text-primary);
+}
+
+.epg-not-mapped p {
+    margin: 0 0 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.epg-setup-steps {
+    text-align: left;
+    max-width: 420px;
+    margin: 0.75rem auto 0;
+    padding-left: 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.8;
+}
+
+.epg-setup-steps a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.epg-setup-steps a:hover {
+    text-decoration: underline;
 }
 
 .availability-summary {

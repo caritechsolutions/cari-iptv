@@ -298,11 +298,20 @@ apply_update() {
         rsync -a --exclude='.htaccess' public/ "$INSTALL_DIR/public/"
         rsync -a src/ "$INSTALL_DIR/src/"
         rsync -a templates/ "$INSTALL_DIR/templates/"
+        # Copy scripts directory (EPG fetch, etc.)
+        if [ -d "scripts" ]; then
+            rsync -a scripts/ "$INSTALL_DIR/scripts/"
+        fi
     else
         # Fallback to cp
         cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
         cp -r src/* "$INSTALL_DIR/src/" 2>/dev/null || true
         cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
+        # Copy scripts directory
+        if [ -d "scripts" ]; then
+            mkdir -p "$INSTALL_DIR/scripts"
+            cp -r scripts/* "$INSTALL_DIR/scripts/" 2>/dev/null || true
+        fi
     fi
 
     # Copy new database migrations (if any) - delete old ones first to ensure clean copy
@@ -441,12 +450,17 @@ fix_permissions() {
     mkdir -p "$INSTALL_DIR/public/uploads/channels"
     mkdir -p "$INSTALL_DIR/public/uploads/avatars"
     mkdir -p "$INSTALL_DIR/public/uploads/logos"
+    mkdir -p "$INSTALL_DIR/public/uploads/vod"
     chown -R "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/public/uploads"
     chmod -R 775 "$INSTALL_DIR/public/uploads"
+
+    # Ensure packages directory exists for local TSDuck debs
+    mkdir -p "$INSTALL_DIR/packages"
 
     # Make scripts executable
     chmod +x "$INSTALL_DIR/install.sh" 2>/dev/null || true
     chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/scripts/"*.php 2>/dev/null || true
 
     log_info "Permissions updated"
 }
@@ -529,20 +543,217 @@ install_ollama() {
     if systemctl is-active --quiet ollama 2>/dev/null; then
         log_info "Ollama service is running"
 
-        # Check if default model exists, pull if not
-        if ! ollama list 2>/dev/null | grep -q "llama3.2:1b"; then
-            log_info "Pulling default AI model (llama3.2:1b - this may take a few minutes)..."
-            ollama pull llama3.2:1b 2>/dev/null || {
-                log_warn "Could not pull default model - you can pull models later with: ollama pull llama3.2:1b"
-            }
-        else
-            log_info "Default model (llama3.2:1b) already available"
-        fi
+        # Models to ensure are available
+        # llama3.2:1b  - Fast, lightweight (~1.3GB) - default
+        # llama3.2:3b  - Better quality, still small (~2GB)
+        # gemma2:2b    - Google's model, good text generation (~1.6GB)
+        # qwen2.5:3b   - Alibaba's model, strong multilingual (~2GB)
+        # phi3:mini    - Microsoft's model, good reasoning (~2.3GB)
+
+        local MODELS=("llama3.2:1b" "llama3.2:3b" "gemma2:2b" "qwen2.5:3b" "phi3:mini")
+        local MODEL_NAMES=("Llama 3.2 1B (Fast)" "Llama 3.2 3B (Balanced)" "Gemma 2 2B (Google)" "Qwen 2.5 3B (Multilingual)" "Phi-3 Mini (Microsoft)")
+
+        for i in "${!MODELS[@]}"; do
+            local model="${MODELS[$i]}"
+            local name="${MODEL_NAMES[$i]}"
+
+            if ollama list 2>/dev/null | grep -q "${model}"; then
+                log_info "Model ${model} already available"
+            else
+                log_info "Pulling ${name} (${model})..."
+                ollama pull "${model}" 2>/dev/null || {
+                    log_warn "Could not pull ${model} - you can pull it later with: ollama pull ${model}"
+                }
+            fi
+        done
+
+        log_info "Installed models:"
+        ollama list 2>/dev/null || true
     else
         log_warn "Ollama service not running - you may need to start it manually: sudo systemctl start ollama"
     fi
 
     log_info "Ollama setup complete"
+}
+
+install_tsduck() {
+    log_step "Checking TSDuck (MPEG Transport Stream Toolkit)"
+
+    # Check if TSDuck is installed AND working
+    if command -v tsp &> /dev/null; then
+        if tsp --version &> /dev/null; then
+            log_info "TSDuck already installed: $(tsp --version 2>&1 | head -1)"
+            return 0
+        else
+            # TSDuck exists but is broken (library issues) - remove it
+            log_warn "TSDuck is installed but broken, removing..."
+            dpkg --purge tsduck 2>/dev/null || true
+            apt-get remove --purge tsduck -y 2>/dev/null || true
+        fi
+    fi
+
+    log_info "TSDuck not found - installing..."
+
+    # Detect architecture and OS version
+    local ARCH=$(dpkg --print-architecture)
+    source /etc/os-release
+    log_info "Detected: $ARCH on $PRETTY_NAME ($VERSION_CODENAME)"
+
+    # Determine TSDuck version and package name based on Ubuntu version
+    local TSDUCK_VERSION=""
+    local UBUNTU_TAG=""
+
+    case "$VERSION_CODENAME" in
+        noble)
+            # Ubuntu 24.04
+            TSDUCK_VERSION="3.43-4549"
+            UBUNTU_TAG="ubuntu24"
+            ;;
+        plucky|oracular)
+            # Ubuntu 25.x
+            TSDUCK_VERSION="3.43-4549"
+            UBUNTU_TAG="ubuntu25"
+            ;;
+        jammy)
+            # Ubuntu 22.04
+            TSDUCK_VERSION="3.33-3139"
+            UBUNTU_TAG="ubuntu22"
+            ;;
+        focal)
+            # Ubuntu 20.04 - no official TSDuck package available
+            log_warn "No TSDuck package available for Ubuntu 20.04"
+            log_warn "EIT extraction will not be available. Consider upgrading to Ubuntu 22.04+"
+            return 0
+            ;;
+        *)
+            log_warn "Unknown Ubuntu version ($VERSION_CODENAME), trying ubuntu24 package"
+            TSDUCK_VERSION="3.43-4549"
+            UBUNTU_TAG="ubuntu24"
+            ;;
+    esac
+
+    local PACKAGE_NAME="tsduck_${TSDUCK_VERSION}.${UBUNTU_TAG}_${ARCH}.deb"
+    log_info "Looking for TSDuck package: $PACKAGE_NAME"
+
+    local DEB_FILE=""
+    local FOUND_LOCAL=false
+
+    # STEP 1: Check for local package in packages/ directory
+    if [[ -d "$INSTALL_DIR/packages" ]]; then
+        local LOCAL_DEB=$(find "$INSTALL_DIR/packages" -name "tsduck*${UBUNTU_TAG}*${ARCH}.deb" 2>/dev/null | head -1)
+        if [[ -f "$LOCAL_DEB" ]]; then
+            log_info "Found local TSDuck package: $(basename "$LOCAL_DEB")"
+            DEB_FILE="$LOCAL_DEB"
+            FOUND_LOCAL=true
+        fi
+    fi
+
+    # STEP 2: If no local package, try downloading
+    if [[ "$FOUND_LOCAL" = false ]]; then
+        log_info "No local package found, attempting download..."
+        DEB_FILE="/tmp/tsduck.deb"
+        rm -f "$DEB_FILE"
+
+        local CARICODER_URL="https://github.com/caritechsolutions/Caricoder2/raw/main/packages/${PACKAGE_NAME}"
+        local TSDUCK_URL="https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+
+        local DOWNLOAD_SUCCESS=false
+
+        # Try Caricoder2 repo first
+        log_info "Trying Caricoder2 repository..."
+        for attempt in 1 2; do
+            if command -v wget &> /dev/null; then
+                if wget --no-check-certificate -q -O "$DEB_FILE" "$CARICODER_URL" 2>/dev/null; then
+                    if [[ -s "$DEB_FILE" ]] && file "$DEB_FILE" 2>/dev/null | grep -qi "debian\|archive"; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from Caricoder2 repository"
+                        break
+                    fi
+                    rm -f "$DEB_FILE"
+                fi
+            else
+                if curl -k -L -f -o "$DEB_FILE" "$CARICODER_URL" 2>/dev/null; then
+                    if [[ -s "$DEB_FILE" ]] && file "$DEB_FILE" 2>/dev/null | grep -qi "debian\|archive"; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from Caricoder2 repository"
+                        break
+                    fi
+                    rm -f "$DEB_FILE"
+                fi
+            fi
+            sleep 2
+        done
+
+        # Fall back to TSDuck GitHub releases
+        if [[ "$DOWNLOAD_SUCCESS" = false ]]; then
+            log_info "Trying TSDuck GitHub releases..."
+            rm -f "$DEB_FILE"
+            for attempt in 1 2 3; do
+                if command -v wget &> /dev/null; then
+                    if wget --no-check-certificate -q -O "$DEB_FILE" "$TSDUCK_URL" 2>/dev/null; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from TSDuck releases"
+                        break
+                    fi
+                else
+                    if curl -k -L -f -o "$DEB_FILE" "$TSDUCK_URL" 2>/dev/null; then
+                        DOWNLOAD_SUCCESS=true
+                        log_info "Downloaded from TSDuck releases"
+                        break
+                    fi
+                fi
+                log_warn "Download attempt $attempt failed, retrying..."
+                sleep 2
+            done
+        fi
+
+        if [[ "$DOWNLOAD_SUCCESS" = false ]] || [[ ! -f "$DEB_FILE" ]] || [[ ! -s "$DEB_FILE" ]]; then
+            log_warn "Failed to download TSDuck package"
+            log_warn "EIT extraction from satellite streams will not be available"
+            log_warn ""
+            log_warn "To install manually, download the package and place it in the packages/ directory:"
+            log_warn "  1. Download from: https://github.com/tsduck/tsduck/releases/download/v${TSDUCK_VERSION}/${PACKAGE_NAME}"
+            log_warn "  2. Place in: $INSTALL_DIR/packages/"
+            log_warn "  3. Re-run updater"
+            return 0
+        fi
+
+        # Verify it's a valid .deb file
+        local FILE_TYPE=$(file "$DEB_FILE" 2>/dev/null || echo "unknown")
+        if ! echo "$FILE_TYPE" | grep -qi "debian\|archive"; then
+            log_warn "Downloaded file is not a valid Debian package"
+            rm -f "$DEB_FILE"
+            log_warn "EIT extraction will not be available - install TSDuck manually if needed"
+            return 0
+        fi
+
+        log_info "Download successful ($(du -h "$DEB_FILE" | cut -f1))"
+    fi
+
+    # STEP 3: Install the package
+    log_info "Installing TSDuck runtime dependencies..."
+    apt-get install -y libcurl4 libpcsclite1 libedit2 2>/dev/null || true
+
+    log_info "Installing TSDuck package..."
+    if dpkg -i "$DEB_FILE"; then
+        log_info "TSDuck package installed"
+    else
+        log_warn "dpkg install had issues, attempting to fix dependencies..."
+        apt-get install -f -y
+    fi
+
+    # Cleanup temp file (but not local package)
+    if [[ "$FOUND_LOCAL" = false ]] && [[ -f "/tmp/tsduck.deb" ]]; then
+        rm -f "/tmp/tsduck.deb"
+    fi
+
+    # Verify installation
+    if command -v tsp &> /dev/null; then
+        log_info "TSDuck installed successfully: $(tsp --version 2>&1 | head -1)"
+    else
+        log_warn "TSDuck installation may have failed"
+        log_warn "EIT extraction will not be available - install manually if needed"
+    fi
 }
 
 print_completion() {
@@ -611,6 +822,7 @@ main() {
     run_migrations
     fix_permissions
     install_ollama
+    install_tsduck
     clear_cache
 
     disable_maintenance_mode

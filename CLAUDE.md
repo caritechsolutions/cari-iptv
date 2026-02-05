@@ -68,7 +68,8 @@ cari-iptv/
 │   │   ├── SettingsService.php    # Database KV store for settings
 │   │   ├── EmailService.php       # Pure PHP SMTP (no PHPMailer)
 │   │   ├── ImageService.php       # Image processing (resize, WebP conversion)
-│   │   ├── AIService.php          # AI integration (Ollama, OpenAI, Anthropic)
+│   │   ├── AIService.php          # AI integration (Ollama, OpenAI, Anthropic, DALL-E 3)
+│   │   ├── AdService.php          # Ad business logic, targeting engine, reporting
 │   │   └── MetadataService.php    # TMDB, Fanart.tv, YouTube API integration
 │   │
 │   ├── Controllers/Admin/  # Admin panel controllers
@@ -77,6 +78,7 @@ cari-iptv/
 │   │   ├── AdminUserController.php
 │   │   ├── ChannelController.php
 │   │   ├── MovieController.php
+│   │   ├── AdController.php
 │   │   ├── ProfileController.php
 │   │   └── SettingsController.php
 │   │
@@ -143,6 +145,7 @@ $result = $imageService->processFromUrl(
 - `vod`: thumb (150x225), poster (342x513), backdrop (780x439)
 - `avatar`: thumb (64x64), medium (200x200)
 - `logo`: small (120x60), medium (200x100)
+- `ad`: banner_large (728x90), banner_medium (468x60), banner_leaderboard (970x250), banner_square (300x250), full (1920x1080)
 
 **IMPORTANT:** When saving movies or channels with remote image URLs (from TMDB, Fanart.tv, etc.), always call `processImages()` to download and convert to local WebP files. This improves performance and reduces external dependencies.
 
@@ -190,7 +193,21 @@ $db->lastInsertId();            // Get last insert ID
 | `movie_artwork` | Fanart.tv artwork (posters, backdrops, logos) |
 | `movie_cast` | Cast and crew from TMDB |
 | `categories` | Channel/VOD categories (type: live, vod, series) |
+| `series` | TV show content with metadata (slug, year, synopsis) |
 | `settings` | Key-value configuration store (grouped by feature) |
+| `app_layouts` | Visual content templates per platform |
+| `app_layout_sections` | Ordered sections within a layout |
+| `app_layout_items` | Content items within sections |
+| `app_pages` | App screens per platform (linked to layouts) |
+| `app_navigation` | Navigation menus per platform+position |
+| `app_navigation_items` | Menu items linking to pages/URLs |
+| `ad_campaigns` | Advertising campaigns with scheduling and budgets |
+| `ad_creatives` | Ad content (text, banner, video) per campaign |
+| `ad_zones` | Pre-defined ad placement locations |
+| `ad_placements` | Links creatives to zones with targeting |
+| `ad_targeting_rules` | Flexible targeting rules per placement |
+| `ad_impressions` | Ad impression tracking |
+| `ad_events` | Ad click/completion/skip event tracking |
 
 ### Admin Roles (Hierarchy)
 1. `viewer` (level 1) - Read-only access
@@ -402,9 +419,522 @@ curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_
 4. Add proper validation and error handling
 5. Test the changes thoroughly
 
+## App Layout System (Pages, Navigation & Layout Builder)
+
+The App Layout system controls what end-users see in the IPTV app. It has three layers:
+
+```
+Navigation (menus) → Pages (screens) → Layouts (visual content)
+                                            ↓
+                                      Sections (rows/grids)
+                                            ↓
+                                      Content Items (movies, series, channels)
+```
+
+### How It All Connects
+
+1. **Navigation** menus contain items that link to **Pages**
+2. **Pages** are app screens (Home, Movies, Live TV, etc.) — some link to a **Layout**
+3. **Layouts** contain ordered **Sections** (hero slideshow, content rows, etc.)
+4. **Sections** contain **Content Items** (movies, series, channels, or custom images)
+
+Each layer is platform-specific (`web`, `mobile`, `tv`, `stb`) so each platform can have its own navigation style, pages, and layouts.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/Controllers/Admin/AppLayoutController.php` | All AJAX endpoints (36 routes) |
+| `src/Services/AppLayoutService.php` | Business logic (30+ methods) |
+| `templates/admin/app-layout/index.php` | Layout listing page |
+| `templates/admin/app-layout/builder.php` | Visual layout builder |
+| `templates/admin/app-layout/pages.php` | Pages & Navigation management |
+| `database/migrations/010_create_app_layout_tables.sql` | Layouts, sections, items tables |
+| `database/migrations/011_create_app_pages_navigation.sql` | Pages, navigation tables + seed data |
+
+### Database Tables
+
+#### `app_layouts` — Visual content templates
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `name` | VARCHAR(255) | Layout name |
+| `platform` | ENUM(web,mobile,tv,stb) | Target platform |
+| `status` | ENUM(draft,published,archived) | Lifecycle state |
+| `is_default` | TINYINT | Active default for platform (1 per platform) |
+| `schedule_start/end` | DATETIME | Optional scheduled activation |
+
+#### `app_layout_sections` — Rows within a layout
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `layout_id` | INT FK→app_layouts | Parent layout (CASCADE delete) |
+| `section_type` | VARCHAR(50) | Type key (see section types below) |
+| `title` | VARCHAR(255) | Display heading |
+| `settings` | JSON | Type-specific configuration |
+| `sort_order` | INT | Display order |
+| `is_active` | TINYINT | Toggle |
+
+#### `app_layout_items` — Content within a section
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `section_id` | INT FK→app_layout_sections | Parent section (CASCADE delete) |
+| `content_type` | ENUM(movie,series,channel,category,custom) | What type of content |
+| `content_id` | INT | FK to movies/series/channels/categories (NULL for custom) |
+| `settings` | JSON | For custom items: `{image_url, title, link_url}` |
+| `sort_order` | INT | Display order |
+
+#### `app_pages` — App screens
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `name` | VARCHAR(255) | Display name (e.g. "Movies") |
+| `slug` | VARCHAR(100) | URL path (e.g. "movies") |
+| `page_type` | ENUM(11 types) | See page types below |
+| `platform` | ENUM(web,mobile,tv,stb) | Target platform |
+| `layout_id` | INT FK→app_layouts | Linked layout (SET NULL on delete) |
+| `icon` | VARCHAR(50) | Lucide icon class (e.g. `lucide-film`) |
+| `is_system` | TINYINT | System pages cannot be deleted |
+| `sort_order` | INT | Display order |
+
+#### `app_navigation` — Navigation menus
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `platform` | ENUM(web,mobile,tv,stb) | Target platform |
+| `position` | ENUM(main,footer,sidebar,top) | Menu position |
+| `settings` | JSON | Style config: `{style, show_icons, show_labels}` |
+
+Unique constraint on `(platform, position)`.
+
+#### `app_navigation_items` — Menu items
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `navigation_id` | INT FK→app_navigation | Parent menu (CASCADE delete) |
+| `page_id` | INT FK→app_pages | Target page (when target=page) |
+| `label` | VARCHAR(100) | Display text |
+| `icon` | VARCHAR(50) | Lucide icon class |
+| `target` | ENUM(page,url,deeplink) | Link type |
+| `url` | VARCHAR(500) | For url/deeplink targets |
+| `sort_order` | INT | Display order |
+
+### Page Types
+
+Defined in `AppLayoutService::getPageTypes()`:
+
+| Type | Name | has_layout | Description |
+|------|------|-----------|-------------|
+| `home` | Home | YES | Main landing page |
+| `movies` | Movies | YES | Movie browsing & listing |
+| `series` | TV Shows | YES | TV series browsing |
+| `live_tv` | Live TV | YES | Live channel guide & player |
+| `categories` | Categories | YES | Browse by genre/category |
+| `custom` | Custom Page | YES | User-defined page |
+| `search` | Search | NO | Content search |
+| `watchlist` | My List | NO | User watchlist/favourites |
+| `settings` | Settings | NO | App settings & preferences |
+| `player` | Player | NO | Media player page |
+| `details` | Details | NO | Content detail view |
+
+Pages with `has_layout: true` can be linked to a layout via `layout_id`. Pages with `has_layout: false` are standalone screens that need their own implementation.
+
+### Section Types (10 types)
+
+Defined in `AppLayoutService::getSectionTypes()`:
+
+| Type Key | Name | Category | Supports Items | Max/Layout | Description |
+|----------|------|----------|---------------|------------|-------------|
+| `hero_slideshow` | Hero Slideshow | featured | YES | 1 | Full-width billboard with auto-rotation |
+| `content_row` | Content Row | content | YES | 20 | Horizontal scrollable rail of cards |
+| `continue_watching` | Continue Watching | personalized | NO (auto) | 1 | User's resume-watching row |
+| `live_now` | Live Now | live | NO (auto/EPG) | 2 | Currently airing programmes |
+| `epg_schedule` | TV Guide | live | NO (auto/EPG) | 1 | Mini programme guide grid |
+| `channel_grid` | Channel Grid | live | YES | 3 | Featured channels grid |
+| `category_grid` | Category Grid | navigation | NO (auto) | 2 | Browse-by-genre grid |
+| `banner` | Promo Banner | promotional | NO (settings) | 5 | Promotional image with link |
+| `spotlight` | Spotlight | featured | YES | 3 | Single featured item with details |
+| `text_divider` | Section Divider | utility | NO | 10 | Heading text or separator |
+
+**Sections that accept manual content items:** `hero_slideshow`, `content_row`, `channel_grid`, `spotlight`
+
+**Auto-populated sections:** `continue_watching` (per user), `live_now` (from EPG), `epg_schedule` (from EPG), `category_grid` (from categories table)
+
+### Section Settings (defaults)
+
+Each section type has configurable settings stored as JSON. Key ones:
+
+**hero_slideshow**: `auto_rotate` (bool), `interval` (seconds), `height` (small/medium/large), `show_play_button`, `show_info_button`
+
+**content_row**: `source` (curated/latest/popular/top_rated/featured/category), `content_type` (movie/series/mixed), `card_style` (poster/backdrop/square), `max_items`, `category_id`, `sort_by`
+
+**channel_grid**: `source` (curated/popular/category), `columns`, `max_items`, `show_now_playing`, `category_id`
+
+**banner**: `image_url`, `link_url`, `link_type` (url/movie/series/channel), `aspect_ratio` (21:9/16:9/3:1)
+
+### Content Items — 3 Ways to Add
+
+1. **Local Library**: Search existing movies, series, channels, categories via `GET /admin/app-layout/search-content?type=movie&q=batman`
+2. **TMDB Import**: Search TMDB via `GET /admin/app-layout/search-tmdb?q=batman&type=movie`, then import via `POST /admin/app-layout/import-tmdb-item` — creates a local record with `status=draft, source=tmdb`
+3. **Custom Image Upload**: Upload via `POST /admin/app-layout/upload-item-image` — processed through `ImageService` with context `layout`, creates a custom item with `{image_url, title, link_url}`
+
+### Navigation Styles
+
+Each platform has a default navigation style:
+- **Web**: `sidebar` — vertical side menu
+- **Mobile**: `bottom_tab` — bottom tab bar (max 5 items)
+- **TV**: `top_bar` — horizontal top menu
+- **STB**: `sidebar` — vertical side menu
+
+Settings JSON: `{"style": "bottom_tab", "show_icons": true, "show_labels": true, "max_items": 5}`
+
+### API Routes Summary (36 routes)
+
+All routes require auth middleware. All POST endpoints are AJAX (return JSON).
+
+```
+# Layout CRUD
+GET  /admin/app-layout                                → index listing
+POST /admin/app-layout/store                           → create layout
+GET  /admin/app-layout/{id}/builder                    → visual builder
+POST /admin/app-layout/{id}/update                     → update layout
+POST /admin/app-layout/{id}/delete                     → delete layout
+POST /admin/app-layout/{id}/duplicate                  → deep-copy layout
+POST /admin/app-layout/{id}/publish                    → publish + set default
+
+# Sections
+POST /admin/app-layout/{id}/sections/add               → add section
+POST /admin/app-layout/{id}/sections/reorder            → reorder sections
+POST /admin/app-layout/{id}/sections/{sid}/update       → update section
+POST /admin/app-layout/{id}/sections/{sid}/delete       → delete section
+
+# Items
+POST /admin/app-layout/{id}/sections/{sid}/items/add    → add item
+POST /admin/app-layout/{id}/sections/{sid}/items/reorder → reorder items
+POST /admin/app-layout/{id}/sections/{sid}/items/{iid}/remove → remove item
+
+# Content search & import
+GET  /admin/app-layout/search-content                  → search local library
+GET  /admin/app-layout/search-tmdb                     → search TMDB
+POST /admin/app-layout/import-tmdb-item                → import from TMDB
+POST /admin/app-layout/upload-item-image               → upload custom image
+
+# Pages
+GET  /admin/app-layout/pages                           → pages & nav management
+POST /admin/app-layout/pages/store                     → create page
+POST /admin/app-layout/pages/reorder                   → reorder pages
+POST /admin/app-layout/pages/{id}/update               → update page
+POST /admin/app-layout/pages/{id}/delete               → delete page
+
+# Navigation
+POST /admin/app-layout/navigation/save                 → upsert nav menu
+POST /admin/app-layout/navigation/items/add            → add nav item
+POST /admin/app-layout/navigation/items/reorder        → reorder items
+POST /admin/app-layout/navigation/items/{id}/update    → update item
+POST /admin/app-layout/navigation/items/{id}/remove    → remove item
+```
+
+### Building a Player / Frontend App
+
+To render the app for an end-user, a player/frontend needs to:
+
+1. **Get navigation** for the platform — query `app_navigation` + `app_navigation_items` joined with `app_pages` to build the menu
+2. **Get pages** for the platform — query `app_pages` to know what screens exist and their page_type
+3. **For each page with a layout** — query `app_layouts` → `app_layout_sections` → `app_layout_items`, resolve items via their `content_type` + `content_id`
+4. **Render sections** based on `section_type` and `settings`:
+   - `hero_slideshow`: Full-width carousel of items
+   - `content_row`: Horizontal scrollable cards with `card_style` (poster/backdrop/square)
+   - `continue_watching`: Query user's watch history, show progress bars
+   - `live_now`: Query EPG for current programmes
+   - `channel_grid`: Grid of channel logos/cards
+   - `category_grid`: Grid of genre tiles
+   - `banner`: Single promotional image
+   - `spotlight`: Featured single item
+   - `text_divider`: Heading or separator
+5. **For pages without layouts** (search, watchlist, settings, player, details): Build standalone UI
+
+### Icons
+
+Lucide icon font is hosted locally at `public/assets/fonts/lucide/`. The CSS uses class prefix `lucide-` (e.g., `<i class="lucide-film"></i>`). The font files (woff2, woff, ttf) are in the same directory. Loaded via `<link rel="stylesheet" href="/assets/fonts/lucide/lucide.css">` in the admin layout.
+
+**Important:** The `[data-icon]` CSS selector in lucide.css conflicts with `data-icon` HTML attributes — use `data-value` instead when storing icon names on elements.
+
+## Advertising System
+
+The advertising system supports 4 ad types with flexible targeting, scheduling, and performance tracking.
+
+### Architecture
+
+```
+Campaign → Creatives → Placements → Zones
+                          ↓
+                    Targeting Rules
+                          ↓
+              (package, channel, category,
+               content_type, platform, geo, schedule)
+```
+
+**Flow:** Admin creates a Campaign, adds Creatives (the actual ads), then creates Placements that link Creatives to Zones (where ads appear). Each Placement can have Targeting Rules that control who sees the ad.
+
+### Ad Types
+
+| Type | Key | Description | Fields |
+|------|-----|-------------|--------|
+| Text Scroller | `text_scroller` | Scrolling text ticker overlay | scroll_text, scroll_speed, text_color, bg_color, bg_opacity |
+| Banner Image | `banner` | Static/animated image overlay | image_url, dimensions, position, click_url |
+| Pre-Roll Video | `pre_roll` | Video ad before content | video_url or vast_tag_url, duration, skip_after |
+| Mid-Roll Video | `mid_roll` | Video ad during content | video_url or vast_tag_url, midroll_offset_type/value |
+
+### Database Tables
+
+#### `ad_campaigns` — Campaign container
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `name` | VARCHAR(255) | Campaign name |
+| `advertiser` | VARCHAR(255) | Client/advertiser name |
+| `status` | ENUM(draft,active,paused,completed,archived) | Lifecycle state |
+| `priority` | INT 1-10 | 1=highest priority |
+| `start_date/end_date` | DATETIME | Schedule window |
+| `daily_budget/total_budget` | DECIMAL | Spend limits |
+| `daily_impressions_cap` | INT | Max impressions per day |
+| `total_impressions_cap` | INT | Max total impressions |
+| `frequency_cap` | INT | Max times per user per day |
+| `total_impressions/clicks/spend` | Counters | Running totals |
+
+#### `ad_creatives` — Ad content
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `campaign_id` | INT FK→ad_campaigns | Parent campaign (CASCADE) |
+| `type` | ENUM(text_scroller,banner,pre_roll,mid_roll) | Ad format |
+| `scroll_text/speed/colors` | Various | Text scroller config |
+| `image_url/width/height/position` | Various | Banner config |
+| `video_url/vast_tag_url/duration/skip_after` | Various | Video config |
+| `midroll_offset_type/value` | Various | Mid-roll insertion point |
+| `click_url/click_target` | VARCHAR | Click-through destination |
+| `weight` | INT | Rotation weight within campaign |
+
+#### `ad_zones` — Pre-defined placement locations
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `slug` | VARCHAR(100) UNIQUE | API identifier (e.g. `preroll-vod`) |
+| `zone_type` | ENUM | Matches creative types |
+| `default_settings` | JSON | Zone-specific config |
+
+**Default zones seeded:** live-text-scroller, vod-text-scroller, live-banner, vod-banner, app-banner-top, app-banner-bottom, preroll-vod, preroll-live, midroll-vod, midroll-live
+
+#### `ad_placements` — Links creatives to zones
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | INT PK | |
+| `campaign_id` | INT FK | Parent campaign |
+| `creative_id` | INT FK | Which creative to show |
+| `zone_id` | INT FK | Where to show it |
+| `status` | ENUM(active,paused) | Toggle |
+| `priority` | INT | Within-zone priority |
+
+#### `ad_targeting_rules` — Flexible targeting per placement
+| Column | Type | Purpose |
+|--------|------|---------|
+| `placement_id` | INT FK | Parent placement (CASCADE) |
+| `rule_type` | ENUM | package, channel, category, content_type, platform, geo, schedule |
+| `rule_operator` | ENUM(include,exclude) | Include or exclude matches |
+| `rule_value` | JSON | Array of IDs or values |
+
+**Targeting examples:**
+- Show ads only to free-tier users: `{type: "package", operator: "include", value: [1]}` (package ID 1 = free)
+- Show ads only on specific channels: `{type: "channel", operator: "include", value: [5, 12, 18]}`
+- Exclude premium categories: `{type: "category", operator: "exclude", value: [3, 7]}`
+- Only show on mobile: `{type: "platform", operator: "include", value: ["mobile"]}`
+- Only during daytime: `{type: "schedule", operator: "include", value: ["06:00-18:00"]}`
+
+#### `ad_impressions` — Impression tracking
+Tracks every ad view with campaign_id, creative_id, zone_id, user_id, session, IP, platform, channel_id, content_type, revenue.
+
+#### `ad_events` — Click/completion tracking
+Tracks: click, complete, skip, error, quartile_25/50/75, mute, unmute, pause, resume, fullscreen.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/Services/AdService.php` | Ad business logic, targeting engine, reporting |
+| `src/Controllers/Admin/AdController.php` | Admin CRUD + ad serving API |
+| `templates/admin/ads/index.php` | Campaign listing |
+| `templates/admin/ads/form.php` | Campaign create/edit + creatives + placements |
+| `templates/admin/ads/zones.php` | Zone management |
+| `templates/admin/ads/reports.php` | Performance reports with charts |
+| `database/migrations/012_create_advertising_tables.sql` | All 7 tables |
+
+### Ad Serving API
+
+The player/app calls these endpoints to get and track ads:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/admin/ads/api/serve?zone_type=pre_roll&channel_id=5&platform=web&package_id=1` | GET | Get ads for context |
+| `/admin/ads/api/vast?zone_type=pre_roll&channel_id=5` | GET | Get VAST 4.2 XML for video players |
+| `/admin/ads/api/impression` | POST | Record ad impression |
+| `/admin/ads/api/event` | POST | Record click/complete/skip/etc. |
+
+**Serve API parameters:**
+- `zone_type` — text_scroller, banner, pre_roll, mid_roll
+- `zone_slug` — specific zone slug
+- `channel_id` — current channel
+- `content_type` — live, vod, series
+- `content_id` — movie/episode ID
+- `category_id` — content category
+- `package_id` — user's subscription package
+- `platform` — web, mobile, tv, stb
+- `user_id` — logged-in user
+- `limit` — max ads to return
+
+**VAST XML support:** The `/admin/ads/api/vast` endpoint generates VAST 4.2 XML for video player integration. It supports InLine ads with MediaFiles, TrackingEvents (start, quartiles, complete), VideoClicks, companion banners, and skip offsets.
+
+### Admin Routes (38 routes)
+
+```
+# Campaigns
+GET  /admin/ads                              → campaign listing
+GET  /admin/ads/create                       → create form
+POST /admin/ads/store                        → save new campaign
+GET  /admin/ads/{id}/edit                    → edit form
+POST /admin/ads/{id}/update                  → update campaign
+POST /admin/ads/{id}/delete                  → delete campaign
+POST /admin/ads/{id}/toggle-status           → pause/activate
+POST /admin/ads/bulk                         → bulk actions
+
+# Creatives
+POST /admin/ads/{id}/creatives/add           → add creative
+POST /admin/ads/{id}/creatives/{cid}/update  → update creative
+POST /admin/ads/{id}/creatives/{cid}/delete  → delete creative
+
+# Placements
+POST /admin/ads/{id}/placements/add          → add placement
+POST /admin/ads/{id}/placements/{pid}/update → update placement
+POST /admin/ads/{id}/placements/{pid}/delete → delete placement
+
+# Zones
+GET  /admin/ads/zones                        → zone management
+POST /admin/ads/zones/store                  → create zone
+POST /admin/ads/zones/{id}/update            → update zone
+POST /admin/ads/zones/{id}/toggle            → enable/disable zone
+POST /admin/ads/zones/{id}/delete            → delete zone
+
+# Reports
+GET  /admin/ads/reports                      → performance dashboard
+GET  /admin/ads/{id}/report                  → campaign report (AJAX)
+
+# Ad Serving API
+GET  /admin/ads/api/serve                    → get ads for context
+POST /admin/ads/api/impression               → record impression
+POST /admin/ads/api/event                    → record event
+GET  /admin/ads/api/vast                     → VAST 4.2 XML
+
+# AI Generation & File Uploads
+POST /admin/ads/ai/generate-text             → AI text generation
+POST /admin/ads/ai/generate-image            → DALL-E 3 image generation
+POST /admin/ads/upload/image                 → banner image upload + WebP
+POST /admin/ads/upload/video                 → video file upload
+```
+
+### Building a Player with Ads
+
+To integrate ads in a player/frontend:
+
+1. **Before content playback** — Call `/admin/ads/api/serve?zone_type=pre_roll&channel_id=X&package_id=Y&platform=Z` to get pre-roll ads
+2. **For VAST-compatible players** — Use `/admin/ads/api/vast?zone_type=pre_roll&...` as the VAST tag URL
+3. **During playback** — Call `/admin/ads/api/serve?zone_type=mid_roll&...` for mid-roll insertion points
+4. **Overlay ads** — Call `/admin/ads/api/serve?zone_type=banner&...` or `zone_type=text_scroller&...` for overlay ads
+5. **Track impressions** — POST to `/admin/ads/api/impression` when ad is displayed
+6. **Track events** — POST to `/admin/ads/api/event` for clicks, completions, skips
+7. **Respect targeting** — Pass `package_id` so free-tier users see ads while premium users don't
+
+### AI-Powered Ad Content Generation & File Uploads
+
+The ad system integrates with `AIService` and `ImageService` to provide AI text generation, AI image generation (DALL-E 3), banner image upload with WebP compression, and video file upload.
+
+#### AI Text Generation
+
+Uses the existing multi-provider `AIService` (Ollama/OpenAI/Anthropic) to generate ad copy. Each ad type gets a tailored prompt:
+
+```php
+$aiService = new AIService();
+$text = $aiService->generateAdText($userPrompt, $adType, $context);
+```
+
+- **text_scroller**: Short ticker text, under 120 characters
+- **banner**: HEADLINE | TAGLINE format
+- **pre_roll/mid_roll**: HOOK, BODY, CTA script format
+
+Context parameters (advertiser name, campaign name) are injected into the prompt for relevance.
+
+#### AI Image Generation (DALL-E 3)
+
+Generates banner images via OpenAI's DALL-E 3 API. Requires an OpenAI API key configured in Settings > AI.
+
+```php
+$aiService = new AIService();
+$result = $aiService->generateImage($prompt, [
+    'size' => '1792x1024',    // landscape (1792x1024), square (1024x1024), portrait (1024x1792)
+    'quality' => 'standard',   // standard or hd
+]);
+// Returns: ['success' => true, 'url' => 'https://...', 'revised_prompt' => '...']
+```
+
+The controller (`AdController::generateAdImage()`) downloads the DALL-E URL and processes it through `ImageService` with context `ad` for local WebP storage. The final image path is returned to the frontend.
+
+#### Banner Image Upload
+
+File uploads are processed through `ImageService` with the `ad` context:
+
+```php
+$imageService = new ImageService();
+$result = $imageService->processUpload($uploadedFile, 'ad', $entityId, 'banner');
+// Creates WebP variants: banner_large (728x90), banner_medium (468x60), etc.
+```
+
+The `AdController::uploadAdImage()` endpoint accepts multipart file uploads, validates the image, processes it through ImageService, and returns the full-size image path along with dimensions.
+
+#### Video File Upload
+
+Video ads (pre-roll/mid-roll) support direct file upload:
+
+- **Allowed formats**: MP4, WebM, OGG, MOV
+- **Max size**: 100MB
+- **Storage**: `/uploads/ad/{entityId}/video_{timestamp}.{ext}`
+- **Endpoint**: `POST /admin/ads/upload/video`
+
+Videos are stored as-is (no transcoding). For VAST-compatible players, the `vast_tag_url` field can be used instead of direct video upload.
+
+#### Ad Content API Routes (4 endpoints)
+
+```
+POST /admin/ads/ai/generate-text     → AI text generation (AIService)
+POST /admin/ads/ai/generate-image    → DALL-E 3 image generation + WebP
+POST /admin/ads/upload/image         → Banner image upload + WebP compression
+POST /admin/ads/upload/video         → Video file upload (MP4/WebM/OGG/MOV)
+```
+
+All endpoints return JSON and require auth middleware.
+
+#### Frontend Integration (form.php)
+
+The ad creation/edit modal provides:
+- **Text scroller**: AI generate button with prompt input field
+- **Banner**: Three image source options — Upload file, Enter URL, or AI Generate (DALL-E 3) with size picker (landscape/square/portrait)
+- **Pre-roll/Mid-roll**: Upload video button with progress indicator, or enter video URL / VAST tag URL
+
+#### Future: Sora 2 Video Generation
+
+OpenAI's Sora 2 API integration is planned for AI-generated video ads. This would allow generating short video ad clips from text prompts, similar to how DALL-E 3 generates images. Implementation is pending Sora 2 API availability and cost evaluation.
+
 ## Project Status
 
-### Completed (Phases 0-3)
+### Completed (Phases 0-5)
 - Admin authentication system
 - Role-based access control
 - Admin user management
@@ -413,15 +943,22 @@ curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_
 - Profile management
 - Channel management (CRUD, bulk actions, logo search)
 - Movies management (CRUD, TMDB/Fanart.tv metadata, trailers, YouTube import)
+- Series/TV Shows management
+- Category management
+- EPG system
+- App Layout builder (sections, items, TMDB import, image upload)
+- Pages & Navigation system (per-platform pages, navigation menus, icon picker)
+- Advertising system (campaigns, creatives, zones, placements, targeting, reporting, VAST)
+- AI-powered ad content generation (text via Ollama/OpenAI/Anthropic, images via DALL-E 3)
+- Ad file uploads (banner images with WebP compression, video files for pre-roll/mid-roll)
 
-### In Progress (Phase 4)
-- Series management
-- Category management refinements
+### In Progress (Phase 6)
+- Player integration
+- Frontend app rendering
 
 ### Future Phases
+- Sora 2 AI video generation for video ads
 - User profiles with parental controls
-- Live TV player integration
-- EPG system
 - Package/subscription management
 - Analytics dashboard
 
