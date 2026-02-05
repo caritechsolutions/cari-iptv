@@ -7,6 +7,7 @@ const CariApp = (function() {
     let navigation = [];
     let navStyle = 'sidebar';
     let navSettings = {};
+    let pageLayouts = {}; // page_type → layout_id map from navigation
     let pages = [];
     let shakaPlayer = null;
     let searchTimeout = null;
@@ -100,6 +101,14 @@ const CariApp = (function() {
             navStyle = 'sidebar';
             navSettings = {};
         }
+
+        // Build page_type → layout_id map from navigation items
+        pageLayouts = {};
+        (navigation || []).forEach(item => {
+            const pt = item.page_type;
+            const lid = item.layout_id;
+            if (pt && lid) pageLayouts[pt] = lid;
+        });
 
         // Apply navigation style to layout element
         const layout = document.getElementById('appLayout');
@@ -252,7 +261,9 @@ const CariApp = (function() {
         el.innerHTML = CariUI.skeletonRow(6) + CariUI.skeletonRow(6) + CariUI.skeletonRow(6, 'backdrop');
 
         try {
-            const res = await CariAPI.getLayout();
+            // Use the layout linked to the home page, or fall back to default
+            const layoutId = pageLayouts.home || null;
+            const res = await CariAPI.getLayout(layoutId);
             const layout = res?.data;
 
             if (!layout || !layout.sections || !layout.sections.length) {

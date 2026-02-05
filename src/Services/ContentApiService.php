@@ -530,6 +530,26 @@ class ContentApiService
     // APP LAYOUT
     // =========================================================================
 
+    /**
+     * Get a specific layout by ID (used when page has a linked layout_id)
+     */
+    public function getLayoutById(int $id): ?array
+    {
+        $layout = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT id, name, platform, status, updated_at
+             FROM app_layouts
+             WHERE id = ? AND status IN ('draft', 'published')
+             LIMIT 1",
+            [$id]
+        ));
+
+        if (!$layout) {
+            return null;
+        }
+
+        return $this->loadLayoutSections($layout);
+    }
+
     public function getLayout(string $platform): ?array
     {
         $layout = $this->safeQuery(fn() => $this->db->fetch(
@@ -544,7 +564,14 @@ class ContentApiService
             return null;
         }
 
-        // Get sections
+        return $this->loadLayoutSections($layout);
+    }
+
+    /**
+     * Load sections and items for a layout
+     */
+    private function loadLayoutSections(array $layout): array
+    {
         $layout['sections'] = $this->db->fetchAll(
             "SELECT id, section_type, title, settings, sort_order, is_active
              FROM app_layout_sections
@@ -553,7 +580,6 @@ class ContentApiService
             [$layout['id']]
         );
 
-        // Get items for each section and decode settings
         foreach ($layout['sections'] as &$section) {
             $section['settings'] = json_decode($section['settings'] ?? '{}', true);
 
@@ -565,7 +591,6 @@ class ContentApiService
                 [$section['id']]
             );
 
-            // Resolve content for each item
             foreach ($section['items'] as &$item) {
                 $item['settings'] = json_decode($item['settings'] ?? '{}', true);
                 $item['content'] = $this->resolveContentItem($item['content_type'], $item['content_id'], $item['settings']);

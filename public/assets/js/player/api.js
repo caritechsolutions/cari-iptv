@@ -123,7 +123,10 @@ const CariAPI = (function() {
     // ---- Content API helpers ----
 
     function getAppConfig() { return get('/app/config/web'); }
-    function getLayout() { return get('/app/layout/web'); }
+    function getLayout(layoutId) {
+        const q = layoutId ? '?id=' + layoutId : '';
+        return get('/app/layout/web' + q);
+    }
     function getNavigation() { return get('/app/navigation/web'); }
     function getPages() { return get('/app/pages/web'); }
     function getManifest() { return get('/manifest'); }

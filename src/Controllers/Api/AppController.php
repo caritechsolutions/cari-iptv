@@ -19,6 +19,7 @@ class AppController extends BaseApiController
 
     /**
      * GET /api/v1/app/layout/{platform}
+     * ?id=X — fetch specific layout by ID (from page link)
      * Returns the published default layout for a platform with all sections and resolved content
      */
     public function layout(string $platform): void
@@ -29,7 +30,13 @@ class AppController extends BaseApiController
             return;
         }
 
-        $layout = $this->service->getLayout($platform);
+        // If a specific layout ID is requested (from page → layout link), fetch it directly
+        $layoutId = !empty($_GET['id']) ? (int) $_GET['id'] : null;
+        if ($layoutId) {
+            $layout = $this->service->getLayoutById($layoutId);
+        } else {
+            $layout = $this->service->getLayout($platform);
+        }
 
         if (!$layout) {
             $this->notFound("No published layout found for platform: {$platform}");
