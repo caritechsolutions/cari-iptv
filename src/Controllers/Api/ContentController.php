@@ -190,6 +190,20 @@ class ContentController extends BaseApiController
         ]);
     }
 
+    /**
+     * GET /api/v1/episodes/{id}
+     */
+    public function episode(string $id): void
+    {
+        $episode = $this->service->getEpisode((int)$id);
+
+        if (!$episode) {
+            $this->notFound('Episode not found');
+        }
+
+        $this->ok($episode);
+    }
+
     // =========================================================================
     // CATEGORIES
     // =========================================================================

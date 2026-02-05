@@ -120,6 +120,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/series', [ContentController::class, 'seriesList'], ['api_auth']);
     $router->get('/series/{id}', [ContentController::class, 'seriesDetail'], ['api_auth']);
 
+    // Episodes
+    $router->get('/episodes/{id}', [ContentController::class, 'episode'], ['api_auth']);
+
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);
 

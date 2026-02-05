@@ -246,6 +246,7 @@ const CariApp = (function() {
         CariRouter.addRoute('/live', pageLive);
         CariRouter.addRoute('/search', pageSearch);
         CariRouter.addRoute('/my-list', pageWatchlist);
+        CariRouter.addRoute('/series/:id', pageSeriesDetail);
         CariRouter.addRoute('/watch/:type/:id', pageWatch);
         CariRouter.addRoute('/categories', pageCategories);
     }
@@ -548,6 +549,176 @@ const CariApp = (function() {
         }
     }
 
+    // ---- PAGE: Series Detail ----
+
+    async function pageSeriesDetail(params) {
+        const el = content();
+        const id = params.id;
+        el.innerHTML = CariUI.loading();
+
+        try {
+            const res = await CariAPI.getSeriesDetail(id);
+            const show = res?.data;
+
+            if (!show) {
+                el.innerHTML = CariUI.emptyState('lucide-alert-circle', 'Not Found', 'Series not found.');
+                return;
+            }
+
+            const backdrop = show.backdrop_url || '';
+            const poster = show.poster_url || '';
+            const title = show.title || show.name || '';
+            const year = show.year || '';
+            const rating = show.vote_average || '';
+            const genres = show.genres || '';
+            const desc = show.synopsis || show.overview || '';
+            const seasons = show.seasons || [];
+            const trailers = show.trailers || [];
+            const numSeasons = show.number_of_seasons || seasons.length || '';
+            const numEpisodes = show.number_of_episodes || '';
+
+            el.innerHTML = `
+                <div class="series-detail">
+                    <div class="series-hero">
+                        ${backdrop ? '<img class="series-hero-backdrop" src="' + CariUI.esc(backdrop) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
+                        <div class="series-hero-gradient"></div>
+                        <div class="series-hero-content">
+                            ${poster ? '<img class="series-hero-poster" src="' + CariUI.esc(poster) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
+                            <div class="series-hero-info">
+                                <h1 class="series-hero-title">${CariUI.esc(title)}</h1>
+                                <div class="series-hero-meta">
+                                    ${year ? '<span>' + CariUI.esc(String(year)) + '</span>' : ''}
+                                    ${numSeasons ? '<span>' + CariUI.esc(String(numSeasons)) + ' Season' + (numSeasons > 1 ? 's' : '') + '</span>' : ''}
+                                    ${numEpisodes ? '<span>' + CariUI.esc(String(numEpisodes)) + ' Episodes</span>' : ''}
+                                    ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.75rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                                    ${genres ? '<span>' + CariUI.esc(genres) + '</span>' : ''}
+                                </div>
+                                ${desc ? '<p class="series-hero-desc">' + CariUI.esc(desc) + '</p>' : ''}
+                                <div class="series-hero-actions">
+                                    ${trailers.length ? '<button class="btn btn-secondary" id="seriesTrailerBtn"><i class="lucide-clapperboard"></i> Watch Trailer</button>' : ''}
+                                    <button class="btn btn-icon" id="seriesWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
+                                </div>
+                                <div class="trailer-embed" id="seriesTrailerEmbed" style="display:none"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${seasons.length ? `
+                    <div class="series-seasons">
+                        <div class="season-tabs" id="seasonTabs">
+                            ${seasons.map((s, i) => `<button class="season-tab${i === 0 ? ' active' : ''}" data-season-idx="${i}">${CariUI.esc(s.name || 'Season ' + s.season_number)}</button>`).join('')}
+                        </div>
+                        <div class="episode-list" id="episodeList"></div>
+                    </div>
+                    ` : '<div class="empty-state"><i class="lucide-tv"></i><h3>No Seasons</h3><p>No episodes available yet.</p></div>'}
+                </div>
+            `;
+
+            // Trailer toggle
+            if (trailers.length) {
+                const tBtn = document.getElementById('seriesTrailerBtn');
+                if (tBtn) {
+                    let trailerOpen = false;
+                    tBtn.addEventListener('click', () => {
+                        const embed = document.getElementById('seriesTrailerEmbed');
+                        if (!embed) return;
+                        trailerOpen = !trailerOpen;
+                        if (trailerOpen) {
+                            const t = trailers[0];
+                            const key = t.video_key || '';
+                            if (key) {
+                                embed.innerHTML = `<iframe src="https://www.youtube.com/embed/${CariUI.esc(key)}?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                            } else if (t.url) {
+                                embed.innerHTML = `<iframe src="${CariUI.esc(t.url)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                            }
+                            embed.style.display = '';
+                            tBtn.innerHTML = '<i class="lucide-x"></i> Close Trailer';
+                        } else {
+                            embed.innerHTML = '';
+                            embed.style.display = 'none';
+                            tBtn.innerHTML = '<i class="lucide-clapperboard"></i> Watch Trailer';
+                        }
+                    });
+                }
+            }
+
+            // Watchlist toggle
+            const wBtn = document.getElementById('seriesWatchlist');
+            if (wBtn) {
+                wBtn.addEventListener('click', async () => {
+                    try {
+                        const r = await CariAPI.toggleWatchlist('series', show.id);
+                        wBtn.querySelector('i').className = r?.data?.in_watchlist ? 'lucide-check' : 'lucide-plus';
+                    } catch {}
+                });
+            }
+
+            // Render seasons/episodes
+            if (seasons.length) {
+                renderEpisodes(seasons[0]);
+
+                document.getElementById('seasonTabs').addEventListener('click', (e) => {
+                    const tab = e.target.closest('.season-tab');
+                    if (!tab) return;
+                    document.querySelectorAll('.season-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    const idx = parseInt(tab.dataset.seasonIdx);
+                    renderEpisodes(seasons[idx]);
+                });
+            }
+        } catch (err) {
+            console.error('[CariApp] Series detail failed:', err);
+            el.innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load series.');
+        }
+    }
+
+    function renderEpisodes(season) {
+        const list = document.getElementById('episodeList');
+        if (!list) return;
+
+        const episodes = season.episodes || [];
+        if (!episodes.length) {
+            list.innerHTML = '<div class="empty-state"><i class="lucide-film"></i><h3>No Episodes</h3><p>No episodes in this season yet.</p></div>';
+            return;
+        }
+
+        list.innerHTML = episodes.map(ep => {
+            const thumb = ep.still_url || '';
+            const epTitle = ep.title || ep.name || 'Episode ' + ep.episode_number;
+            const epNum = ep.episode_number || '';
+            const epDesc = ep.synopsis || ep.overview || '';
+            const runtime = ep.runtime || '';
+            const rating = ep.vote_average || '';
+            const hasStream = !!(ep.stream_url);
+
+            return `
+                <div class="episode-card${hasStream ? ' playable' : ''}" data-episode-id="${ep.id}" data-stream="${CariUI.esc(ep.stream_url || '')}">
+                    <div class="episode-thumb">
+                        ${thumb ? '<img src="' + CariUI.esc(thumb) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
+                        ${hasStream ? '<div class="episode-play-overlay"><i class="lucide-play"></i></div>' : ''}
+                        <span class="episode-number">E${CariUI.esc(String(epNum))}</span>
+                    </div>
+                    <div class="episode-info">
+                        <div class="episode-title">${CariUI.esc(epTitle)}</div>
+                        <div class="episode-meta">
+                            ${runtime ? '<span>' + CariUI.esc(String(runtime)) + ' min</span>' : ''}
+                            ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.65rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                        </div>
+                        ${epDesc ? '<div class="episode-desc">' + CariUI.esc(epDesc) + '</div>' : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Attach play handlers to playable episodes
+        list.querySelectorAll('.episode-card.playable').forEach(card => {
+            card.addEventListener('click', () => {
+                const epId = card.dataset.episodeId;
+                CariRouter.navigate('/watch/episode/' + epId);
+            });
+        });
+    }
+
     // ---- PAGE: Live TV ----
 
     async function pageLive() {
@@ -754,12 +925,22 @@ const CariApp = (function() {
 
         try {
             let item;
+            let displayTitle = '';
+            let displayMeta = '';
             if (type === 'channel') {
                 const res = await CariAPI.getChannel(id);
                 item = res?.data;
-            } else if (type === 'series') {
-                const res = await CariAPI.getSeriesDetail(id);
+            } else if (type === 'episode') {
+                const res = await CariAPI.getEpisode(id);
                 item = res?.data;
+                if (item) {
+                    displayTitle = item.series_title + ' — ' + (item.title || 'Episode ' + item.episode_number);
+                    displayMeta = 'S' + (item.season_number || '') + ' E' + (item.episode_number || '');
+                }
+            } else if (type === 'series') {
+                // Redirect to series detail page instead of playing directly
+                CariRouter.navigate('/series/' + id);
+                return;
             } else {
                 const res = await CariAPI.getMovie(id);
                 item = res?.data;
@@ -782,21 +963,31 @@ const CariApp = (function() {
             }
 
             // Track progress for VOD
-            if (type === 'movie' || type === 'series') {
-                setupProgressTracking(video, type === 'series' ? 'episode' : 'movie', item.id);
+            if (type === 'movie' || type === 'episode') {
+                setupProgressTracking(video, type === 'episode' ? 'episode' : 'movie', item.id);
             }
 
             // Render details
+            const title = displayTitle || item.title || item.name || '';
             const details = document.getElementById('playerDetails');
             details.innerHTML = `
-                <h2 class="player-details-title">${CariUI.esc(item.title || item.name)}</h2>
+                <h2 class="player-details-title">${CariUI.esc(title)}</h2>
                 <div class="player-details-meta">
+                    ${displayMeta ? '<span>' + CariUI.esc(displayMeta) + '</span>' : ''}
                     ${item.year ? '<span>' + CariUI.esc(item.year) + '</span>' : ''}
                     ${item.runtime ? '<span>' + CariUI.esc(item.runtime) + ' min</span>' : ''}
                     ${item.vote_average ? '<span class="rating"><i class="lucide-star" style="font-size:.75rem"></i> ' + CariUI.esc(String(item.vote_average)) + '</span>' : ''}
                 </div>
                 <p class="player-details-desc">${CariUI.esc(item.description || item.synopsis || item.overview || '')}</p>
+                ${type === 'episode' && item.series_id ? '<button class="btn btn-secondary" id="backToSeries" style="margin-top:1rem"><i class="lucide-arrow-left"></i> Back to Series</button>' : ''}
             `;
+
+            // Back to series link
+            if (type === 'episode' && item.series_id) {
+                document.getElementById('backToSeries')?.addEventListener('click', () => {
+                    CariRouter.navigate('/series/' + item.series_id);
+                });
+            }
         } catch (err) {
             document.getElementById('playerDetails').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load content.');
         }

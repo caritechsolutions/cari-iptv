@@ -227,6 +227,14 @@ const CariUI = (function() {
     // ---- Detail Modal ----
 
     function showDetail(item, onPlay) {
+        const type = item.content_type || '';
+
+        // Series: navigate to dedicated detail page instead of modal
+        if (type === 'series') {
+            CariRouter.navigate('/series/' + item.id);
+            return;
+        }
+
         const overlay = document.getElementById('detailOverlay');
         const modal = document.getElementById('detailModal');
 
@@ -252,8 +260,10 @@ const CariUI = (function() {
                 ${desc ? '<p class="detail-desc">' + esc(desc) + '</p>' : ''}
                 <div class="detail-actions">
                     <button class="btn btn-play" id="detailPlay"><i class="lucide-play"></i> Play</button>
+                    <button class="btn btn-secondary" id="detailTrailer" style="display:none"><i class="lucide-clapperboard"></i> Trailer</button>
                     <button class="btn btn-icon" id="detailWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
                 </div>
+                <div class="trailer-embed" id="trailerEmbed" style="display:none"></div>
             </div>
         `;
 
@@ -263,13 +273,18 @@ const CariUI = (function() {
             if (onPlay) onPlay(item);
         });
         modal.querySelector('#detailWatchlist').addEventListener('click', async () => {
-            const type = item.content_type || (item.stream_url ? 'channel' : 'movie');
+            const ctype = item.content_type || (item.stream_url ? 'channel' : 'movie');
             try {
-                const res = await CariAPI.toggleWatchlist(type, item.id);
+                const res = await CariAPI.toggleWatchlist(ctype, item.id);
                 const btn = modal.querySelector('#detailWatchlist i');
                 btn.className = res?.data?.in_watchlist ? 'lucide-check' : 'lucide-plus';
             } catch {}
         });
+
+        // Fetch full details for trailers (async, non-blocking)
+        if (item.id) {
+            fetchTrailers(item, modal);
+        }
 
         overlay.classList.add('visible');
         overlay.addEventListener('click', (e) => {
@@ -277,8 +292,46 @@ const CariUI = (function() {
         });
     }
 
+    async function fetchTrailers(item, modal) {
+        try {
+            const res = await CariAPI.getMovie(item.id);
+            const full = res?.data;
+            if (!full || !full.trailers || !full.trailers.length) return;
+
+            const trailerBtn = modal.querySelector('#detailTrailer');
+            if (!trailerBtn) return;
+            trailerBtn.style.display = '';
+
+            let trailerOpen = false;
+            trailerBtn.addEventListener('click', () => {
+                const embed = modal.querySelector('#trailerEmbed');
+                if (!embed) return;
+                trailerOpen = !trailerOpen;
+                if (trailerOpen) {
+                    const trailer = full.trailers[0];
+                    const key = trailer.video_key || '';
+                    if (key) {
+                        embed.innerHTML = `<iframe src="https://www.youtube.com/embed/${esc(key)}?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                    } else if (trailer.url) {
+                        embed.innerHTML = `<iframe src="${esc(trailer.url)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                    }
+                    embed.style.display = '';
+                    trailerBtn.innerHTML = '<i class="lucide-x"></i> Close Trailer';
+                } else {
+                    embed.innerHTML = '';
+                    embed.style.display = 'none';
+                    trailerBtn.innerHTML = '<i class="lucide-clapperboard"></i> Trailer';
+                }
+            });
+        } catch {}
+    }
+
     function hideDetail() {
-        document.getElementById('detailOverlay').classList.remove('visible');
+        const overlay = document.getElementById('detailOverlay');
+        overlay.classList.remove('visible');
+        // Stop any playing trailers
+        const embed = document.querySelector('#trailerEmbed');
+        if (embed) { embed.innerHTML = ''; embed.style.display = 'none'; }
     }
 
     // ---- Loading / Empty ----

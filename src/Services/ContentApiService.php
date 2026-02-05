@@ -453,6 +453,27 @@ class ContentApiService
         return $show;
     }
 
+    /**
+     * Get a single episode by ID (for the player)
+     */
+    public function getEpisode(int $id): ?array
+    {
+        $episode = $this->db->fetch(
+            "SELECT e.id, e.series_id, e.season_id, e.episode_number, e.name as title,
+                    e.overview as synopsis, e.runtime, e.stream_url, e.still_url,
+                    e.air_date, e.vote_average,
+                    s.title as series_title, s.poster_url as series_poster_url,
+                    sn.season_number, sn.name as season_name
+             FROM series_episodes e
+             JOIN series s ON e.series_id = s.id
+             JOIN series_seasons sn ON e.season_id = sn.id
+             WHERE e.id = ? AND s.status = 'published'",
+            [$id]
+        );
+
+        return $episode ?: null;
+    }
+
     // =========================================================================
     // CATEGORIES
     // =========================================================================

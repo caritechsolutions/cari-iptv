@@ -151,6 +151,7 @@ const CariAPI = (function() {
     }
 
     function getSeriesDetail(id) { return get('/series/' + id); }
+    function getEpisode(id) { return get('/episodes/' + id); }
 
     function getCategories(params) {
         const q = params ? '?' + new URLSearchParams(params) : '';
@@ -177,7 +178,7 @@ const CariAPI = (function() {
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
-        getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail,
+        getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
         getCategories, search, getEpg,
         updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist,
     };
