@@ -1534,6 +1534,9 @@ img { max-width: 100%; display: block; }
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    position: sticky;
+    top: var(--p-header-h);
+    z-index: 99;
 }
 .top-nav::-webkit-scrollbar { display: none; }
 
