@@ -3,13 +3,58 @@ SET NAMES utf8mb4;
 
 -- ============================================
 -- Add registration fields to admin_users
+-- (Using INFORMATION_SCHEMA checks for MySQL 8.x compatibility)
 -- ============================================
-ALTER TABLE `admin_users`
-    ADD COLUMN IF NOT EXISTS `date_of_birth` DATE DEFAULT NULL AFTER `last_name`,
-    ADD COLUMN IF NOT EXISTS `country` VARCHAR(100) DEFAULT NULL AFTER `date_of_birth`,
-    ADD COLUMN IF NOT EXISTS `phone` VARCHAR(30) DEFAULT NULL AFTER `country`,
-    ADD COLUMN IF NOT EXISTS `email_verification_token` VARCHAR(64) DEFAULT NULL AFTER `two_factor_enabled`,
-    ADD COLUMN IF NOT EXISTS `email_verified_at` DATETIME DEFAULT NULL AFTER `email_verification_token`;
+
+-- Add date_of_birth column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_users' AND COLUMN_NAME = 'date_of_birth');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `admin_users` ADD COLUMN `date_of_birth` DATE DEFAULT NULL AFTER `last_name`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add country column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_users' AND COLUMN_NAME = 'country');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `admin_users` ADD COLUMN `country` VARCHAR(100) DEFAULT NULL AFTER `date_of_birth`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add phone column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_users' AND COLUMN_NAME = 'phone');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `admin_users` ADD COLUMN `phone` VARCHAR(30) DEFAULT NULL AFTER `country`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add email_verification_token column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_users' AND COLUMN_NAME = 'email_verification_token');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `admin_users` ADD COLUMN `email_verification_token` VARCHAR(64) DEFAULT NULL AFTER `two_factor_enabled`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add email_verified_at column
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_users' AND COLUMN_NAME = 'email_verified_at');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `admin_users` ADD COLUMN `email_verified_at` DATETIME DEFAULT NULL AFTER `email_verification_token`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- ============================================
 -- Remember Me Tokens
