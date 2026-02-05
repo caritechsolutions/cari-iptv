@@ -543,11 +543,15 @@ class SeriesService
     {
         $processed = [];
 
+        // Use namespaced entity ID to avoid path collision with movies
+        // (movies and series share the 'vod' context but have separate ID sequences)
+        $entityId = "series_{$seriesId}";
+
         if (!empty($data['poster_url']) && str_starts_with($data['poster_url'], 'http')) {
             $result = $this->imageService->processFromUrl(
                 $data['poster_url'],
                 'vod',
-                $seriesId,
+                $entityId,
                 'poster'
             );
             if ($result['success']) {
@@ -559,7 +563,7 @@ class SeriesService
             $result = $this->imageService->processFromUrl(
                 $data['backdrop_url'],
                 'vod',
-                $seriesId,
+                $entityId,
                 'backdrop'
             );
             if ($result['success']) {
