@@ -39,7 +39,10 @@ class AppController extends BaseApiController
         }
 
         if (!$layout) {
-            $this->notFound("No published layout found for platform: {$platform}");
+            $msg = $layoutId
+                ? "Layout #{$layoutId} not found"
+                : "No default published layout for platform: {$platform}";
+            $this->notFound($msg);
             return;
         }
 

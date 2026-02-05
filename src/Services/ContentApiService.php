@@ -531,23 +531,32 @@ class ContentApiService
     // =========================================================================
 
     /**
-     * Get a specific layout by ID (used when page has a linked layout_id)
+     * Get a specific layout by ID (used when page has a linked layout_id).
+     * No status filter — if admin linked it to a page, serve it regardless of status.
      */
     public function getLayoutById(int $id): ?array
     {
         $layout = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT id, name, platform, status, updated_at
              FROM app_layouts
-             WHERE id = ? AND status IN ('draft', 'published')
+             WHERE id = ?
              LIMIT 1",
             [$id]
         ));
 
         if (!$layout) {
+            error_log("[ContentAPI] getLayoutById({$id}): no layout row found");
             return null;
         }
 
-        return $this->loadLayoutSections($layout);
+        try {
+            return $this->loadLayoutSections($layout);
+        } catch (\Throwable $e) {
+            error_log("[ContentAPI] getLayoutById({$id}): loadLayoutSections failed: " . $e->getMessage());
+            // Return layout with empty sections rather than failing entirely
+            $layout['sections'] = [];
+            return $layout;
+        }
     }
 
     public function getLayout(string $platform): ?array
@@ -564,7 +573,13 @@ class ContentApiService
             return null;
         }
 
-        return $this->loadLayoutSections($layout);
+        try {
+            return $this->loadLayoutSections($layout);
+        } catch (\Throwable $e) {
+            error_log("[ContentAPI] getLayout({$platform}): loadLayoutSections failed: " . $e->getMessage());
+            $layout['sections'] = [];
+            return $layout;
+        }
     }
 
     /**
