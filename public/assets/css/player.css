@@ -1561,9 +1561,39 @@ img { max-width: 100%; display: block; }
 [data-nav-style="bottom_tab"] .app-sidebar { display: none !important; }
 [data-nav-style="bottom_tab"] .sidebar-backdrop { display: none !important; }
 [data-nav-style="bottom_tab"] .app-main { margin-left: 0 !important; padding-bottom: 60px; }
-[data-nav-style="bottom_tab"] .mobile-tabs { display: flex !important; }
 [data-nav-style="bottom_tab"] .header-menu-btn { display: none !important; }
 [data-nav-style="bottom_tab"] .top-nav { display: none !important; }
+
+/* Bottom tabs need full positioning at all screen sizes (base styles are mobile-only) */
+[data-nav-style="bottom_tab"] .mobile-tabs {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--p-surface);
+    border-top: 1px solid var(--p-border);
+    align-items: center;
+    justify-content: space-around;
+    z-index: 200;
+}
+[data-nav-style="bottom_tab"] .mobile-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    color: var(--p-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    transition: color var(--p-transition);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+[data-nav-style="bottom_tab"] .mobile-tab i { font-size: 1.25rem; }
+[data-nav-style="bottom_tab"] .mobile-tab.active { color: var(--p-primary); }
 
 /* ---- Top Bar style ---- */
 [data-nav-style="top_bar"] .app-sidebar { display: none !important; }

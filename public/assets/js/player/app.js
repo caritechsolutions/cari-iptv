@@ -190,13 +190,18 @@ const CariApp = (function() {
                 { label: 'My List', icon: 'lucide-bookmark', slug: 'my-list' },
             ];
         }
-        return items.map(item => ({
-            label: item.label || item.name || '',
-            icon: item.icon || 'lucide-circle',
-            slug: item.slug || item.page_slug || '',
-            url: item.url || null,
-            page_type: item.page_type || null,
-        }));
+        return items.map(item => {
+            let slug = item.slug || item.page_slug || '';
+            // Home page should navigate to root /
+            if (item.page_type === 'home' || slug === 'home') slug = '';
+            return {
+                label: item.label || item.name || '',
+                icon: item.icon || 'lucide-circle',
+                slug,
+                url: item.url || null,
+                page_type: item.page_type || null,
+            };
+        });
     }
 
     function updateActiveNav(path) {
@@ -226,6 +231,7 @@ const CariApp = (function() {
         });
 
         CariRouter.addRoute('/', pageHome);
+        CariRouter.addRoute('/home', pageHome);
         CariRouter.addRoute('/movies', pageMovies);
         CariRouter.addRoute('/series', pageSeries);
         CariRouter.addRoute('/live', pageLive);
