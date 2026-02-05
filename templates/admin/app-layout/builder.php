@@ -581,16 +581,33 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
                 </div>
 
                 <!-- Items (for types that support them) -->
-                <?php if ($typeDef && $typeDef['supports_items']): ?>
+                <?php if ($typeDef && $typeDef['supports_items']):
+                    $sectionSettings = json_decode($section['settings'] ?? '{}', true);
+                    $sectionSource = $sectionSettings['source'] ?? 'curated';
+                    $isAuto = ($sectionSource !== 'curated');
+                ?>
                     <div class="items-header">
                         <h4>Content Items</h4>
-                        <button class="btn btn-sm btn-secondary" onclick="openContentPicker(<?= $section['id'] ?>)">
-                            <i class="lucide-plus"></i> Add Content
-                        </button>
+                        <?php if ($isAuto): ?>
+                            <span class="badge badge-info" style="font-size:0.75rem;">Auto: <?= htmlspecialchars(ucwords(str_replace('_', ' ', $sectionSource))) ?></span>
+                        <?php else: ?>
+                            <button class="btn btn-sm btn-secondary" onclick="openContentPicker(<?= $section['id'] ?>)">
+                                <i class="lucide-plus"></i> Add Content
+                            </button>
+                        <?php endif; ?>
                     </div>
+                    <?php if ($isAuto): ?>
+                        <div class="text-muted text-sm" style="padding: 0.5rem 0 0.75rem;">
+                            Items are automatically populated from your library. Change source to "Curated (manual)" to pick items yourself.
+                        </div>
+                    <?php endif; ?>
                     <div class="items-list" id="itemsList-<?= $section['id'] ?>">
                         <?php if (empty($section['items'])): ?>
-                            <div class="text-muted text-sm" style="padding: 1rem 0;">No items added yet. Click "Add Content" to get started.</div>
+                            <?php if ($isAuto): ?>
+                                <div class="text-muted text-sm" style="padding: 1rem 0;">No matching content found in your library for this source.</div>
+                            <?php else: ?>
+                                <div class="text-muted text-sm" style="padding: 1rem 0;">No items added yet. Click "Add Content" to get started.</div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <?php foreach ($section['items'] as $item):
                                 $content = $item['content'] ?? null;
@@ -605,9 +622,11 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
                                         <div class="item-card-name"><?= htmlspecialchars($content['name'] ?? $content['title'] ?? 'Unknown') ?></div>
                                         <div class="item-card-type"><?= ucfirst($item['content_type']) ?><?= !empty($content['year']) ? ' &middot; ' . $content['year'] : '' ?></div>
                                     </div>
-                                    <button class="item-card-remove" onclick="removeItem(<?= $section['id'] ?>, <?= $item['id'] ?>)" title="Remove">
-                                        <i class="lucide-x"></i>
-                                    </button>
+                                    <?php if (!$isAuto): ?>
+                                        <button class="item-card-remove" onclick="removeItem(<?= $section['id'] ?>, <?= $item['id'] ?>)" title="Remove">
+                                            <i class="lucide-x"></i>
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -944,6 +963,11 @@ async function saveSection(sectionId) {
         const res = await fetch(`/admin/app-layout/${layoutId}/sections/${sectionId}/update`, { method: 'POST', body: form });
         const data = await res.json();
         if (data.success) {
+            // Reload if source setting changed (to refresh auto-populated items)
+            if (settings.source !== undefined) {
+                window.location.reload();
+                return;
+            }
             // Update header name
             const nameEl = card.querySelector('.section-header-name');
             if (nameEl && title) nameEl.textContent = title;

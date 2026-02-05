@@ -582,22 +582,153 @@ class ContentApiService
 
         foreach ($layout['sections'] as &$section) {
             $section['settings'] = json_decode($section['settings'] ?? '{}', true);
+            $source = $section['settings']['source'] ?? 'curated';
 
-            $section['items'] = $this->db->fetchAll(
-                "SELECT i.id, i.content_type, i.content_id, i.settings, i.sort_order
-                 FROM app_layout_items i
-                 WHERE i.section_id = ?
-                 ORDER BY i.sort_order ASC",
-                [$section['id']]
-            );
+            // For non-curated sources, auto-populate items from the database
+            if ($source !== 'curated' && in_array($section['section_type'], ['content_row', 'channel_grid'])) {
+                $section['items'] = $this->getAutoItems($section['section_type'], $section['settings']);
+            } else {
+                $section['items'] = $this->db->fetchAll(
+                    "SELECT i.id, i.content_type, i.content_id, i.settings, i.sort_order
+                     FROM app_layout_items i
+                     WHERE i.section_id = ?
+                     ORDER BY i.sort_order ASC",
+                    [$section['id']]
+                );
 
-            foreach ($section['items'] as &$item) {
-                $item['settings'] = json_decode($item['settings'] ?? '{}', true);
-                $item['content'] = $this->resolveContentItem($item['content_type'], $item['content_id'], $item['settings']);
+                foreach ($section['items'] as &$item) {
+                    $item['settings'] = json_decode($item['settings'] ?? '{}', true);
+                    $item['content'] = $this->resolveContentItem($item['content_type'], $item['content_id'], $item['settings']);
+                }
             }
         }
 
         return $layout;
+    }
+
+    /**
+     * Auto-populate items for content_row / channel_grid based on source settings
+     */
+    private function getAutoItems(string $sectionType, array $settings): array
+    {
+        $source = $settings['source'] ?? 'curated';
+        $maxItems = (int) ($settings['max_items'] ?? 20);
+        $contentType = $settings['content_type'] ?? 'movie';
+        $categoryId = !empty($settings['category_id']) ? (int) $settings['category_id'] : null;
+
+        if ($sectionType === 'channel_grid') {
+            return $this->getAutoChannelItems($source, $maxItems, $categoryId);
+        }
+
+        $items = [];
+        if ($contentType === 'mixed') {
+            $half = (int) ceil($maxItems / 2);
+            $movies = $this->getAutoContentItems('movie', $source, $half, $categoryId);
+            $series = $this->getAutoContentItems('series', $source, $half, $categoryId);
+            $items = array_merge($movies, $series);
+            $items = array_slice($items, 0, $maxItems);
+        } elseif ($contentType === 'series') {
+            $items = $this->getAutoContentItems('series', $source, $maxItems, $categoryId);
+        } else {
+            $items = $this->getAutoContentItems('movie', $source, $maxItems, $categoryId);
+        }
+
+        return $items;
+    }
+
+    private function getAutoContentItems(string $type, string $source, int $limit, ?int $categoryId): array
+    {
+        $table = $type === 'series' ? 'series' : 'movies';
+        $where = "status IN ('draft', 'published')";
+        $params = [];
+        $order = 'created_at DESC';
+
+        if ($categoryId) {
+            $where .= " AND category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'latest':
+                $order = 'created_at DESC';
+                break;
+            case 'popular':
+                $order = 'views DESC, created_at DESC';
+                break;
+            case 'top_rated':
+                $order = 'vote_average DESC, created_at DESC';
+                break;
+            case 'featured':
+                $where .= " AND is_featured = 1";
+                $order = 'updated_at DESC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'title ASC';
+                break;
+        }
+
+        $titleCol = 'title';
+        $extraCols = $table === 'movies'
+            ? 'slug, genres, runtime, vote_average, poster_url, backdrop_url, stream_url, synopsis'
+            : 'slug, genres, vote_average, poster_url, backdrop_url, synopsis';
+
+        $rows = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, {$titleCol}, year, {$extraCols}
+             FROM {$table} WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        ), []);
+
+        $items = [];
+        foreach ($rows as $i => $row) {
+            $items[] = [
+                'id' => 0,
+                'content_type' => $type,
+                'content_id' => $row['id'],
+                'settings' => [],
+                'sort_order' => $i,
+                'content' => $row,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function getAutoChannelItems(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "c.is_active = 1";
+        $params = [];
+        $join = '';
+
+        if ($categoryId) {
+            $join = " JOIN channel_categories cc ON c.id = cc.channel_id AND cc.category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        if ($source === 'category' && !$categoryId) return [];
+
+        $rows = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.is_hd
+             FROM channels c {$join}
+             WHERE {$where}
+             ORDER BY c.channel_number ASC LIMIT {$limit}",
+            $params
+        ), []);
+
+        $items = [];
+        foreach ($rows as $i => $row) {
+            $items[] = [
+                'id' => 0,
+                'content_type' => 'channel',
+                'content_id' => $row['id'],
+                'settings' => [],
+                'sort_order' => $i,
+                'content' => $row,
+            ];
+        }
+
+        return $items;
     }
 
     /**

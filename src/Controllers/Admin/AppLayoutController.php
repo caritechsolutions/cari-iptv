@@ -200,7 +200,17 @@ class AppLayoutController
         // Resolve items for each section
         foreach ($sections as &$section) {
             $typeInfo = $sectionTypes[$section['section_type']] ?? null;
-            if ($typeInfo && $typeInfo['supports_items']) {
+            $settings = json_decode($section['settings'] ?? '{}', true);
+            $source = $settings['source'] ?? 'curated';
+
+            if ($typeInfo && $typeInfo['supports_items'] && $source !== 'curated') {
+                // Auto-populated section (latest, popular, top_rated, featured, category)
+                $section['items'] = $this->layoutService->getAutoPopulatedItems(
+                    $section['section_type'],
+                    $settings
+                );
+            } elseif ($typeInfo && $typeInfo['supports_items']) {
+                // Curated (manually added items)
                 $items = $this->layoutService->getItems($section['id']);
                 $section['items'] = $this->layoutService->resolveItems($items);
             } else {

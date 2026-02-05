@@ -528,48 +528,46 @@ class AppLayoutService
     public function searchContent(string $type, string $query = '', int $limit = 20): array
     {
         $results = [];
+        $limit = (int) $limit;
 
         switch ($type) {
             case 'movie':
                 $sql = "SELECT id, title as name, year, poster_url as image,
                                CONCAT(COALESCE(vote_average, ''), '/10') as meta
-                        FROM movies WHERE status = 'published'";
+                        FROM movies WHERE status IN ('draft', 'published')";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (title LIKE ? OR original_title LIKE ?)";
                     $params[] = "%{$query}%";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY title LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY title LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
 
             case 'series':
                 $sql = "SELECT id, title as name, year, poster_url as image
-                        FROM series WHERE status = 'published'";
+                        FROM series WHERE status IN ('draft', 'published')";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (title LIKE ? OR original_title LIKE ?)";
                     $params[] = "%{$query}%";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY title LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY title LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
 
             case 'channel':
                 $sql = "SELECT id, name, channel_number as meta, logo_url as image
-                        FROM channels WHERE is_active = 1 AND is_published = 1";
+                        FROM channels WHERE is_active = 1";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (name LIKE ? OR key_code LIKE ?)";
                     $params[] = "%{$query}%";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY name LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY name LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
 
@@ -581,8 +579,7 @@ class AppLayoutService
                     $sql .= " AND name LIKE ?";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY name LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY name LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
         }
@@ -630,6 +627,191 @@ class AppLayoutService
         }
 
         return $items;
+    }
+
+    /**
+     * Get auto-populated items for sections with non-curated sources.
+     * Used by content_row and channel_grid when source != 'curated'.
+     */
+    public function getAutoPopulatedItems(string $sectionType, array $settings): array
+    {
+        $source = $settings['source'] ?? 'curated';
+        if ($source === 'curated') {
+            return [];
+        }
+
+        $maxItems = (int) ($settings['max_items'] ?? 20);
+        $contentType = $settings['content_type'] ?? 'movie';
+        $categoryId = !empty($settings['category_id']) ? (int) $settings['category_id'] : null;
+
+        if ($sectionType === 'channel_grid') {
+            return $this->getAutoChannels($source, $maxItems, $categoryId);
+        }
+
+        // content_row
+        $items = [];
+        if ($contentType === 'mixed') {
+            $half = (int) ceil($maxItems / 2);
+            $movies = $this->getAutoMovies($source, $half, $categoryId);
+            $series = $this->getAutoSeries($source, $half, $categoryId);
+            $items = array_merge($movies, $series);
+            usort($items, fn($a, $b) => strtotime($b['created_at'] ?? '0') - strtotime($a['created_at'] ?? '0'));
+            $items = array_slice($items, 0, $maxItems);
+        } elseif ($contentType === 'series') {
+            $items = $this->getAutoSeries($source, $maxItems, $categoryId);
+        } else {
+            $items = $this->getAutoMovies($source, $maxItems, $categoryId);
+        }
+
+        // Transform into the same format as manually added items
+        $result = [];
+        foreach ($items as $i => $row) {
+            $type = $row['_type'] ?? 'movie';
+            unset($row['_type'], $row['created_at']);
+            $result[] = [
+                'id' => 0,
+                'content_type' => $type,
+                'content_id' => $row['id'],
+                'settings' => '{}',
+                'sort_order' => $i,
+                'content' => $row,
+                '_auto' => true,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function getAutoMovies(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "status IN ('draft', 'published')";
+        $params = [];
+        $order = 'created_at DESC';
+
+        if ($categoryId) {
+            $where .= " AND category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'latest':
+                $order = 'created_at DESC';
+                break;
+            case 'popular':
+                $order = 'views DESC, created_at DESC';
+                break;
+            case 'top_rated':
+                $order = 'vote_average DESC, created_at DESC';
+                break;
+            case 'featured':
+                $where .= " AND is_featured = 1";
+                $order = 'updated_at DESC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'title ASC';
+                break;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT id, title, year, poster_url, backdrop_url, synopsis as overview,
+                    vote_average, created_at
+             FROM movies WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        );
+
+        foreach ($rows as &$r) $r['_type'] = 'movie';
+        return $rows;
+    }
+
+    private function getAutoSeries(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "status IN ('draft', 'published')";
+        $params = [];
+        $order = 'created_at DESC';
+
+        if ($categoryId) {
+            $where .= " AND category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'latest':
+                $order = 'created_at DESC';
+                break;
+            case 'popular':
+                $order = 'views DESC, created_at DESC';
+                break;
+            case 'top_rated':
+                $order = 'vote_average DESC, created_at DESC';
+                break;
+            case 'featured':
+                $where .= " AND is_featured = 1";
+                $order = 'updated_at DESC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'title ASC';
+                break;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT id, title, year, poster_url, backdrop_url, synopsis as overview,
+                    vote_average, created_at
+             FROM series WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        );
+
+        foreach ($rows as &$r) $r['_type'] = 'series';
+        return $rows;
+    }
+
+    private function getAutoChannels(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "c.is_active = 1";
+        $params = [];
+        $order = 'c.channel_number ASC';
+        $join = '';
+
+        if ($categoryId) {
+            $join = " JOIN channel_categories cc ON c.id = cc.channel_id AND cc.category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'popular':
+                $order = 'c.channel_number ASC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'c.channel_number ASC';
+                break;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT c.id, c.name, c.logo_url, c.channel_number
+             FROM channels c {$join}
+             WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        );
+
+        $result = [];
+        foreach ($rows as $i => $row) {
+            $result[] = [
+                'id' => 0,
+                'content_type' => 'channel',
+                'content_id' => $row['id'],
+                'settings' => '{}',
+                'sort_order' => $i,
+                'content' => $row,
+                '_auto' => true,
+            ];
+        }
+
+        return $result;
     }
 
     // ========================================================================
