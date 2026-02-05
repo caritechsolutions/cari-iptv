@@ -588,13 +588,13 @@ class ContentApiService
             'movie' => $this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, title, slug, year, genres, runtime, vote_average,
                         poster_url, backdrop_url, stream_url, synopsis
-                 FROM movies WHERE id = ? AND status = 'published'",
+                 FROM movies WHERE id = ? AND status IN ('draft', 'published')",
                 [$contentId]
             )),
             'series' => $this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, title, slug, year, genres, vote_average,
                         poster_url, backdrop_url, synopsis
-                 FROM series WHERE id = ? AND status = 'published'",
+                 FROM series WHERE id = ? AND status IN ('draft', 'published')",
                 [$contentId]
             )),
             'channel' => $this->safeQuery(fn() => $this->db->fetch(

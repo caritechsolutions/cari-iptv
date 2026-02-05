@@ -263,7 +263,8 @@ const CariApp = (function() {
 
             el.innerHTML = '';
             renderLayoutSections(el, layout.sections);
-        } catch {
+        } catch (err) {
+            console.error('[CariApp] Home layout failed:', err);
             el.innerHTML = '';
             await renderFallbackHome(el);
         }
@@ -310,8 +311,9 @@ const CariApp = (function() {
             return {
                 ...content,
                 content_type: item.content_type,
+                content_id: item.content_id,
             };
-        }).filter(item => item.id || item.title || item.image_url);
+        });
     }
 
     function renderLayoutSections(el, sections) {
