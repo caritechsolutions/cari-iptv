@@ -427,6 +427,25 @@ const CariApp = (function() {
 
     async function pageMovies() {
         const el = content();
+
+        // Check if a layout is configured for the movies page
+        const layoutId = pageLayouts.movies || null;
+        if (layoutId) {
+            el.innerHTML = CariUI.skeletonRow(6) + CariUI.skeletonRow(6) + CariUI.skeletonRow(6, 'backdrop');
+            try {
+                const res = await CariAPI.getLayout(layoutId);
+                const layout = res?.data;
+                if (layout && layout.sections && layout.sections.length) {
+                    el.innerHTML = '';
+                    renderLayoutSections(el, layout.sections);
+                    return;
+                }
+            } catch (err) {
+                console.error('[CariApp] Movies layout failed:', err);
+            }
+        }
+
+        // Fallback: default movies grid with filters
         el.innerHTML = `
             <div class="page-hero"><h1 class="page-hero-title">Movies</h1><p class="page-hero-subtitle">Browse our collection</p></div>
             <div id="movieFilters" class="filter-bar"></div>
@@ -484,6 +503,25 @@ const CariApp = (function() {
 
     async function pageSeries() {
         const el = content();
+
+        // Check if a layout is configured for the series page
+        const layoutId = pageLayouts.series || null;
+        if (layoutId) {
+            el.innerHTML = CariUI.skeletonRow(6) + CariUI.skeletonRow(6) + CariUI.skeletonRow(6, 'backdrop');
+            try {
+                const res = await CariAPI.getLayout(layoutId);
+                const layout = res?.data;
+                if (layout && layout.sections && layout.sections.length) {
+                    el.innerHTML = '';
+                    renderLayoutSections(el, layout.sections);
+                    return;
+                }
+            } catch (err) {
+                console.error('[CariApp] Series layout failed:', err);
+            }
+        }
+
+        // Fallback: default series grid
         el.innerHTML = `
             <div class="page-hero"><h1 class="page-hero-title">TV Shows</h1><p class="page-hero-subtitle">Discover series to binge</p></div>
             <div id="seriesGrid" class="content-grid">${CariUI.loading()}</div>
