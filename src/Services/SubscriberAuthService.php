@@ -20,7 +20,7 @@ class SubscriberAuthService
     }
 
     /**
-     * Register a new subscriber account
+     * Register a new subscriber account (requires email verification)
      */
     public function register(array $data): array
     {
@@ -78,10 +78,14 @@ class SubscriberAuthService
             $birthday = null;
         }
 
-        // Create subscriber
+        // Generate email verification token
+        $verificationToken = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $verificationToken);
+
+        // Create subscriber (email_verified = 0, pending verification)
         $this->db->execute(
-            "INSERT INTO subscribers (username, email, password, first_name, last_name, phone, country, birthday, status, max_connections)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1)",
+            "INSERT INTO subscribers (username, email, password, first_name, last_name, phone, country, birthday, status, max_connections, email_verified, email_verification_token)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, 0, ?)",
             [
                 $username,
                 $email,
@@ -91,45 +95,103 @@ class SubscriberAuthService
                 $phone ?: null,
                 $country ?: null,
                 $birthday,
+                $tokenHash,
             ]
         );
 
         $subscriberId = $this->db->lastInsertId();
-
-        // Fetch the created subscriber for login
-        $subscriber = $this->db->fetch("SELECT * FROM subscribers WHERE id = ?", [$subscriberId]);
-
-        if (!$subscriber) {
+        if (!$subscriberId) {
             return ['success' => false, 'error' => 'Registration failed. Please try again.'];
         }
 
-        // Auto-login: generate tokens
-        $deviceInfo = $data['device_info'] ?? [];
-        $accessToken = $this->jwt->createAccessToken($subscriber);
-        $refreshData = $this->jwt->createRefreshToken();
+        // Send verification email
+        $this->sendVerificationEmail($email, $firstName, $verificationToken);
+
+        return [
+            'success' => true,
+            'requires_verification' => true,
+            'message' => 'Account created! Please check your email to verify your account.',
+        ];
+    }
+
+    /**
+     * Verify subscriber email with token
+     */
+    public function verifyEmail(string $token): array
+    {
+        $tokenHash = hash('sha256', $token);
+
+        $subscriber = $this->db->fetch(
+            "SELECT id, email, first_name, username FROM subscribers
+             WHERE email_verification_token = ? AND email_verified = 0",
+            [$tokenHash]
+        );
+
+        if (!$subscriber) {
+            return ['success' => false, 'error' => 'Invalid or expired verification link.'];
+        }
 
         $this->db->execute(
-            "INSERT INTO subscriber_tokens (subscriber_id, token_hash, device_name, device_type, ip_address, user_agent, expires_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                $subscriber['id'],
-                $refreshData['hash'],
-                $deviceInfo['device_name'] ?? $this->detectDeviceName(),
-                $deviceInfo['device_type'] ?? 'web',
-                $_SERVER['REMOTE_ADDR'] ?? null,
-                substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
-                $refreshData['expires_at'],
-            ]
+            "UPDATE subscribers SET email_verified = 1, email_verified_at = NOW(), email_verification_token = NULL WHERE id = ?",
+            [$subscriber['id']]
         );
 
         return [
             'success' => true,
-            'access_token' => $accessToken,
-            'refresh_token' => $refreshData['token'],
-            'expires_in' => $this->jwt->getAccessTtl(),
-            'token_type' => 'Bearer',
-            'user' => $this->formatSubscriber($subscriber),
+            'message' => 'Your email has been verified. You can now sign in.',
         ];
+    }
+
+    /**
+     * Resend verification email
+     */
+    public function resendVerification(string $email): array
+    {
+        $subscriber = $this->db->fetch(
+            "SELECT id, first_name, username FROM subscribers WHERE email = ? AND email_verified = 0",
+            [$email]
+        );
+
+        if (!$subscriber) {
+            // Generic message to prevent email enumeration
+            return ['success' => true, 'message' => 'If an unverified account exists with that email, a new verification link has been sent.'];
+        }
+
+        $verificationToken = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $verificationToken);
+
+        $this->db->execute(
+            "UPDATE subscribers SET email_verification_token = ? WHERE id = ?",
+            [$tokenHash, $subscriber['id']]
+        );
+
+        $name = $subscriber['first_name'] ?: $subscriber['username'];
+        $this->sendVerificationEmail($email, $name, $verificationToken);
+
+        return [
+            'success' => true,
+            'message' => 'If an unverified account exists with that email, a new verification link has been sent.',
+        ];
+    }
+
+    /**
+     * Send verification email helper
+     */
+    private function sendVerificationEmail(string $email, string $name, string $verificationToken): void
+    {
+        $settings = new SettingsService();
+        $siteUrl = $settings->get('site_url', '', 'general');
+        if (empty($siteUrl)) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $siteUrl = "{$protocol}://{$_SERVER['HTTP_HOST']}";
+        }
+        $verifyUrl = rtrim($siteUrl, '/') . "/verify-email/{$verificationToken}";
+
+        $emailService = new EmailService();
+
+        if ($emailService->isConfigured()) {
+            $emailService->sendEmailVerification($email, $name, $verifyUrl);
+        }
     }
 
     /**
@@ -149,6 +211,16 @@ class SubscriberAuthService
 
         if (!$subscriber['password'] || !password_verify($password, $subscriber['password'])) {
             return ['success' => false, 'error' => 'Invalid credentials'];
+        }
+
+        // Check email verification
+        if (empty($subscriber['email_verified']) || $subscriber['email_verified'] == 0) {
+            return [
+                'success' => false,
+                'error' => 'Please verify your email address before signing in. Check your inbox for the activation link.',
+                'needs_verification' => true,
+                'email' => $subscriber['email'],
+            ];
         }
 
         // Check max connections

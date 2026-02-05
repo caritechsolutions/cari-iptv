@@ -47,16 +47,6 @@ class AdminAuthService
             ];
         }
 
-        // Check email verification
-        if (empty($user['email_verified_at'])) {
-            return [
-                'success' => false,
-                'message' => 'Please verify your email address before logging in. Check your inbox for the activation link.',
-                'needs_verification' => true,
-                'email' => $user['email'],
-            ];
-        }
-
         // Clear failed attempts
         $this->clearFailedAttempts($username);
 
@@ -383,119 +373,6 @@ class AdminAuthService
     }
 
     /**
-     * Register a new admin account (pending email verification)
-     */
-    public function register(array $data): array
-    {
-        // Check if email already exists
-        $existing = $this->db->fetch(
-            "SELECT id FROM admin_users WHERE email = ?",
-            [$data['email']]
-        );
-        if ($existing) {
-            return ['success' => false, 'message' => 'An account with this email already exists.'];
-        }
-
-        // Check if username already exists
-        $existingUsername = $this->db->fetch(
-            "SELECT id FROM admin_users WHERE username = ?",
-            [$data['username']]
-        );
-        if ($existingUsername) {
-            return ['success' => false, 'message' => 'This username is already taken.'];
-        }
-
-        // Generate email verification token
-        $verificationToken = bin2hex(random_bytes(32));
-
-        // Create the user account (inactive until verified)
-        $this->db->insert('admin_users', [
-            'username' => $data['username'],
-            'email' => $data['email'],
-            'password_hash' => password_hash($data['password'], PASSWORD_BCRYPT),
-            'first_name' => $data['first_name'],
-            'last_name' => $data['last_name'],
-            'date_of_birth' => $data['date_of_birth'] ?: null,
-            'country' => $data['country'] ?: null,
-            'phone' => $data['phone'] ?: null,
-            'role' => 'viewer',
-            'is_active' => 1,
-            'email_verification_token' => hash('sha256', $verificationToken),
-        ]);
-
-        $userId = $this->db->lastInsertId();
-
-        $this->logActivity($userId, 'register', 'auth', 'admin_user', $userId);
-
-        return [
-            'success' => true,
-            'message' => 'Account created. Please check your email to activate your account.',
-            'user_id' => $userId,
-            'verification_token' => $verificationToken,
-        ];
-    }
-
-    /**
-     * Verify email with token
-     */
-    public function verifyEmail(string $token): array
-    {
-        $tokenHash = hash('sha256', $token);
-
-        $user = $this->db->fetch(
-            "SELECT id, email, first_name, username FROM admin_users
-             WHERE email_verification_token = ? AND email_verified_at IS NULL",
-            [$tokenHash]
-        );
-
-        if (!$user) {
-            return ['success' => false, 'message' => 'Invalid or expired verification link.'];
-        }
-
-        // Mark email as verified
-        $this->db->update('admin_users', [
-            'email_verified_at' => date('Y-m-d H:i:s'),
-            'email_verification_token' => null,
-        ], 'id = ?', [$user['id']]);
-
-        $this->logActivity($user['id'], 'email_verified', 'auth', 'admin_user', $user['id']);
-
-        return [
-            'success' => true,
-            'message' => 'Your email has been verified. You can now log in.',
-        ];
-    }
-
-    /**
-     * Resend verification email - generate a new token
-     */
-    public function regenerateVerificationToken(string $email): array
-    {
-        $user = $this->db->fetch(
-            "SELECT id, first_name, username FROM admin_users
-             WHERE email = ? AND email_verified_at IS NULL AND is_active = 1",
-            [$email]
-        );
-
-        if (!$user) {
-            return ['success' => false, 'message' => 'No pending verification found for this email.'];
-        }
-
-        $verificationToken = bin2hex(random_bytes(32));
-
-        $this->db->update('admin_users', [
-            'email_verification_token' => hash('sha256', $verificationToken),
-        ], 'id = ?', [$user['id']]);
-
-        return [
-            'success' => true,
-            'verification_token' => $verificationToken,
-            'user_id' => $user['id'],
-            'name' => $user['first_name'] ?: $user['username'],
-        ];
-    }
-
-    /**
      * Create a remember me token and set cookie
      */
     private function createRememberToken(int $userId): void
@@ -564,7 +441,7 @@ class AdminAuthService
             [$userId, $tokenHash]
         );
 
-        if (!$record || !$record['is_active'] || empty($record['email_verified_at'])) {
+        if (!$record || !$record['is_active']) {
             $this->clearRememberToken();
             return false;
         }

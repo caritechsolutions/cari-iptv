@@ -19,7 +19,7 @@ class AuthController extends BaseApiController
 
     /**
      * POST /api/v1/auth/register
-     * Body: { first_name, last_name, email, password, password_confirm, phone?, country?, birthday?, device_type? }
+     * Body: { first_name, last_name, email, password, password_confirm, phone?, country?, birthday? }
      */
     public function register(): void
     {
@@ -34,10 +34,6 @@ class AuthController extends BaseApiController
             'phone' => $input['phone'] ?? '',
             'country' => $input['country'] ?? '',
             'birthday' => $input['birthday'] ?? '',
-            'device_info' => [
-                'device_name' => $input['device_name'] ?? null,
-                'device_type' => $input['device_type'] ?? 'web',
-            ],
         ]);
 
         if (!$result['success']) {
@@ -45,16 +41,46 @@ class AuthController extends BaseApiController
             return;
         }
 
-        header('Cache-Control: no-store');
         $this->json([
             'data' => [
-                'access_token' => $result['access_token'],
-                'refresh_token' => $result['refresh_token'],
-                'expires_in' => $result['expires_in'],
-                'token_type' => $result['token_type'],
-                'user' => $result['user'],
+                'requires_verification' => true,
+                'message' => $result['message'],
             ],
         ], 201);
+    }
+
+    /**
+     * GET /api/v1/auth/verify-email/{token}
+     */
+    public function verifyEmail(string $token): void
+    {
+        $result = $this->auth->verifyEmail($token);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 400, 'VERIFICATION_FAILED');
+            return;
+        }
+
+        $this->json(['data' => ['message' => $result['message']]], 200);
+    }
+
+    /**
+     * POST /api/v1/auth/resend-verification
+     * Body: { email }
+     */
+    public function resendVerification(): void
+    {
+        $input = $this->getJsonInput();
+        $email = trim($input['email'] ?? '');
+
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->error('A valid email address is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->resendVerification($email);
+
+        $this->json(['data' => ['message' => $result['message']]], 200);
     }
 
     /**
@@ -79,7 +105,13 @@ class AuthController extends BaseApiController
         ]);
 
         if (!$result['success']) {
-            $this->error($result['error'], 401, 'AUTH_FAILED');
+            $code = !empty($result['needs_verification']) ? 'EMAIL_NOT_VERIFIED' : 'AUTH_FAILED';
+            $response = ['error' => ['message' => $result['error'], 'code' => $code]];
+            if (!empty($result['needs_verification'])) {
+                $response['error']['needs_verification'] = true;
+                $response['error']['email'] = $result['email'];
+            }
+            $this->json($response, 401);
             return;
         }
 

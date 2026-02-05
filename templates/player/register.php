@@ -31,6 +31,23 @@
 
                 <div id="registerError" class="login-error"></div>
 
+                <div id="registerSuccess" style="display: none; text-align: center;">
+                    <div class="verify-icon verify-icon-success">
+                        <i class="lucide-mail"></i>
+                    </div>
+                    <h2 class="login-title">Check your email</h2>
+                    <p style="color: var(--p-text-secondary); font-size: 0.9375rem; margin-bottom: 0.5rem;">
+                        We sent a verification link to
+                    </p>
+                    <p style="color: var(--p-text); font-weight: 600; font-size: 0.9375rem; margin-bottom: 1.5rem;">
+                        <span class="success-email"></span>
+                    </p>
+                    <p style="color: var(--p-text-muted); font-size: 0.8125rem; margin-bottom: 2rem;">
+                        Click the link in the email to activate your account. If you don't see it, check your spam folder.
+                    </p>
+                    <a href="/login" class="login-btn" style="display: block; text-decoration: none; text-align: center;">Go to Sign In</a>
+                </div>
+
                 <form id="registerForm" class="login-form" novalidate>
                     <div class="form-row">
                         <div class="form-group">
@@ -241,15 +258,14 @@
                     return;
                 }
 
-                // Store tokens (auto-login)
-                const tokenData = data.data;
-                localStorage.setItem('access_token', tokenData.access_token);
-                localStorage.setItem('refresh_token', tokenData.refresh_token);
-                localStorage.setItem('token_expires', Date.now() + (tokenData.expires_in * 1000));
-                localStorage.setItem('user', JSON.stringify(tokenData.user));
+                // Registration successful - show verification notice
+                document.getElementById('registerForm').style.display = 'none';
+                document.querySelector('.login-footer').style.display = 'none';
 
-                // Redirect to app
-                window.location.href = '/';
+                const successEl = document.getElementById('registerSuccess');
+                successEl.querySelector('.success-email').textContent = email;
+                successEl.style.display = 'block';
+                successEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             } catch (err) {
                 showError('Connection error. Please try again.');
                 btn.disabled = false;
