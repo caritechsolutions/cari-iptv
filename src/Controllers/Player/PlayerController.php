@@ -82,6 +82,24 @@ class PlayerController
             // Use defaults
         }
 
+        // Compute asset version from file modification times for cache busting.
+        // When any player asset is updated (deploy/update.sh), the hash changes
+        // and browsers fetch the new files instead of serving stale cache.
+        $assetFiles = [
+            BASE_PATH . '/public/assets/css/player.css',
+            BASE_PATH . '/public/assets/js/player/api.js',
+            BASE_PATH . '/public/assets/js/player/ui.js',
+            BASE_PATH . '/public/assets/js/player/router.js',
+            BASE_PATH . '/public/assets/js/player/app.js',
+        ];
+        $mtimes = array_map(fn($f) => @filemtime($f) ?: 0, $assetFiles);
+        $assetVersion = substr(md5(implode(':', $mtimes)), 0, 10);
+
+        // Never cache the HTML shell — browser must always get fresh HTML
+        // so it picks up new ?v= query strings when assets change
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Pragma: no-cache');
+
         include BASE_PATH . '/templates/player/app.php';
     }
 }

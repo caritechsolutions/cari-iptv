@@ -92,35 +92,51 @@ class ContentApiService
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Layout versions per platform
+        // Layout versions per platform — tracks ALL published layouts, not just default
         $platforms = $platform ? [$platform] : ['web', 'mobile', 'tv', 'stb'];
         $manifest['layouts'] = [];
         foreach ($platforms as $p) {
             $row = $this->safeQuery(fn() => $this->db->fetch(
-                "SELECT id, updated_at FROM app_layouts WHERE platform = ? AND is_default = 1 AND status = 'published' LIMIT 1",
+                "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM app_layouts WHERE platform = ? AND status = 'published'",
                 [$p]
-            ));
-            if ($row) {
+            ), ['cnt' => 0, 'latest' => null]);
+            if ($row && $row['latest']) {
                 $manifest['layouts'][$p] = [
-                    'version' => md5($row['id'] . ':' . $row['updated_at']),
-                    'layout_id' => (int)$row['id'],
-                    'updated_at' => $row['updated_at'],
+                    'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+                    'count' => (int)($row['cnt'] ?? 0),
+                    'updated_at' => $row['latest'],
                 ];
             }
         }
 
-        // Navigation versions per platform
+        // Navigation versions per platform — includes nav settings, items, and linked pages
         $manifest['navigation'] = [];
         foreach ($platforms as $p) {
             $row = $this->safeQuery(fn() => $this->db->fetch(
-                "SELECT MAX(n.updated_at) as latest
-                 FROM app_navigation n WHERE n.platform = ?",
+                "SELECT
+                    COUNT(ni.id) as item_count,
+                    MAX(n.updated_at) as nav_latest,
+                    MAX(ni.created_at) as item_latest,
+                    MAX(p.updated_at) as page_latest
+                 FROM app_navigation n
+                 LEFT JOIN app_navigation_items ni ON ni.navigation_id = n.id
+                 LEFT JOIN app_pages p ON p.platform = n.platform AND p.is_active = 1
+                 WHERE n.platform = ?",
                 [$p]
             ));
-            if ($row && $row['latest']) {
+            if ($row && ($row['nav_latest'] || $row['item_latest'])) {
                 $manifest['navigation'][$p] = [
-                    'version' => md5($p . ':' . $row['latest']),
-                    'updated_at' => $row['latest'],
+                    'version' => md5(
+                        ($row['item_count'] ?? 0) . ':' .
+                        ($row['nav_latest'] ?? '') . ':' .
+                        ($row['item_latest'] ?? '') . ':' .
+                        ($row['page_latest'] ?? '')
+                    ),
+                    'updated_at' => max(
+                        $row['nav_latest'] ?? '',
+                        $row['item_latest'] ?? '',
+                        $row['page_latest'] ?? ''
+                    ),
                 ];
             }
         }

@@ -4,6 +4,7 @@
  */
 const CariAPI = (function() {
     const BASE = '/api/v1';
+    let _cacheBust = '';
 
     function getAccessToken() {
         return localStorage.getItem('access_token');
@@ -108,8 +109,20 @@ const CariAPI = (function() {
         return res.json();
     }
 
-    function get(path) { return request('GET', path); }
+    function get(path) {
+        if (_cacheBust) {
+            path += (path.includes('?') ? '&' : '?') + '_v=' + _cacheBust;
+        }
+        return request('GET', path);
+    }
     function post(path, body) { return request('POST', path, body); }
+
+    function bustAllCaches() {
+        _cacheBust = String(Date.now());
+    }
+    function clearCacheBust() {
+        _cacheBust = '';
+    }
 
     async function logout() {
         const token = getRefreshToken();
@@ -129,7 +142,10 @@ const CariAPI = (function() {
     }
     function getNavigation() { return get('/app/navigation/web'); }
     function getPages() { return get('/app/pages/web'); }
-    function getManifest() { return get('/manifest'); }
+    function getManifest() {
+        // Always bypass browser cache for manifest checks
+        return request('GET', '/manifest?_t=' + Date.now());
+    }
 
     function getChannels(params) {
         const q = params ? '?' + new URLSearchParams(params) : '';
@@ -181,5 +197,6 @@ const CariAPI = (function() {
         getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
         getCategories, search, getEpg,
         updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist,
+        bustAllCaches, clearCacheBust,
     };
 })();

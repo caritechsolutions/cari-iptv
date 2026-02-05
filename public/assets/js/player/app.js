@@ -11,6 +11,8 @@ const CariApp = (function() {
     let pages = [];
     let shakaPlayer = null;
     let searchTimeout = null;
+    let lastManifest = null;
+    let manifestTimer = null;
 
     // ---- Boot ----
 
@@ -28,6 +30,7 @@ const CariApp = (function() {
         await loadNavigation();
 
         CariRouter.start();
+        startManifestPolling();
     }
 
     function setupUser() {
@@ -229,6 +232,80 @@ const CariApp = (function() {
         // Close mobile sidebar
         document.getElementById('appSidebar').classList.remove('open');
         document.getElementById('sidebarBackdrop').classList.remove('visible');
+    }
+
+    // ---- Manifest Polling (detect admin changes at runtime) ----
+
+    function startManifestPolling() {
+        // Fetch initial manifest to establish baseline versions
+        checkForUpdates();
+        // Poll every 60 seconds for changes
+        manifestTimer = setInterval(checkForUpdates, 60000);
+    }
+
+    async function checkForUpdates() {
+        try {
+            const res = await CariAPI.getManifest();
+            const manifest = res?.data;
+            if (!manifest) return;
+
+            // First call — just store baseline, no comparisons
+            if (!lastManifest) {
+                lastManifest = manifest;
+                return;
+            }
+
+            let hasChanges = false;
+            let navChanged = false;
+
+            // Compare navigation version (covers nav items, pages, page-layout links)
+            const oldNav = lastManifest.navigation?.web?.version;
+            const newNav = manifest.navigation?.web?.version;
+            if (oldNav && newNav && oldNav !== newNav) {
+                navChanged = true;
+                hasChanges = true;
+            }
+
+            // Compare layout versions (covers all published layouts for this platform)
+            const oldLayout = lastManifest.layouts?.web?.version;
+            const newLayout = manifest.layouts?.web?.version;
+            if (oldLayout && newLayout && oldLayout !== newLayout) {
+                hasChanges = true;
+            }
+
+            // Compare content versions (movies, series, channels, categories)
+            for (const key of ['movies', 'series', 'channels', 'categories']) {
+                const oldVer = lastManifest[key]?.version;
+                const newVer = manifest[key]?.version;
+                if (oldVer && newVer && oldVer !== newVer) {
+                    hasChanges = true;
+                }
+            }
+
+            // Store new baseline
+            lastManifest = manifest;
+
+            if (hasChanges) {
+                console.log('[CariApp] Backend changes detected, refreshing data...');
+
+                // Bust API cache so all subsequent fetches bypass browser cache
+                CariAPI.bustAllCaches();
+
+                // Navigation changed — reload nav immediately (non-disruptive)
+                if (navChanged) {
+                    await loadNavigation();
+                }
+
+                // Re-render current page to show fresh content,
+                // but only if user is not watching a video (that would be disruptive)
+                const path = CariRouter.getCurrentPath();
+                if (!path.startsWith('/watch/')) {
+                    CariRouter.refresh();
+                }
+            }
+        } catch (err) {
+            // Silent — don't disrupt user experience on network errors
+        }
     }
 
     // ---- Routes ----

@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/fonts/lucide/lucide.css">
-    <link rel="stylesheet" href="/assets/css/player.css">
+    <link rel="stylesheet" href="/assets/fonts/lucide/lucide.css?v=<?= $assetVersion ?>">
+    <link rel="stylesheet" href="/assets/css/player.css?v=<?= $assetVersion ?>">
 </head>
 <body>
     <div class="app-layout" id="appLayout">
@@ -81,9 +81,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.3/shaka-player.compiled.min.js" crossorigin="anonymous"></script>
 
     <!-- App JavaScript -->
-    <script src="/assets/js/player/api.js"></script>
-    <script src="/assets/js/player/ui.js"></script>
-    <script src="/assets/js/player/router.js"></script>
-    <script src="/assets/js/player/app.js"></script>
+    <script src="/assets/js/player/api.js?v=<?= $assetVersion ?>"></script>
+    <script src="/assets/js/player/ui.js?v=<?= $assetVersion ?>"></script>
+    <script src="/assets/js/player/router.js?v=<?= $assetVersion ?>"></script>
+    <script src="/assets/js/player/app.js?v=<?= $assetVersion ?>"></script>
 </body>
 </html>
