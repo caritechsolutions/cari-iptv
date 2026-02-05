@@ -300,10 +300,24 @@ const CariApp = (function() {
         }
     }
 
+    /**
+     * Flatten layout items — the API nests resolved content under item.content,
+     * but renderers expect fields (title, backdrop_url, etc.) at the top level.
+     */
+    function flattenLayoutItems(rawItems) {
+        return rawItems.map(item => {
+            const content = item.content || {};
+            return {
+                ...content,
+                content_type: item.content_type,
+            };
+        }).filter(item => item.id || item.title || item.image_url);
+    }
+
     function renderLayoutSections(el, sections) {
         sections.forEach(section => {
             const type = section.section_type;
-            const items = section.items || [];
+            const items = flattenLayoutItems(section.items || []);
             const settings = section.settings || {};
             const title = section.title || '';
 
