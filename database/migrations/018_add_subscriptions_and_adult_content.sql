@@ -30,31 +30,94 @@ CREATE TABLE IF NOT EXISTS `subscriber_subscriptions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
--- Add adult content flag to content tables
+-- Add adult content flag to content tables (MySQL-compatible)
 -- ============================================
-ALTER TABLE `movies` ADD COLUMN IF NOT EXISTS `is_adult` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_featured`;
-ALTER TABLE `series` ADD COLUMN IF NOT EXISTS `is_adult` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_featured`;
-ALTER TABLE `channels` ADD COLUMN IF NOT EXISTS `is_adult` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_active`;
 
--- Add index for filtering
-ALTER TABLE `movies` ADD INDEX IF NOT EXISTS `idx_adult` (`is_adult`);
-ALTER TABLE `series` ADD INDEX IF NOT EXISTS `idx_adult` (`is_adult`);
-ALTER TABLE `channels` ADD INDEX IF NOT EXISTS `idx_adult` (`is_adult`);
+-- Helper procedure to add column if not exists
+DROP PROCEDURE IF EXISTS add_column_if_not_exists;
+DELIMITER //
+CREATE PROCEDURE add_column_if_not_exists(
+    IN tbl_name VARCHAR(64),
+    IN col_name VARCHAR(64),
+    IN col_definition VARCHAR(255)
+)
+BEGIN
+    SET @table_name = tbl_name;
+    SET @column_name = col_name;
+    SET @column_def = col_definition;
+
+    SELECT COUNT(*) INTO @col_exists
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = @table_name
+      AND COLUMN_NAME = @column_name;
+
+    IF @col_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', @table_name, '` ADD COLUMN `', @column_name, '` ', @column_def);
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END //
+DELIMITER ;
+
+-- Add is_adult to movies
+CALL add_column_if_not_exists('movies', 'is_adult', 'TINYINT(1) NOT NULL DEFAULT 0');
+-- Add is_adult to series
+CALL add_column_if_not_exists('series', 'is_adult', 'TINYINT(1) NOT NULL DEFAULT 0');
+-- Add is_adult to channels
+CALL add_column_if_not_exists('channels', 'is_adult', 'TINYINT(1) NOT NULL DEFAULT 0');
+-- Add is_adult to packages
+CALL add_column_if_not_exists('packages', 'is_adult', 'TINYINT(1) NOT NULL DEFAULT 0');
+-- Add adult_enabled to subscribers
+CALL add_column_if_not_exists('subscribers', 'adult_enabled', 'TINYINT(1) NOT NULL DEFAULT 0');
+
+-- Clean up procedure
+DROP PROCEDURE IF EXISTS add_column_if_not_exists;
 
 -- ============================================
--- Add adult flag to packages (adult-only packages)
+-- Add indexes for adult content filtering
 -- ============================================
-ALTER TABLE `packages` ADD COLUMN IF NOT EXISTS `is_adult` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_featured`;
 
--- ============================================
--- Add adult content controls to subscribers
--- ============================================
--- Note: parental_pin already exists, we add adult_enabled flag
-ALTER TABLE `subscribers` ADD COLUMN IF NOT EXISTS `adult_enabled` TINYINT(1) NOT NULL DEFAULT 0 AFTER `parental_pin`;
+-- Helper procedure to add index if not exists
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
+DELIMITER //
+CREATE PROCEDURE add_index_if_not_exists(
+    IN tbl_name VARCHAR(64),
+    IN idx_name VARCHAR(64),
+    IN idx_columns VARCHAR(255)
+)
+BEGIN
+    SET @table_name = tbl_name;
+    SET @index_name = idx_name;
+
+    SELECT COUNT(*) INTO @idx_exists
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = @table_name
+      AND INDEX_NAME = @index_name;
+
+    IF @idx_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', @table_name, '` ADD INDEX `', @index_name, '` (', idx_columns, ')');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END //
+DELIMITER ;
+
+-- Add indexes
+CALL add_index_if_not_exists('movies', 'idx_adult', '`is_adult`');
+CALL add_index_if_not_exists('series', 'idx_adult', '`is_adult`');
+CALL add_index_if_not_exists('channels', 'idx_adult', '`is_adult`');
+
+-- Clean up procedure
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
 
 -- ============================================
 -- Add subscription page type to app_pages
 -- ============================================
+-- Modify ENUM to add new page types
 ALTER TABLE `app_pages` MODIFY COLUMN `page_type` ENUM(
     'home', 'movies', 'live_tv', 'series', 'categories',
     'search', 'watchlist', 'settings', 'player', 'details',
@@ -62,13 +125,7 @@ ALTER TABLE `app_pages` MODIFY COLUMN `page_type` ENUM(
 ) NOT NULL;
 
 -- ============================================
--- Payment Gateway Settings (stored in settings table)
--- Settings groups: 'payment_stripe', 'payment_paypal', etc.
--- ============================================
--- No schema changes needed - uses existing settings table with group prefix
-
--- ============================================
--- Seed subscription page for each platform
+-- Seed subscription and profile pages for each platform
 -- ============================================
 INSERT INTO `app_pages` (`name`, `slug`, `page_type`, `platform`, `icon`, `is_system`, `sort_order`) VALUES
 ('Subscribe', 'subscribe', 'subscription', 'web', 'lucide-credit-card', 1, 8),
