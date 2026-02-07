@@ -93,6 +93,17 @@ class SubscriberService
                 [$id]
             );
             $subscriber['group_ids'] = array_column($subscriber['groups'], 'id');
+
+            // Fetch package subscriptions
+            $subscriber['subscriptions'] = $this->db->fetchAll(
+                "SELECT ss.*, p.name as package_name, p.price, p.currency, p.is_free
+                 FROM subscriber_subscriptions ss
+                 INNER JOIN packages p ON ss.package_id = p.id
+                 WHERE ss.subscriber_id = ? AND ss.status IN ('active', 'trial')
+                 ORDER BY p.sort_order, p.name",
+                [$id]
+            );
+            $subscriber['package_ids'] = array_column($subscriber['subscriptions'], 'package_id');
         }
 
         return $subscriber;
@@ -155,6 +166,10 @@ class SubscriberService
         // Save group memberships
         $this->syncGroups($subscriberId, $groupIds);
 
+        // Save package subscriptions
+        $packageIds = $data['packages'] ?? [];
+        $this->syncPackages($subscriberId, $packageIds);
+
         return $subscriberId;
     }
 
@@ -163,9 +178,10 @@ class SubscriberService
      */
     public function updateSubscriber(int $id, array $data): bool
     {
-        // Extract groups
+        // Extract groups and packages
         $groupIds = $data['groups'] ?? [];
-        unset($data['groups']);
+        $packageIds = $data['packages'] ?? [];
+        unset($data['groups'], $data['packages']);
 
         // Handle password
         if (!empty($data['password'])) {
@@ -184,7 +200,7 @@ class SubscriberService
         // Build SET clause dynamically
         $fields = ['username', 'email', 'first_name', 'last_name', 'phone',
             'status', 'is_disabled', 'email_verified', 'phone_verified',
-            'max_connections', 'npvr_limit', 'birthday', 'parental_pin',
+            'max_connections', 'npvr_limit', 'birthday', 'parental_pin', 'adult_enabled',
             'country', 'city', 'address', 'zip_code', 'external_id', 'notes'];
 
         $sets = [];
@@ -193,7 +209,7 @@ class SubscriberService
         foreach ($fields as $field) {
             if (array_key_exists($field, $data)) {
                 $sets[] = "`{$field}` = ?";
-                if (in_array($field, ['is_disabled', 'email_verified', 'phone_verified', 'max_connections', 'npvr_limit'])) {
+                if (in_array($field, ['is_disabled', 'email_verified', 'phone_verified', 'max_connections', 'npvr_limit', 'adult_enabled'])) {
                     $params[] = (int) $data[$field];
                 } else {
                     $params[] = $data[$field] ?: null;
@@ -217,6 +233,9 @@ class SubscriberService
 
         // Sync group memberships
         $this->syncGroups($id, $groupIds);
+
+        // Sync package subscriptions
+        $this->syncPackages($id, $packageIds);
 
         return true;
     }
@@ -390,6 +409,137 @@ class SubscriberService
         }
 
         $this->updateAllGroupCounts();
+    }
+
+    /**
+     * Sync subscriber's package subscriptions (create/keep active ones, cancel removed)
+     */
+    public function syncPackages(int $subscriberId, array $packageIds): void
+    {
+        $packageIds = array_filter(array_map('intval', $packageIds));
+
+        // Get current active/trial subscriptions
+        $current = $this->db->fetchAll(
+            "SELECT id, package_id FROM subscriber_subscriptions
+             WHERE subscriber_id = ? AND status IN ('active', 'trial')",
+            [$subscriberId]
+        );
+        $currentPackageIds = array_column($current, 'package_id');
+        $currentByPackage = array_column($current, 'id', 'package_id');
+
+        // Cancel subscriptions for packages no longer selected
+        $toCancel = array_diff($currentPackageIds, $packageIds);
+        if (!empty($toCancel)) {
+            $placeholders = implode(',', array_fill(0, count($toCancel), '?'));
+            $this->db->execute(
+                "UPDATE subscriber_subscriptions
+                 SET status = 'cancelled', cancelled_at = NOW()
+                 WHERE subscriber_id = ? AND package_id IN ({$placeholders}) AND status IN ('active', 'trial')",
+                array_merge([$subscriberId], $toCancel)
+            );
+        }
+
+        // Add new subscriptions for packages not yet subscribed
+        $toAdd = array_diff($packageIds, $currentPackageIds);
+        foreach ($toAdd as $packageId) {
+            // Check if package is free (no expiry) or paid (set trial/expiry based on package settings)
+            $package = $this->db->fetch("SELECT is_free, trial_days FROM packages WHERE id = ?", [$packageId]);
+            if (!$package) continue;
+
+            $status = 'active';
+            $expiresAt = null;
+            $trialEndsAt = null;
+
+            // If package has trial days and subscriber hasn't used it for this package before
+            if (!$package['is_free'] && $package['trial_days'] > 0) {
+                $hadTrial = $this->db->fetch(
+                    "SELECT 1 FROM subscriber_subscriptions WHERE subscriber_id = ? AND package_id = ?",
+                    [$subscriberId, $packageId]
+                );
+                if (!$hadTrial) {
+                    $status = 'trial';
+                    $trialEndsAt = date('Y-m-d H:i:s', strtotime("+{$package['trial_days']} days"));
+                    $expiresAt = $trialEndsAt;
+                }
+            }
+
+            $this->db->execute(
+                "INSERT INTO subscriber_subscriptions
+                    (subscriber_id, package_id, status, started_at, expires_at, trial_ends_at, payment_method)
+                 VALUES (?, ?, ?, NOW(), ?, ?, 'manual')",
+                [$subscriberId, $packageId, $status, $expiresAt, $trialEndsAt]
+            );
+        }
+    }
+
+    /**
+     * Get subscriber's entitled content IDs based on active subscriptions
+     * Returns array with content_type as key, array of content_ids as value
+     */
+    public function getSubscriberEntitlements(int $subscriberId): array
+    {
+        // Get all content items from content groups linked to subscriber's active packages
+        $items = $this->db->fetchAll(
+            "SELECT DISTINCT cgi.content_type, cgi.content_id
+             FROM subscriber_subscriptions ss
+             INNER JOIN package_content_groups pcg ON ss.package_id = pcg.package_id
+             INNER JOIN content_group_items cgi ON pcg.group_id = cgi.group_id
+             WHERE ss.subscriber_id = ?
+               AND ss.status IN ('active', 'trial')
+               AND (ss.expires_at IS NULL OR ss.expires_at > NOW())",
+            [$subscriberId]
+        );
+
+        $entitlements = [
+            'movie' => [],
+            'series' => [],
+            'channel' => [],
+            'category' => [],
+        ];
+
+        foreach ($items as $item) {
+            $type = $item['content_type'];
+            if (isset($entitlements[$type])) {
+                $entitlements[$type][] = (int) $item['content_id'];
+            }
+        }
+
+        return $entitlements;
+    }
+
+    /**
+     * Check if subscriber has access to specific content
+     */
+    public function hasAccessToContent(int $subscriberId, string $contentType, int $contentId): bool
+    {
+        // Check if content is in any content group linked to subscriber's active packages
+        $access = $this->db->fetch(
+            "SELECT 1 FROM subscriber_subscriptions ss
+             INNER JOIN package_content_groups pcg ON ss.package_id = pcg.package_id
+             INNER JOIN content_group_items cgi ON pcg.group_id = cgi.group_id
+             WHERE ss.subscriber_id = ?
+               AND ss.status IN ('active', 'trial')
+               AND (ss.expires_at IS NULL OR ss.expires_at > NOW())
+               AND cgi.content_type = ?
+               AND cgi.content_id = ?
+             LIMIT 1",
+            [$subscriberId, $contentType, $contentId]
+        );
+
+        return $access !== null;
+    }
+
+    /**
+     * Check if content is assigned to any package (returns false if content is free/unassigned)
+     */
+    public function isContentRestricted(string $contentType, int $contentId): bool
+    {
+        $restricted = $this->db->fetch(
+            "SELECT 1 FROM content_group_items WHERE content_type = ? AND content_id = ? LIMIT 1",
+            [$contentType, $contentId]
+        );
+
+        return $restricted !== null;
     }
 
     /**

@@ -169,6 +169,22 @@ class AppLayoutService
                     'alignment' => 'left',
                 ],
             ],
+            'packages_list' => [
+                'name' => 'Packages List',
+                'description' => 'Display available subscription packages with pricing',
+                'icon' => 'lucide-credit-card',
+                'category' => 'subscription',
+                'max_per_layout' => 1,
+                'supports_items' => false,
+                'default_settings' => [
+                    'layout' => 'cards',
+                    'show_features' => true,
+                    'show_pricing' => true,
+                    'highlight_featured' => true,
+                    'filter_platform' => true,
+                    'filter_geo' => true,
+                ],
+            ],
         ];
     }
 
@@ -874,6 +890,8 @@ class AppLayoutService
             'player' => ['name' => 'Player', 'icon' => 'lucide-play', 'description' => 'Media player page', 'has_layout' => false],
             'details' => ['name' => 'Details', 'icon' => 'lucide-info', 'description' => 'Content detail view', 'has_layout' => false],
             'custom' => ['name' => 'Custom Page', 'icon' => 'lucide-file-plus', 'description' => 'Custom user-defined page', 'has_layout' => true],
+            'subscription' => ['name' => 'Subscribe', 'icon' => 'lucide-credit-card', 'description' => 'Package subscription & payment', 'has_layout' => true],
+            'profile' => ['name' => 'Profile', 'icon' => 'lucide-user', 'description' => 'User profile & settings', 'has_layout' => false],
         ];
     }
 
