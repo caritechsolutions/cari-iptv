@@ -154,6 +154,108 @@ class ContentApiService
     }
 
     // =========================================================================
+    // ENTITLEMENTS & ACCESS CONTROL
+    // =========================================================================
+
+    /**
+     * Get subscriber's entitlements - content they have access to via their packages
+     */
+    public function getSubscriberEntitlements(int $subscriberId): array
+    {
+        // Get all content IDs the subscriber is entitled to via their active packages
+        $items = $this->db->fetchAll(
+            "SELECT DISTINCT cgi.content_type, cgi.content_id
+             FROM subscriber_subscriptions ss
+             INNER JOIN package_content_groups pcg ON ss.package_id = pcg.package_id
+             INNER JOIN content_group_items cgi ON pcg.group_id = cgi.group_id
+             WHERE ss.subscriber_id = ?
+               AND ss.status IN ('active', 'trial')
+               AND (ss.expires_at IS NULL OR ss.expires_at > NOW())",
+            [$subscriberId]
+        );
+
+        // Use plural keys to match content_type + 's'
+        $entitlements = [
+            'movies' => [],
+            'series' => [],
+            'channels' => [],
+            'categories' => [],
+        ];
+
+        foreach ($items as $item) {
+            $type = $item['content_type'] . 's'; // movie -> movies
+            if ($type === 'seriess') $type = 'series'; // fix double s
+            if (isset($entitlements[$type])) {
+                $entitlements[$type][] = (int) $item['content_id'];
+            }
+        }
+
+        // Get subscriber's active package IDs
+        $activePackageIds = $this->db->fetchAll(
+            "SELECT package_id FROM subscriber_subscriptions
+             WHERE subscriber_id = ?
+               AND status IN ('active', 'trial')
+               AND (expires_at IS NULL OR expires_at > NOW())",
+            [$subscriberId]
+        );
+        $activeIds = array_column($activePackageIds, 'package_id');
+
+        // Get ALL available packages (for subscription page display)
+        $allPackages = $this->db->fetchAll(
+            "SELECT p.id, p.name, p.slug, p.description, p.price, p.currency,
+                    p.billing_period, p.is_free, p.is_featured, p.features,
+                    p.trial_days, p.is_adult
+             FROM packages p
+             WHERE p.is_active = 1
+             ORDER BY p.is_featured DESC, p.sort_order, p.price ASC"
+        );
+
+        // Parse features JSON and mark subscribed packages
+        foreach ($allPackages as &$pkg) {
+            $features = json_decode($pkg['features'] ?? '[]', true);
+            $pkg['features'] = is_array($features) ? $features : [];
+            $pkg['is_subscribed'] = in_array((int)$pkg['id'], $activeIds);
+            $pkg['price_display'] = ($pkg['is_free'] || (float)$pkg['price'] === 0.0)
+                ? 'Free'
+                : ($pkg['currency'] ?? '$') . number_format((float)$pkg['price'], 2);
+        }
+
+        return array_merge($entitlements, [
+            'packages' => $allPackages,
+        ]);
+    }
+
+    /**
+     * Check if content is restricted (belongs to any content group)
+     * If not in any group, it's free/unrestricted
+     */
+    public function isContentRestricted(string $contentType, int $contentId): bool
+    {
+        $result = $this->db->fetch(
+            "SELECT 1 FROM content_group_items WHERE content_type = ? AND content_id = ? LIMIT 1",
+            [$contentType, $contentId]
+        );
+        return $result !== null;
+    }
+
+    /**
+     * Get packages that include specific content
+     */
+    public function getPackagesForContent(string $contentType, int $contentId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT DISTINCT p.id, p.name, p.slug, p.price, p.currency, p.is_free, p.is_featured
+             FROM packages p
+             INNER JOIN package_content_groups pcg ON p.id = pcg.package_id
+             INNER JOIN content_group_items cgi ON pcg.group_id = cgi.group_id
+             WHERE cgi.content_type = ? AND cgi.content_id = ?
+               AND p.is_active = 1
+             ORDER BY p.is_featured DESC, p.sort_order, p.price ASC",
+            [$contentType, $contentId]
+        );
+    }
+
+    // =========================================================================
     // CHANNELS
     // =========================================================================
 
@@ -180,8 +282,9 @@ class ContentApiService
         $channels = $this->db->fetchAll(
             "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url,
                     c.epg_channel_id, c.category_id, c.country,
-                    c.is_hd, c.channel_number, c.sort_order, c.updated_at,
-                    cat.name as category_name
+                    c.is_hd, c.is_adult, c.channel_number, c.sort_order, c.updated_at,
+                    cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
              WHERE {$whereStr}
@@ -189,6 +292,12 @@ class ContentApiService
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Cast is_restricted to boolean
+        foreach ($channels as &$channel) {
+            $channel['is_restricted'] = (bool) $channel['is_restricted'];
+            $channel['content_type'] = 'channel';
+        }
 
         $total = $this->db->fetch(
             "SELECT COUNT(*) as cnt FROM channels c WHERE {$whereStr}",
@@ -206,7 +315,8 @@ class ContentApiService
     public function getChannel(int $id): ?array
     {
         $channel = $this->db->fetch(
-            "SELECT c.*, cat.name as category_name
+            "SELECT c.*, cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
              WHERE c.id = ? AND c.is_active = 1",
@@ -216,6 +326,9 @@ class ContentApiService
         if (!$channel) {
             return null;
         }
+
+        $channel['is_restricted'] = (bool) $channel['is_restricted'];
+        $channel['content_type'] = 'channel';
 
         // Get current EPG programme (table is epg_programs)
         $channel['now_playing'] = $this->safeQuery(fn() => $this->db->fetch(
@@ -289,9 +402,10 @@ class ContentApiService
         $movies = $this->db->fetchAll(
             "SELECT m.id, m.title, m.slug, m.year, m.genres, m.runtime,
                     m.vote_average, m.poster_url, m.backdrop_url,
-                    m.stream_url, m.is_featured,
+                    m.stream_url, m.is_featured, m.is_adult,
                     m.category_id, m.updated_at,
-                    cat.name as category_name
+                    cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = m.id LIMIT 1) IS NOT NULL as is_restricted
              FROM movies m
              LEFT JOIN categories cat ON m.category_id = cat.id
              WHERE {$whereStr}
@@ -299,6 +413,12 @@ class ContentApiService
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Cast is_restricted to boolean
+        foreach ($movies as &$movie) {
+            $movie['is_restricted'] = (bool) $movie['is_restricted'];
+            $movie['content_type'] = 'movie';
+        }
 
         $total = $this->db->fetch(
             "SELECT COUNT(*) as cnt FROM movies m WHERE {$whereStr}",
@@ -316,7 +436,8 @@ class ContentApiService
     public function getMovie(int $id): ?array
     {
         $movie = $this->db->fetch(
-            "SELECT m.*, cat.name as category_name
+            "SELECT m.*, cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = m.id LIMIT 1) IS NOT NULL as is_restricted
              FROM movies m
              LEFT JOIN categories cat ON m.category_id = cat.id
              WHERE m.id = ? AND m.status = 'published'",
@@ -326,6 +447,9 @@ class ContentApiService
         if (!$movie) {
             return null;
         }
+
+        $movie['is_restricted'] = (bool) $movie['is_restricted'];
+        $movie['content_type'] = 'movie';
 
         // Trailers (video_key, url - not youtube_id, youtube_url)
         $movie['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
@@ -399,10 +523,11 @@ class ContentApiService
         $series = $this->db->fetchAll(
             "SELECT s.id, s.title, s.slug, s.year, s.genres, s.synopsis,
                     s.vote_average, s.poster_url, s.backdrop_url,
-                    s.is_featured, s.category_id, s.updated_at,
+                    s.is_featured, s.is_adult, s.category_id, s.updated_at,
                     s.number_of_seasons as season_count,
                     s.number_of_episodes as episode_count,
-                    cat.name as category_name
+                    cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as is_restricted
              FROM series s
              LEFT JOIN categories cat ON s.category_id = cat.id
              WHERE {$whereStr}
@@ -410,6 +535,12 @@ class ContentApiService
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Cast is_restricted to boolean
+        foreach ($series as &$show) {
+            $show['is_restricted'] = (bool) $show['is_restricted'];
+            $show['content_type'] = 'series';
+        }
 
         $total = $this->db->fetch(
             "SELECT COUNT(*) as cnt FROM series s WHERE {$whereStr}",
@@ -427,7 +558,8 @@ class ContentApiService
     public function getSeriesDetail(int $id): ?array
     {
         $show = $this->db->fetch(
-            "SELECT s.*, cat.name as category_name
+            "SELECT s.*, cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as is_restricted
              FROM series s
              LEFT JOIN categories cat ON s.category_id = cat.id
              WHERE s.id = ? AND s.status = 'published'",
@@ -437,6 +569,9 @@ class ContentApiService
         if (!$show) {
             return null;
         }
+
+        $show['is_restricted'] = (bool) $show['is_restricted'];
+        $show['content_type'] = 'series';
 
         // Seasons (table is series_seasons)
         $show['seasons'] = $this->safeQuery(fn() => $this->db->fetchAll(

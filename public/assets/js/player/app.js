@@ -13,6 +13,7 @@ const CariApp = (function() {
     let searchTimeout = null;
     let lastManifest = null;
     let manifestTimer = null;
+    let entitlements = null; // { movies: [], series: [], channels: [], packages: [] }
 
     // ---- Boot ----
 
@@ -27,10 +28,41 @@ const CariApp = (function() {
         setupSidebar();
         setupSearch();
         setupRoutes();
-        await loadNavigation();
+        await Promise.all([loadNavigation(), loadEntitlements()]);
 
         CariRouter.start();
         startManifestPolling();
+    }
+
+    async function loadEntitlements() {
+        try {
+            const res = await CariAPI.getEntitlements();
+            entitlements = res?.data || { movies: [], series: [], channels: [], packages: [] };
+        } catch {
+            entitlements = { movies: [], series: [], channels: [], packages: [] };
+        }
+    }
+
+    /**
+     * Check if content is locked (user doesn't have access)
+     * Free content (not in any package) is accessible to all.
+     * Content in packages is locked unless user has entitlement.
+     */
+    function isContentLocked(item) {
+        if (!entitlements) return false;
+        if (!item || !item.id) return false;
+
+        const type = item.content_type || 'movie';
+        const id = item.id;
+
+        // If content is marked as restricted (in a package), check entitlements
+        if (item.is_restricted) {
+            const entitled = entitlements[type + 's'] || entitlements[type] || [];
+            return !entitled.includes(id);
+        }
+
+        // Content not in any package = free, not locked
+        return false;
     }
 
     function setupUser() {
@@ -326,6 +358,8 @@ const CariApp = (function() {
         CariRouter.addRoute('/series/:id', pageSeriesDetail);
         CariRouter.addRoute('/watch/:type/:id', pageWatch);
         CariRouter.addRoute('/categories', pageCategories);
+        CariRouter.addRoute('/subscribe', pageSubscribe);
+        CariRouter.addRoute('/profile', pageProfile);
     }
 
     function content() {
@@ -416,7 +450,8 @@ const CariApp = (function() {
                 const hero = CariUI.renderHero(
                     items,
                     (item) => playContent(item),
-                    (item) => CariUI.showDetail(item, playContent)
+                    (item) => CariUI.showDetail(item, playContent, isContentLocked(item)),
+                    isContentLocked
                 );
                 el.appendChild(hero);
             } else if (type === 'content_row') {
@@ -434,26 +469,63 @@ const CariApp = (function() {
                 el.appendChild(divider);
             } else if (type === 'category_grid') {
                 renderCategorySection(el, title);
+            } else if (type === 'packages_list') {
+                renderPackagesSection(el, title, settings);
             }
         });
     }
 
     function appendContentRow(el, title, items, cardStyle, forceType) {
         if (!items || !items.length) return;
-        const row = CariUI.renderContentRow(title, items, cardStyle, (item) => {
+
+        const section = document.createElement('div');
+        section.className = 'content-section';
+
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.innerHTML = `<h3 class="section-title">${CariUI.esc(title)}</h3>`;
+        section.appendChild(header);
+
+        const row = document.createElement('div');
+        row.className = 'content-row';
+
+        items.forEach(item => {
             const type = forceType || item.content_type || 'movie';
-            if (type === 'channel') {
-                CariRouter.navigate('/watch/channel/' + item.id);
+            const locked = isContentLocked(item);
+            let card;
+
+            if (cardStyle === 'backdrop') {
+                card = CariUI.backdropCard(item, handleItemClick(item, type), locked);
+            } else if (cardStyle === 'channel') {
+                card = CariUI.channelCard(item, handleItemClick(item, type), locked);
             } else {
-                CariUI.showDetail(item, playContent);
+                card = CariUI.posterCard(item, handleItemClick(item, type), locked);
             }
+            row.appendChild(card);
         });
-        if (row) el.appendChild(row);
+
+        section.appendChild(row);
+        el.appendChild(section);
+    }
+
+    function handleItemClick(item, type) {
+        return () => {
+            if (type === 'channel') {
+                if (isContentLocked(item)) {
+                    CariRouter.navigate('/subscribe');
+                } else {
+                    CariRouter.navigate('/watch/channel/' + item.id);
+                }
+            } else {
+                CariUI.showDetail(item, playContent, isContentLocked(item));
+            }
+        };
     }
 
     function renderSpotlight(el, item) {
         const section = document.createElement('div');
         section.className = 'content-section';
+        const locked = isContentLocked(item);
 
         const img = item.poster || item.poster_url || item.image_url || '';
         const title = item.title || item.name || '';
@@ -465,6 +537,7 @@ const CariApp = (function() {
             <div class="spotlight">
                 ${img ? '<img class="spotlight-img" src="' + CariUI.esc(img) + '" alt="" loading="lazy">' : ''}
                 <div class="spotlight-info">
+                    ${locked ? '<div class="spotlight-lock-badge"><i class="lucide-lock"></i> Premium</div>' : ''}
                     <h2 class="spotlight-title">${CariUI.esc(title)}</h2>
                     <div class="spotlight-meta">
                         ${year ? '<span>' + CariUI.esc(year) + '</span>' : ''}
@@ -472,12 +545,70 @@ const CariApp = (function() {
                     </div>
                     ${desc ? '<p class="spotlight-desc">' + CariUI.esc(desc) + '</p>' : ''}
                     <div style="display:flex;gap:.75rem">
-                        <button class="btn btn-play" onclick="CariApp.playContent(${JSON.stringify(item).replace(/"/g, '&quot;')})"><i class="lucide-play"></i> Play</button>
+                        ${locked
+                            ? '<button class="btn btn-subscribe" data-action="subscribe"><i class="lucide-credit-card"></i> Subscribe</button>'
+                            : '<button class="btn btn-play" data-action="play"><i class="lucide-play"></i> Play</button>'}
                     </div>
                 </div>
             </div>
         `;
+
+        if (locked) {
+            section.querySelector('[data-action="subscribe"]').addEventListener('click', () => {
+                CariRouter.navigate('/subscribe');
+            });
+        } else {
+            section.querySelector('[data-action="play"]').addEventListener('click', () => {
+                playContent(item);
+            });
+        }
+
         el.appendChild(section);
+    }
+
+    async function renderPackagesSection(el, title, settings) {
+        const section = document.createElement('div');
+        section.className = 'content-section packages-section';
+        section.innerHTML = `
+            <div class="section-header"><h3 class="section-title">${CariUI.esc(title || 'Choose Your Plan')}</h3></div>
+            <div class="packages-grid" id="packagesGrid">${CariUI.loading()}</div>
+        `;
+        el.appendChild(section);
+
+        // Fetch available packages from entitlements
+        try {
+            const packages = entitlements?.packages || [];
+            const grid = section.querySelector('#packagesGrid');
+
+            if (!packages.length) {
+                grid.innerHTML = CariUI.emptyState('lucide-package', 'No Packages', 'No subscription packages available.');
+                return;
+            }
+
+            grid.innerHTML = '';
+            packages.forEach(pkg => {
+                const card = document.createElement('div');
+                card.className = 'package-card' + (pkg.is_featured ? ' featured' : '');
+                card.innerHTML = `
+                    ${pkg.is_featured ? '<div class="package-badge">Popular</div>' : ''}
+                    <h3 class="package-name">${CariUI.esc(pkg.name)}</h3>
+                    <div class="package-price">
+                        <span class="price-amount">${CariUI.esc(pkg.price_display || '$' + (pkg.price || '0'))}</span>
+                        <span class="price-period">/ ${CariUI.esc(pkg.billing_period || 'month')}</span>
+                    </div>
+                    ${pkg.description ? '<p class="package-desc">' + CariUI.esc(pkg.description) + '</p>' : ''}
+                    ${pkg.features && pkg.features.length ? '<ul class="package-features">' + pkg.features.map(f => '<li><i class="lucide-check"></i> ' + CariUI.esc(f) + '</li>').join('') + '</ul>' : ''}
+                    <button class="btn btn-subscribe package-btn" data-pkg-id="${pkg.id}">Subscribe</button>
+                `;
+                card.querySelector('.package-btn').addEventListener('click', () => {
+                    // Navigate to checkout or show payment modal
+                    CariRouter.navigate('/subscribe?package=' + pkg.id);
+                });
+                grid.appendChild(card);
+            });
+        } catch (err) {
+            section.querySelector('#packagesGrid').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load packages.');
+        }
     }
 
     async function renderCategorySection(el, title) {
@@ -982,6 +1113,247 @@ const CariApp = (function() {
         } catch {
             document.getElementById('categoryGrid').innerHTML = CariUI.emptyState('lucide-folder', 'No Categories', 'No categories available.');
         }
+    }
+
+    // ---- PAGE: Subscribe ----
+
+    async function pageSubscribe() {
+        const el = content();
+        const params = new URLSearchParams(window.location.search);
+        const selectedPkgId = params.get('package');
+
+        el.innerHTML = `
+            <div class="page-hero">
+                <h1 class="page-hero-title">Choose Your Plan</h1>
+                <p class="page-hero-subtitle">Unlock premium content with a subscription</p>
+            </div>
+            <div class="subscribe-page">
+                <div class="packages-grid" id="subscribePackages">${CariUI.loading()}</div>
+            </div>
+        `;
+
+        try {
+            const packages = entitlements?.packages || [];
+            const grid = document.getElementById('subscribePackages');
+
+            if (!packages.length) {
+                grid.innerHTML = CariUI.emptyState('lucide-package', 'No Plans Available', 'Please check back later for subscription options.');
+                return;
+            }
+
+            grid.innerHTML = '';
+            packages.forEach(pkg => {
+                const isSelected = selectedPkgId && String(pkg.id) === selectedPkgId;
+                const card = document.createElement('div');
+                card.className = 'package-card' + (pkg.is_featured ? ' featured' : '') + (isSelected ? ' selected' : '');
+                card.innerHTML = `
+                    ${pkg.is_featured ? '<div class="package-badge">Most Popular</div>' : ''}
+                    <h3 class="package-name">${CariUI.esc(pkg.name)}</h3>
+                    <div class="package-price">
+                        <span class="price-amount">${CariUI.esc(pkg.price_display || '$' + (pkg.price || '0'))}</span>
+                        <span class="price-period">/ ${CariUI.esc(pkg.billing_period || 'month')}</span>
+                    </div>
+                    ${pkg.description ? '<p class="package-desc">' + CariUI.esc(pkg.description) + '</p>' : ''}
+                    ${pkg.features && pkg.features.length ? '<ul class="package-features">' + pkg.features.map(f => '<li><i class="lucide-check"></i> ' + CariUI.esc(f) + '</li>').join('') + '</ul>' : ''}
+                    <button class="btn btn-subscribe package-btn" data-pkg-id="${pkg.id}">Select Plan</button>
+                `;
+                card.querySelector('.package-btn').addEventListener('click', () => {
+                    showPaymentModal(pkg);
+                });
+                grid.appendChild(card);
+            });
+
+            // Auto-show payment modal if package selected
+            if (selectedPkgId) {
+                const pkg = packages.find(p => String(p.id) === selectedPkgId);
+                if (pkg) showPaymentModal(pkg);
+            }
+        } catch (err) {
+            document.getElementById('subscribePackages').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load subscription plans.');
+        }
+    }
+
+    function showPaymentModal(pkg) {
+        // Create payment modal overlay
+        let overlay = document.getElementById('paymentOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'paymentOverlay';
+            overlay.className = 'modal-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        overlay.innerHTML = `
+            <div class="payment-modal">
+                <button class="modal-close" id="closePayment"><i class="lucide-x"></i></button>
+                <h2 class="payment-modal-title">Complete Your Subscription</h2>
+                <div class="payment-summary">
+                    <div class="payment-plan">${CariUI.esc(pkg.name)}</div>
+                    <div class="payment-amount">${CariUI.esc(pkg.price_display || '$' + (pkg.price || '0'))} / ${CariUI.esc(pkg.billing_period || 'month')}</div>
+                </div>
+                <div class="payment-methods">
+                    <p class="payment-methods-label">Payment methods coming soon</p>
+                    <div class="payment-placeholder">
+                        <i class="lucide-credit-card"></i>
+                        <p>Payment gateway integration (Stripe, PayPal) will be available soon.</p>
+                        <p class="payment-contact">Please contact support to subscribe manually.</p>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" id="cancelPayment">Cancel</button>
+            </div>
+        `;
+
+        overlay.classList.add('visible');
+
+        document.getElementById('closePayment').addEventListener('click', () => overlay.classList.remove('visible'));
+        document.getElementById('cancelPayment').addEventListener('click', () => overlay.classList.remove('visible'));
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.classList.remove('visible');
+        });
+    }
+
+    // ---- PAGE: Profile ----
+
+    async function pageProfile() {
+        const el = content();
+        const user = CariAPI.getUser();
+
+        el.innerHTML = `
+            <div class="page-hero">
+                <h1 class="page-hero-title">My Profile</h1>
+            </div>
+            <div class="profile-page">
+                <div class="profile-section">
+                    <h3 class="profile-section-title">Account Information</h3>
+                    <div class="profile-info">
+                        <div class="profile-avatar">${(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}</div>
+                        <div class="profile-details">
+                            <div class="profile-name">${CariUI.esc([user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'User')}</div>
+                            <div class="profile-email">${CariUI.esc(user?.email || '')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h3 class="profile-section-title">Subscriptions</h3>
+                    <div id="profileSubscriptions">${CariUI.loading()}</div>
+                </div>
+
+                <div class="profile-section">
+                    <h3 class="profile-section-title">Parental Controls</h3>
+                    <div class="profile-option">
+                        <label class="toggle-label">
+                            <span>Enable Adult Content</span>
+                            <input type="checkbox" id="adultToggle" ${entitlements?.adult_enabled ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                        </label>
+                        <p class="profile-option-desc">Shows 18+ rated content. Requires PIN verification.</p>
+                    </div>
+                    <div class="profile-option" id="pinSection" style="display:${entitlements?.adult_enabled ? 'block' : 'none'}">
+                        <button class="btn btn-secondary" id="setPinBtn"><i class="lucide-lock"></i> Set/Change PIN</button>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <button class="btn btn-danger" id="logoutProfileBtn"><i class="lucide-log-out"></i> Sign Out</button>
+                </div>
+            </div>
+        `;
+
+        // Load current subscriptions
+        const subsContainer = document.getElementById('profileSubscriptions');
+        const userPackages = entitlements?.packages?.filter(p => p.is_subscribed) || [];
+        if (userPackages.length) {
+            subsContainer.innerHTML = userPackages.map(p => `
+                <div class="subscription-item">
+                    <div class="subscription-name">${CariUI.esc(p.name)}</div>
+                    <div class="subscription-status">Active</div>
+                </div>
+            `).join('');
+        } else {
+            subsContainer.innerHTML = `
+                <p class="profile-empty">No active subscriptions.</p>
+                <button class="btn btn-subscribe" id="getSubscription">Browse Plans</button>
+            `;
+            document.getElementById('getSubscription')?.addEventListener('click', () => {
+                CariRouter.navigate('/subscribe');
+            });
+        }
+
+        // Adult content toggle
+        document.getElementById('adultToggle').addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+            document.getElementById('pinSection').style.display = enabled ? 'block' : 'none';
+
+            if (enabled) {
+                // Show PIN setup prompt
+                showPinModal('set');
+            }
+            // TODO: Save adult_enabled preference to server
+        });
+
+        document.getElementById('setPinBtn')?.addEventListener('click', () => {
+            showPinModal('set');
+        });
+
+        document.getElementById('logoutProfileBtn').addEventListener('click', () => {
+            CariAPI.logout();
+        });
+    }
+
+    function showPinModal(mode) {
+        let overlay = document.getElementById('pinOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'pinOverlay';
+            overlay.className = 'modal-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        const isSet = mode === 'set';
+        overlay.innerHTML = `
+            <div class="pin-modal">
+                <button class="modal-close" id="closePin"><i class="lucide-x"></i></button>
+                <h2 class="pin-modal-title">${isSet ? 'Set Parental PIN' : 'Enter PIN'}</h2>
+                <p class="pin-modal-desc">${isSet ? 'Create a 4-digit PIN to protect adult content.' : 'Enter your 4-digit PIN to continue.'}</p>
+                <div class="pin-input-group">
+                    <input type="password" maxlength="1" class="pin-input" data-idx="0" inputmode="numeric" pattern="[0-9]*">
+                    <input type="password" maxlength="1" class="pin-input" data-idx="1" inputmode="numeric" pattern="[0-9]*">
+                    <input type="password" maxlength="1" class="pin-input" data-idx="2" inputmode="numeric" pattern="[0-9]*">
+                    <input type="password" maxlength="1" class="pin-input" data-idx="3" inputmode="numeric" pattern="[0-9]*">
+                </div>
+                ${isSet ? '<p class="pin-modal-hint">You\'ll need this PIN to view adult content.</p>' : ''}
+                <button class="btn btn-play" id="confirmPin">${isSet ? 'Set PIN' : 'Confirm'}</button>
+            </div>
+        `;
+
+        overlay.classList.add('visible');
+
+        // Auto-focus and auto-advance
+        const inputs = overlay.querySelectorAll('.pin-input');
+        inputs[0].focus();
+
+        inputs.forEach((input, i) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value && i < 3) {
+                    inputs[i + 1].focus();
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && i > 0) {
+                    inputs[i - 1].focus();
+                }
+            });
+        });
+
+        document.getElementById('closePin').addEventListener('click', () => overlay.classList.remove('visible'));
+        document.getElementById('confirmPin').addEventListener('click', () => {
+            const pin = Array.from(inputs).map(i => i.value).join('');
+            if (pin.length === 4) {
+                // TODO: Save PIN to server
+                overlay.classList.remove('visible');
+            }
+        });
     }
 
     // ---- PAGE: Watch (Player) ----

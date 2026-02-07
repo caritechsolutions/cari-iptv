@@ -20,17 +20,19 @@ const CariUI = (function() {
 
     // ---- Cards ----
 
-    function posterCard(item, onclick) {
+    function posterCard(item, onclick, isLocked) {
         const img = item.poster || item.poster_url || item.image_url || item.logo_url || placeholderImg;
         const title = item.title || item.name || '';
         const year = item.year || item.release_year || '';
         const rating = item.rating || item.vote_average || '';
+        const locked = isLocked === true;
 
         const el = document.createElement('div');
-        el.className = 'card-poster';
+        el.className = 'card-poster' + (locked ? ' card-locked' : '');
         el.innerHTML = `
             <img class="card-poster-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderImg}'">
+            ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
             <div class="card-poster-title">${esc(title)}</div>
             <div class="card-poster-meta">${esc(year)}${rating ? ' &middot; ' + esc(String(rating)) : ''}</div>
         `;
@@ -38,16 +40,18 @@ const CariUI = (function() {
         return el;
     }
 
-    function backdropCard(item, onclick) {
+    function backdropCard(item, onclick, isLocked) {
         const img = item.backdrop || item.backdrop_url || item.image_url || placeholderBackdrop;
         const title = item.title || item.name || '';
         const meta = item.year || '';
+        const locked = isLocked === true;
 
         const el = document.createElement('div');
-        el.className = 'card-backdrop';
+        el.className = 'card-backdrop' + (locked ? ' card-locked' : '');
         el.innerHTML = `
             <img class="card-backdrop-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderBackdrop}'">
+            ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
             <div class="card-backdrop-title">${esc(title)}</div>
             <div class="card-backdrop-meta">${esc(meta)}</div>
         `;
@@ -55,15 +59,17 @@ const CariUI = (function() {
         return el;
     }
 
-    function channelCard(channel, onclick) {
+    function channelCard(channel, onclick, isLocked) {
         const logo = channel.logo_url || channel.logo || placeholderImg;
         const name = channel.name || channel.title || '';
+        const locked = isLocked === true;
 
         const el = document.createElement('div');
-        el.className = 'card-channel';
+        el.className = 'card-channel' + (locked ? ' card-locked' : '');
         el.innerHTML = `
             <img class="card-channel-logo" src="${esc(logo)}" alt="${esc(name)}" loading="lazy"
                  onerror="this.src='${placeholderImg}'">
+            ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
             <div class="card-channel-name">${esc(name)}</div>
             <div class="card-channel-now"></div>
         `;
@@ -87,7 +93,7 @@ const CariUI = (function() {
 
     // ---- Sections ----
 
-    function renderHero(items, onPlay, onInfo) {
+    function renderHero(items, onPlay, onInfo, isLockedFn) {
         if (!items || !items.length) return '';
 
         const container = document.createElement('div');
@@ -99,6 +105,7 @@ const CariUI = (function() {
             const desc = item.description || item.synopsis || item.overview || '';
             const year = item.year || item.release_year || '';
             const rating = item.rating || item.vote_average || '';
+            const locked = typeof isLockedFn === 'function' ? isLockedFn(item) : false;
 
             const slide = document.createElement('div');
             slide.className = 'hero-slide' + (i === 0 ? ' active' : '');
@@ -108,6 +115,7 @@ const CariUI = (function() {
                 <div class="hero-gradient"></div>
                 <div class="hero-content">
                     ${item.content_type ? '<div class="hero-badge">' + esc(item.content_type) + '</div>' : ''}
+                    ${locked ? '<div class="hero-lock-badge"><i class="lucide-lock"></i> Premium</div>' : ''}
                     <h2 class="hero-title">${esc(title)}</h2>
                     <div class="hero-meta">
                         ${year ? '<span>' + esc(year) + '</span>' : ''}
@@ -116,13 +124,21 @@ const CariUI = (function() {
                     </div>
                     ${desc ? '<p class="hero-description">' + esc(desc) + '</p>' : ''}
                     <div class="hero-actions">
-                        <button class="btn btn-play" data-action="play"><i class="lucide-play"></i> Play</button>
+                        ${locked
+                            ? '<button class="btn btn-subscribe" data-action="subscribe"><i class="lucide-credit-card"></i> Subscribe</button>'
+                            : '<button class="btn btn-play" data-action="play"><i class="lucide-play"></i> Play</button>'}
                         <button class="btn btn-info" data-action="info"><i class="lucide-info"></i> More Info</button>
                     </div>
                 </div>
             `;
 
-            slide.querySelector('[data-action="play"]').addEventListener('click', () => onPlay && onPlay(item));
+            if (locked) {
+                slide.querySelector('[data-action="subscribe"]').addEventListener('click', () => {
+                    if (typeof window.CariRouter !== 'undefined') window.CariRouter.navigate('/subscribe');
+                });
+            } else {
+                slide.querySelector('[data-action="play"]').addEventListener('click', () => onPlay && onPlay(item));
+            }
             slide.querySelector('[data-action="info"]').addEventListener('click', () => onInfo && onInfo(item));
 
             container.appendChild(slide);
@@ -226,7 +242,7 @@ const CariUI = (function() {
 
     // ---- Detail Modal ----
 
-    function showDetail(item, onPlay) {
+    function showDetail(item, onPlay, isLocked) {
         const type = item.content_type || '';
 
         // Series: navigate to dedicated detail page instead of modal
@@ -237,6 +253,7 @@ const CariUI = (function() {
 
         const overlay = document.getElementById('detailOverlay');
         const modal = document.getElementById('detailModal');
+        const locked = isLocked === true;
 
         const backdrop = item.backdrop || item.backdrop_url || '';
         const title = item.title || item.name || '';
@@ -250,6 +267,7 @@ const CariUI = (function() {
             <button class="detail-close"><i class="lucide-x"></i></button>
             ${backdrop ? '<img class="detail-backdrop" src="' + esc(backdrop) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
             <div class="detail-body">
+                ${locked ? '<div class="detail-lock-badge"><i class="lucide-lock"></i> Premium Content</div>' : ''}
                 <h2 class="detail-title">${esc(title)}</h2>
                 <div class="detail-meta">
                     ${year ? '<span>' + esc(year) + '</span>' : ''}
@@ -259,7 +277,9 @@ const CariUI = (function() {
                 </div>
                 ${desc ? '<p class="detail-desc">' + esc(desc) + '</p>' : ''}
                 <div class="detail-actions">
-                    <button class="btn btn-play" id="detailPlay"><i class="lucide-play"></i> Play</button>
+                    ${locked
+                        ? '<button class="btn btn-subscribe" id="detailSubscribe"><i class="lucide-credit-card"></i> Subscribe to Watch</button>'
+                        : '<button class="btn btn-play" id="detailPlay"><i class="lucide-play"></i> Play</button>'}
                     <button class="btn btn-secondary" id="detailTrailer" style="display:none"><i class="lucide-clapperboard"></i> Trailer</button>
                     <button class="btn btn-icon" id="detailWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
                 </div>
@@ -268,10 +288,19 @@ const CariUI = (function() {
         `;
 
         modal.querySelector('.detail-close').addEventListener('click', hideDetail);
-        modal.querySelector('#detailPlay').addEventListener('click', () => {
-            hideDetail();
-            if (onPlay) onPlay(item);
-        });
+
+        if (locked) {
+            modal.querySelector('#detailSubscribe').addEventListener('click', () => {
+                hideDetail();
+                if (typeof window.CariRouter !== 'undefined') window.CariRouter.navigate('/subscribe');
+            });
+        } else {
+            modal.querySelector('#detailPlay').addEventListener('click', () => {
+                hideDetail();
+                if (onPlay) onPlay(item);
+            });
+        }
+
         modal.querySelector('#detailWatchlist').addEventListener('click', async () => {
             const ctype = item.content_type || (item.stream_url ? 'channel' : 'movie');
             try {

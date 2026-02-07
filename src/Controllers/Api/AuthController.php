@@ -278,6 +278,32 @@ class AuthController extends BaseApiController
     }
 
     // =========================================================================
+    // ENTITLEMENTS
+    // =========================================================================
+
+    /**
+     * GET /api/v1/auth/entitlements
+     * Returns the subscriber's entitled content based on their active packages
+     */
+    public function entitlements(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $service = new \CariIPTV\Services\ContentApiService();
+        $data = $service->getSubscriberEntitlements($subscriberId);
+
+        // Also get subscriber's adult_enabled status
+        $profile = $this->auth->getProfile($subscriberId);
+        $data['adult_enabled'] = (bool) ($profile['adult_enabled'] ?? false);
+
+        $this->json(['data' => $data], 200);
+    }
+
+    // =========================================================================
     // HELPERS
     // =========================================================================
 

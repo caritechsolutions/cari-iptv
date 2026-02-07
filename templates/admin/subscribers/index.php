@@ -458,6 +458,13 @@ asort($countries);
                 </div>
             </div>
 
+            <div class="checkbox-row" style="margin-top: 0.75rem;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="subAdultEnabled"> Enable Adult Content
+                </label>
+            </div>
+            <div class="help-text">When enabled, subscriber can view adult content after entering their parental PIN</div>
+
             <div class="section-divider">Location</div>
 
             <div class="form-grid">
@@ -487,18 +494,32 @@ asort($countries);
                 </div>
             </div>
 
-            <div class="section-divider">Additional</div>
+            <div class="section-divider">Packages & Groups</div>
 
             <div class="form-grid">
                 <div>
+                    <label class="form-label">Packages</label>
+                    <select id="subPackages" class="form-input" multiple style="min-height: 100px;">
+                        <?php foreach ($packages as $p): ?>
+                            <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['name']) ?><?= $p['is_free'] ? ' (Free)' : ' - ' . htmlspecialchars($p['currency']) . ' ' . number_format($p['price'], 2) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="help-text">Subscription packages for this subscriber</div>
+                </div>
+                <div>
                     <label class="form-label">Groups</label>
-                    <select id="subGroups" class="form-input" multiple style="min-height: 80px;">
+                    <select id="subGroups" class="form-input" multiple style="min-height: 100px;">
                         <?php foreach ($groups as $g): ?>
                             <option value="<?= $g['id'] ?>"><?= htmlspecialchars($g['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="help-text">Hold Ctrl/Cmd to select multiple</div>
+                    <div class="help-text">Admin groupings (not subscription related)</div>
                 </div>
+            </div>
+
+            <div class="section-divider">Additional</div>
+
+            <div class="form-grid">
                 <div>
                     <label class="form-label">External ID</label>
                     <input type="text" id="subExternalId" class="form-input" placeholder="External system reference">
@@ -597,12 +618,17 @@ function openSubscriberModal(id = null) {
     document.getElementById('subMaxConnections').value = '1';
     document.getElementById('subBirthday').value = '';
     document.getElementById('subParentalPin').value = '0000';
+    document.getElementById('subAdultEnabled').checked = false;
     document.getElementById('subCountry').value = '';
     document.getElementById('subCity').value = '';
     document.getElementById('subAddress').value = '';
     document.getElementById('subZipCode').value = '';
     document.getElementById('subExternalId').value = '';
     document.getElementById('subNotes').value = '';
+
+    // Reset packages multi-select
+    const packageSelect = document.getElementById('subPackages');
+    Array.from(packageSelect.options).forEach(o => o.selected = false);
 
     // Reset groups multi-select
     const groupSelect = document.getElementById('subGroups');
@@ -644,12 +670,20 @@ function editSubscriber(id) {
             document.getElementById('subMaxConnections').value = s.max_connections || 1;
             document.getElementById('subBirthday').value = s.birthday || '';
             document.getElementById('subParentalPin').value = s.parental_pin || '0000';
+            document.getElementById('subAdultEnabled').checked = s.adult_enabled == 1;
             document.getElementById('subCountry').value = s.country || '';
             document.getElementById('subCity').value = s.city || '';
             document.getElementById('subAddress').value = s.address || '';
             document.getElementById('subZipCode').value = s.zip_code || '';
             document.getElementById('subExternalId').value = s.external_id || '';
             document.getElementById('subNotes').value = s.notes || '';
+
+            // Set packages
+            const packageSelect = document.getElementById('subPackages');
+            const packageIds = (s.package_ids || []).map(String);
+            Array.from(packageSelect.options).forEach(o => {
+                o.selected = packageIds.includes(o.value);
+            });
 
             // Set groups
             const groupSelect = document.getElementById('subGroups');
@@ -697,6 +731,13 @@ function saveSubscriber() {
     if (document.getElementById('subDisabled').checked) formData.append('is_disabled', '1');
     if (document.getElementById('subEmailVerified').checked) formData.append('email_verified', '1');
     if (document.getElementById('subPhoneVerified').checked) formData.append('phone_verified', '1');
+    if (document.getElementById('subAdultEnabled').checked) formData.append('adult_enabled', '1');
+
+    // Packages (multi-select)
+    const packageSelect = document.getElementById('subPackages');
+    Array.from(packageSelect.selectedOptions).forEach(o => {
+        formData.append('packages[]', o.value);
+    });
 
     // Groups (multi-select)
     const groupSelect = document.getElementById('subGroups');

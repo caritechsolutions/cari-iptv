@@ -101,6 +101,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/auth/continue-watching', [AuthController::class, 'continueWatching'], ['api_auth']);
     $router->post('/auth/watchlist/toggle', [AuthController::class, 'toggleWatchlist'], ['api_auth']);
     $router->get('/auth/watchlist', [AuthController::class, 'getWatchlist'], ['api_auth']);
+    $router->get('/auth/entitlements', [AuthController::class, 'entitlements'], ['api_auth']);
 
     // ----- Content (protected — requires Bearer token) -----
 
