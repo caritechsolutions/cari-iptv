@@ -1275,11 +1275,10 @@ const CariApp = (function() {
                 try {
                     const res = await CariAPI.subscribeTo(pkg.id);
                     if (res?.data?.success) {
-                        // Refresh entitlements
+                        // Refresh entitlements and re-render current page
                         await loadEntitlements();
                         closeModal();
-                        // Show success and refresh page
-                        CariRouter.navigate('/subscribe');
+                        CariRouter.refresh();
                     }
                 } catch (err) {
                     errorEl.textContent = err.message || 'Failed to subscribe. Please try again.';
