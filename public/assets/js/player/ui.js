@@ -134,7 +134,7 @@ const CariUI = (function() {
 
             if (locked) {
                 slide.querySelector('[data-action="subscribe"]').addEventListener('click', () => {
-                    if (typeof window.CariRouter !== 'undefined') window.CariRouter.navigate('/subscribe');
+                    CariRouter.navigate('/subscribe');
                 });
             } else {
                 slide.querySelector('[data-action="play"]').addEventListener('click', () => onPlay && onPlay(item));
@@ -292,7 +292,7 @@ const CariUI = (function() {
         if (locked) {
             modal.querySelector('#detailSubscribe').addEventListener('click', () => {
                 hideDetail();
-                if (typeof window.CariRouter !== 'undefined') window.CariRouter.navigate('/subscribe');
+                CariRouter.navigate('/subscribe');
             });
         } else {
             modal.querySelector('#detailPlay').addEventListener('click', () => {
