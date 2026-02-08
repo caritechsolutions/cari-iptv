@@ -479,10 +479,9 @@ class ContentApiService
             [$id]
         ), []);
 
-        // Cast
+        // Cast (SELECT * to handle schema variations - profile_image added in migration 020)
         $movie['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT name, character_name, profile_url, profile_image, role, tmdb_person_id, sort_order
-             FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
+            "SELECT * FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
             [$id]
         ), []);
 
@@ -615,10 +614,9 @@ class ContentApiService
             [$id]
         ), []);
 
-        // Cast
+        // Cast (SELECT * to handle schema variations - profile_image added in migration 020)
         $show['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT name, character_name, profile_url, profile_image, role, tmdb_person_id, sort_order
-             FROM series_cast WHERE series_id = ? ORDER BY sort_order ASC LIMIT 20",
+            "SELECT * FROM series_cast WHERE series_id = ? ORDER BY sort_order ASC LIMIT 20",
             [$id]
         ), []);
 
@@ -1082,17 +1080,15 @@ class ContentApiService
      */
     public function getPerson(int $tmdbPersonId): ?array
     {
-        // Get person info from either cast table
+        // Get person info from either cast table (SELECT * for schema compatibility)
         $person = $this->safeQuery(fn() => $this->db->fetch(
-            "SELECT name, profile_url, profile_image, tmdb_person_id
-             FROM movie_cast WHERE tmdb_person_id = ? LIMIT 1",
+            "SELECT * FROM movie_cast WHERE tmdb_person_id = ? LIMIT 1",
             [$tmdbPersonId]
         ));
 
         if (!$person) {
             $person = $this->safeQuery(fn() => $this->db->fetch(
-                "SELECT name, profile_url, profile_image, tmdb_person_id
-                 FROM series_cast WHERE tmdb_person_id = ? LIMIT 1",
+                "SELECT * FROM series_cast WHERE tmdb_person_id = ? LIMIT 1",
                 [$tmdbPersonId]
             ));
         }
@@ -1125,9 +1121,9 @@ class ContentApiService
 
         return [
             'name' => $person['name'],
-            'profile_url' => $person['profile_url'],
-            'profile_image' => $person['profile_image'],
-            'tmdb_person_id' => (int) $person['tmdb_person_id'],
+            'profile_url' => $person['profile_url'] ?? null,
+            'profile_image' => $person['profile_image'] ?? null,
+            'tmdb_person_id' => (int) ($person['tmdb_person_id'] ?? 0),
             'movies' => $movies,
             'series' => $series,
         ];

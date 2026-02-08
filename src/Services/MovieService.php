@@ -571,21 +571,27 @@ class MovieService
      */
     public function processCastImages(int $movieId): int
     {
-        $castMembers = $this->db->fetchAll(
-            "SELECT id, profile_url, profile_image, tmdb_person_id
-             FROM movie_cast WHERE movie_id = ? AND profile_url IS NOT NULL",
-            [$movieId]
-        );
+        try {
+            $castMembers = $this->db->fetchAll(
+                "SELECT * FROM movie_cast WHERE movie_id = ? AND profile_url IS NOT NULL",
+                [$movieId]
+            );
+        } catch (\Throwable $e) {
+            return 0;
+        }
+
+        // Check if profile_image column exists
+        $hasProfileImage = array_key_exists('profile_image', $castMembers[0] ?? []);
 
         $processed = 0;
         foreach ($castMembers as $member) {
             // Skip if already has local image
-            if (!empty($member['profile_image'])) {
+            if ($hasProfileImage && !empty($member['profile_image'])) {
                 $processed++;
                 continue;
             }
 
-            $url = $member['profile_url'];
+            $url = $member['profile_url'] ?? '';
             if (empty($url) || !str_starts_with($url, 'http')) {
                 continue;
             }
@@ -596,10 +602,12 @@ class MovieService
             // Check if we already processed this person for another movie
             $existingPath = '/uploads/cast/' . $entityId . '/profile_medium.webp';
             if (file_exists(BASE_PATH . '/public' . $existingPath)) {
-                $this->db->execute(
-                    "UPDATE movie_cast SET profile_image = ? WHERE id = ?",
-                    [$existingPath, $member['id']]
-                );
+                if ($hasProfileImage) {
+                    $this->db->execute(
+                        "UPDATE movie_cast SET profile_image = ? WHERE id = ?",
+                        [$existingPath, $member['id']]
+                    );
+                }
                 $processed++;
                 continue;
             }
@@ -608,10 +616,12 @@ class MovieService
             if ($result['success']) {
                 $imagePath = $result['variants']['medium'] ?? $result['variants']['thumb'] ?? null;
                 if ($imagePath) {
-                    $this->db->execute(
-                        "UPDATE movie_cast SET profile_image = ? WHERE id = ?",
-                        [$imagePath, $member['id']]
-                    );
+                    if ($hasProfileImage) {
+                        $this->db->execute(
+                            "UPDATE movie_cast SET profile_image = ? WHERE id = ?",
+                            [$imagePath, $member['id']]
+                        );
+                    }
                     $processed++;
                 }
             }

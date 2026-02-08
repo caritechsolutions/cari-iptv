@@ -841,20 +841,25 @@ class SeriesService
      */
     public function processCastImages(int $seriesId): int
     {
-        $castMembers = $this->db->fetchAll(
-            "SELECT id, profile_url, profile_image, tmdb_person_id
-             FROM series_cast WHERE series_id = ? AND profile_url IS NOT NULL",
-            [$seriesId]
-        );
+        try {
+            $castMembers = $this->db->fetchAll(
+                "SELECT * FROM series_cast WHERE series_id = ? AND profile_url IS NOT NULL",
+                [$seriesId]
+            );
+        } catch (\Throwable $e) {
+            return 0;
+        }
+
+        $hasProfileImage = array_key_exists('profile_image', $castMembers[0] ?? []);
 
         $processed = 0;
         foreach ($castMembers as $member) {
-            if (!empty($member['profile_image'])) {
+            if ($hasProfileImage && !empty($member['profile_image'])) {
                 $processed++;
                 continue;
             }
 
-            $url = $member['profile_url'];
+            $url = $member['profile_url'] ?? '';
             if (empty($url) || !str_starts_with($url, 'http')) {
                 continue;
             }
@@ -864,10 +869,12 @@ class SeriesService
             // Check if already processed (shared across movies/series)
             $existingPath = '/uploads/cast/' . $entityId . '/profile_medium.webp';
             if (file_exists(BASE_PATH . '/public' . $existingPath)) {
-                $this->db->execute(
-                    "UPDATE series_cast SET profile_image = ? WHERE id = ?",
-                    [$existingPath, $member['id']]
-                );
+                if ($hasProfileImage) {
+                    $this->db->execute(
+                        "UPDATE series_cast SET profile_image = ? WHERE id = ?",
+                        [$existingPath, $member['id']]
+                    );
+                }
                 $processed++;
                 continue;
             }
@@ -876,10 +883,12 @@ class SeriesService
             if ($result['success']) {
                 $imagePath = $result['variants']['medium'] ?? $result['variants']['thumb'] ?? null;
                 if ($imagePath) {
-                    $this->db->execute(
-                        "UPDATE series_cast SET profile_image = ? WHERE id = ?",
-                        [$imagePath, $member['id']]
-                    );
+                    if ($hasProfileImage) {
+                        $this->db->execute(
+                            "UPDATE series_cast SET profile_image = ? WHERE id = ?",
+                            [$imagePath, $member['id']]
+                        );
+                    }
                     $processed++;
                 }
             }
