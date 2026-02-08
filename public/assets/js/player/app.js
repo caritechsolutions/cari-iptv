@@ -1275,7 +1275,8 @@ const CariApp = (function() {
                 try {
                     const res = await CariAPI.subscribeTo(pkg.id);
                     if (res?.data?.success) {
-                        // Refresh entitlements and re-render current page
+                        // Bust content caches so pages reload fresh data
+                        CariAPI.bustAllCaches();
                         await loadEntitlements();
                         closeModal();
                         CariRouter.refresh();
@@ -1361,6 +1362,7 @@ const CariApp = (function() {
                     btn.textContent = 'Cancelling...';
                     try {
                         await CariAPI.unsubscribeFrom(parseInt(btn.dataset.pkgId));
+                        CariAPI.bustAllCaches();
                         await loadEntitlements();
                         // Refresh the profile page
                         pageProfile();
