@@ -235,6 +235,7 @@ class ContentApiService
 
         return array_merge($entitlements, [
             'packages' => $allPackages,
+            'has_subscription' => !empty($activeIds),
         ]);
     }
 

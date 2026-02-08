@@ -45,23 +45,28 @@ const CariApp = (function() {
 
     /**
      * Check if content is locked (user doesn't have access)
-     * Free content (not in any package) is accessible to all.
-     * Content in packages is locked unless user has entitlement.
+     * - No active subscription: ALL content is locked
+     * - Has subscription: only entitled content is unlocked
      */
     function isContentLocked(item) {
         if (!entitlements) return false;
         if (!item || !item.id) return false;
 
+        // If subscriber has no active subscriptions, all content is locked
+        if (!entitlements.has_subscription) {
+            return true;
+        }
+
         const type = item.content_type || 'movie';
         const id = item.id;
 
-        // If content is marked as restricted (in a package), check entitlements
+        // If content is marked as restricted (in a content group), check entitlements
         if (item.is_restricted) {
             const entitled = entitlements[type + 's'] || entitlements[type] || [];
             return !entitled.includes(id);
         }
 
-        // Content not in any package = free, not locked
+        // Content not in any content group = accessible to any subscriber with a package
         return false;
     }
 
@@ -1507,6 +1512,24 @@ const CariApp = (function() {
 
             if (!item) {
                 document.getElementById('playerDetails').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Not Found', 'Content not found.');
+                return;
+            }
+
+            // Block playback if content is locked — redirect to subscribe
+            if (isContentLocked(item)) {
+                el.innerHTML = `
+                    <div class="locked-player-page">
+                        <div class="locked-player-message">
+                            <i class="lucide-lock"></i>
+                            <h2>Subscription Required</h2>
+                            <p>You need an active subscription to watch this content.</p>
+                            <button class="btn btn-subscribe" id="lockedSubscribeBtn"><i class="lucide-credit-card"></i> View Plans</button>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('lockedSubscribeBtn').addEventListener('click', () => {
+                    CariRouter.navigate('/subscribe');
+                });
                 return;
             }
 
