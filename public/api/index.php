@@ -102,6 +102,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/auth/watchlist/toggle', [AuthController::class, 'toggleWatchlist'], ['api_auth']);
     $router->get('/auth/watchlist', [AuthController::class, 'getWatchlist'], ['api_auth']);
     $router->get('/auth/entitlements', [AuthController::class, 'entitlements'], ['api_auth']);
+    $router->post('/auth/subscribe', [AuthController::class, 'subscribe'], ['api_auth']);
+    $router->post('/auth/unsubscribe', [AuthController::class, 'unsubscribe'], ['api_auth']);
+    $router->post('/auth/update-profile', [AuthController::class, 'updateProfile'], ['api_auth']);
 
     // ----- Content (protected — requires Bearer token) -----
 

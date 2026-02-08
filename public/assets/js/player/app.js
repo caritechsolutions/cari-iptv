@@ -1144,10 +1144,26 @@ const CariApp = (function() {
             grid.innerHTML = '';
             packages.forEach(pkg => {
                 const isSelected = selectedPkgId && String(pkg.id) === selectedPkgId;
+                const isSubscribed = pkg.is_subscribed;
+                const isFree = pkg.is_free || parseFloat(pkg.price || 0) === 0;
+                const hasTrial = !isFree && parseInt(pkg.trial_days || 0) > 0;
                 const card = document.createElement('div');
-                card.className = 'package-card' + (pkg.is_featured ? ' featured' : '') + (isSelected ? ' selected' : '');
+                card.className = 'package-card' + (pkg.is_featured ? ' featured' : '') + (isSelected ? ' selected' : '') + (isSubscribed ? ' subscribed' : '');
+
+                let btnHtml;
+                if (isSubscribed) {
+                    btnHtml = '<button class="btn btn-subscribed package-btn"><i class="lucide-check-circle"></i> Subscribed</button>';
+                } else if (isFree) {
+                    btnHtml = '<button class="btn btn-subscribe package-btn" data-pkg-id="' + pkg.id + '"><i class="lucide-zap"></i> Get Free</button>';
+                } else if (hasTrial) {
+                    btnHtml = '<button class="btn btn-subscribe package-btn" data-pkg-id="' + pkg.id + '"><i class="lucide-play"></i> Start ' + pkg.trial_days + '-Day Trial</button>';
+                } else {
+                    btnHtml = '<button class="btn btn-subscribe package-btn" data-pkg-id="' + pkg.id + '">Select Plan</button>';
+                }
+
                 card.innerHTML = `
                     ${pkg.is_featured ? '<div class="package-badge">Most Popular</div>' : ''}
+                    ${isSubscribed ? '<div class="package-badge subscribed-badge">Active</div>' : ''}
                     <h3 class="package-name">${CariUI.esc(pkg.name)}</h3>
                     <div class="package-price">
                         <span class="price-amount">${CariUI.esc(pkg.price_display || '$' + (pkg.price || '0'))}</span>
@@ -1155,11 +1171,14 @@ const CariApp = (function() {
                     </div>
                     ${pkg.description ? '<p class="package-desc">' + CariUI.esc(pkg.description) + '</p>' : ''}
                     ${pkg.features && pkg.features.length ? '<ul class="package-features">' + pkg.features.map(f => '<li><i class="lucide-check"></i> ' + CariUI.esc(f) + '</li>').join('') + '</ul>' : ''}
-                    <button class="btn btn-subscribe package-btn" data-pkg-id="${pkg.id}">Select Plan</button>
+                    ${btnHtml}
                 `;
-                card.querySelector('.package-btn').addEventListener('click', () => {
-                    showPaymentModal(pkg);
-                });
+
+                if (!isSubscribed) {
+                    card.querySelector('.package-btn').addEventListener('click', () => {
+                        showPaymentModal(pkg);
+                    });
+                }
                 grid.appendChild(card);
             });
 
@@ -1183,14 +1202,27 @@ const CariApp = (function() {
             document.body.appendChild(overlay);
         }
 
-        overlay.innerHTML = `
-            <div class="payment-modal">
-                <button class="modal-close" id="closePayment"><i class="lucide-x"></i></button>
-                <h2 class="payment-modal-title">Complete Your Subscription</h2>
-                <div class="payment-summary">
-                    <div class="payment-plan">${CariUI.esc(pkg.name)}</div>
-                    <div class="payment-amount">${CariUI.esc(pkg.price_display || '$' + (pkg.price || '0'))} / ${CariUI.esc(pkg.billing_period || 'month')}</div>
+        const isFree = pkg.is_free || parseFloat(pkg.price || 0) === 0;
+        const hasTrial = !isFree && parseInt(pkg.trial_days || 0) > 0;
+        const canSelfSubscribe = isFree || hasTrial;
+
+        let actionContent = '';
+        if (isFree) {
+            actionContent = `
+                <div class="payment-action">
+                    <p class="payment-info"><i class="lucide-check-circle"></i> This is a free plan. No payment required.</p>
+                    <button class="btn btn-play" id="confirmSubscribe"><i class="lucide-check"></i> Activate Free Plan</button>
                 </div>
+            `;
+        } else if (hasTrial) {
+            actionContent = `
+                <div class="payment-action">
+                    <p class="payment-info"><i class="lucide-clock"></i> Start your ${pkg.trial_days}-day free trial. No payment required now.</p>
+                    <button class="btn btn-play" id="confirmSubscribe"><i class="lucide-play"></i> Start Free Trial</button>
+                </div>
+            `;
+        } else {
+            actionContent = `
                 <div class="payment-methods">
                     <p class="payment-methods-label">Payment methods coming soon</p>
                     <div class="payment-placeholder">
@@ -1199,17 +1231,60 @@ const CariApp = (function() {
                         <p class="payment-contact">Please contact support to subscribe manually.</p>
                     </div>
                 </div>
+            `;
+        }
+
+        overlay.innerHTML = `
+            <div class="payment-modal">
+                <button class="modal-close" id="closePayment"><i class="lucide-x"></i></button>
+                <h2 class="payment-modal-title">${canSelfSubscribe ? 'Confirm Subscription' : 'Complete Your Subscription'}</h2>
+                <div class="payment-summary">
+                    <div class="payment-plan">${CariUI.esc(pkg.name)}</div>
+                    <div class="payment-amount">${CariUI.esc(pkg.price_display || '$' + (pkg.price || '0'))} / ${CariUI.esc(pkg.billing_period || 'month')}</div>
+                </div>
+                ${actionContent}
+                <div id="subscribeError" class="payment-error" style="display:none"></div>
                 <button class="btn btn-secondary" id="cancelPayment">Cancel</button>
             </div>
         `;
 
         overlay.classList.add('visible');
 
-        document.getElementById('closePayment').addEventListener('click', () => overlay.classList.remove('visible'));
-        document.getElementById('cancelPayment').addEventListener('click', () => overlay.classList.remove('visible'));
+        const closeModal = () => overlay.classList.remove('visible');
+        document.getElementById('closePayment').addEventListener('click', closeModal);
+        document.getElementById('cancelPayment').addEventListener('click', closeModal);
         overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.classList.remove('visible');
+            if (e.target === overlay) closeModal();
         });
+
+        // Handle subscribe action for free/trial packages
+        const confirmBtn = document.getElementById('confirmSubscribe');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', async () => {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="lucide-loader"></i> Processing...';
+                const errorEl = document.getElementById('subscribeError');
+                errorEl.style.display = 'none';
+
+                try {
+                    const res = await CariAPI.subscribeTo(pkg.id);
+                    if (res?.data?.success) {
+                        // Refresh entitlements
+                        await loadEntitlements();
+                        closeModal();
+                        // Show success and refresh page
+                        CariRouter.navigate('/subscribe');
+                    }
+                } catch (err) {
+                    errorEl.textContent = err.message || 'Failed to subscribe. Please try again.';
+                    errorEl.style.display = 'block';
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerHTML = isFree
+                        ? '<i class="lucide-check"></i> Activate Free Plan'
+                        : '<i class="lucide-play"></i> Start Free Trial';
+                }
+            });
+        }
     }
 
     // ---- PAGE: Profile ----
@@ -1266,10 +1341,30 @@ const CariApp = (function() {
         if (userPackages.length) {
             subsContainer.innerHTML = userPackages.map(p => `
                 <div class="subscription-item">
-                    <div class="subscription-name">${CariUI.esc(p.name)}</div>
-                    <div class="subscription-status">Active</div>
+                    <div class="subscription-info">
+                        <div class="subscription-name">${CariUI.esc(p.name)}</div>
+                        <div class="subscription-status">Active</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm unsub-btn" data-pkg-id="${p.id}">Cancel</button>
                 </div>
             `).join('');
+
+            subsContainer.querySelectorAll('.unsub-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Are you sure you want to cancel this subscription?')) return;
+                    btn.disabled = true;
+                    btn.textContent = 'Cancelling...';
+                    try {
+                        await CariAPI.unsubscribeFrom(parseInt(btn.dataset.pkgId));
+                        await loadEntitlements();
+                        // Refresh the profile page
+                        pageProfile();
+                    } catch (err) {
+                        btn.disabled = false;
+                        btn.textContent = 'Cancel';
+                    }
+                });
+            });
         } else {
             subsContainer.innerHTML = `
                 <p class="profile-empty">No active subscriptions.</p>
@@ -1285,11 +1380,18 @@ const CariApp = (function() {
             const enabled = e.target.checked;
             document.getElementById('pinSection').style.display = enabled ? 'block' : 'none';
 
+            try {
+                await CariAPI.updateProfile({ adult_enabled: enabled });
+                if (entitlements) entitlements.adult_enabled = enabled;
+            } catch (err) {
+                // Revert on failure
+                e.target.checked = !enabled;
+                document.getElementById('pinSection').style.display = !enabled ? 'block' : 'none';
+            }
+
             if (enabled) {
-                // Show PIN setup prompt
                 showPinModal('set');
             }
-            // TODO: Save adult_enabled preference to server
         });
 
         document.getElementById('setPinBtn')?.addEventListener('click', () => {
@@ -1347,11 +1449,19 @@ const CariApp = (function() {
         });
 
         document.getElementById('closePin').addEventListener('click', () => overlay.classList.remove('visible'));
-        document.getElementById('confirmPin').addEventListener('click', () => {
+        document.getElementById('confirmPin').addEventListener('click', async () => {
             const pin = Array.from(inputs).map(i => i.value).join('');
             if (pin.length === 4) {
-                // TODO: Save PIN to server
-                overlay.classList.remove('visible');
+                const btn = document.getElementById('confirmPin');
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                try {
+                    await CariAPI.updateProfile({ parental_pin: pin });
+                    overlay.classList.remove('visible');
+                } catch (err) {
+                    btn.disabled = false;
+                    btn.textContent = isSet ? 'Set PIN' : 'Confirm';
+                }
             }
         });
     }

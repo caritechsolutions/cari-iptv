@@ -191,6 +191,9 @@ const CariAPI = (function() {
     function toggleWatchlist(contentType, contentId) { return post('/auth/watchlist/toggle', { content_type: contentType, content_id: contentId }); }
     function getWatchlist() { return get('/auth/watchlist'); }
     function getEntitlements() { return get('/auth/entitlements'); }
+    function subscribeTo(packageId) { return post('/auth/subscribe', { package_id: packageId }); }
+    function unsubscribeFrom(packageId) { return post('/auth/unsubscribe', { package_id: packageId }); }
+    function updateProfile(data) { return post('/auth/update-profile', data); }
 
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
@@ -198,6 +201,7 @@ const CariAPI = (function() {
         getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
         getCategories, search, getEpg,
         updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
+        subscribeTo, unsubscribeFrom, updateProfile,
         bustAllCaches, clearCacheBust,
     };
 })();

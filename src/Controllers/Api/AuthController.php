@@ -278,6 +278,106 @@ class AuthController extends BaseApiController
     }
 
     // =========================================================================
+    // SUBSCRIPTIONS
+    // =========================================================================
+
+    /**
+     * POST /api/v1/auth/subscribe
+     * Body: { package_id }
+     * Subscribe the authenticated user to a package (free or trial)
+     */
+    public function subscribe(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $packageId = (int) ($input['package_id'] ?? 0);
+
+        if ($packageId <= 0) {
+            $this->error('Package ID is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->subscribe($subscriberId, $packageId);
+
+        if (!$result['success']) {
+            $status = !empty($result['requires_payment']) ? 402 : 422;
+            $code = !empty($result['requires_payment']) ? 'PAYMENT_REQUIRED' : 'SUBSCRIPTION_ERROR';
+            $this->error($result['error'], $status, $code);
+            return;
+        }
+
+        $this->json(['data' => $result], 200);
+    }
+
+    /**
+     * POST /api/v1/auth/unsubscribe
+     * Body: { package_id }
+     * Cancel the authenticated user's subscription to a package
+     */
+    public function unsubscribe(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $packageId = (int) ($input['package_id'] ?? 0);
+
+        if ($packageId <= 0) {
+            $this->error('Package ID is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->unsubscribe($subscriberId, $packageId);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 422, 'SUBSCRIPTION_ERROR');
+            return;
+        }
+
+        $this->json(['data' => $result], 200);
+    }
+
+    /**
+     * POST /api/v1/auth/update-profile
+     * Body: { adult_enabled?, parental_pin? }
+     */
+    public function updateProfile(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $data = [];
+
+        if (array_key_exists('adult_enabled', $input)) {
+            $data['adult_enabled'] = (bool) $input['adult_enabled'];
+        }
+        if (array_key_exists('parental_pin', $input)) {
+            $data['parental_pin'] = $input['parental_pin'];
+        }
+
+        $result = $this->auth->updateProfile($subscriberId, $data);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 422, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $this->json(['data' => $result], 200);
+    }
+
+    // =========================================================================
     // ENTITLEMENTS
     // =========================================================================
 
