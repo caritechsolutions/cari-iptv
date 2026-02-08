@@ -27,9 +27,10 @@ const CariUI = (function() {
         wrap.className = 'content-row-wrap';
 
         const leftBtn = document.createElement('button');
-        leftBtn.className = 'scroll-arrow scroll-arrow-left hidden';
+        leftBtn.className = 'scroll-arrow scroll-arrow-left';
         leftBtn.type = 'button';
         leftBtn.innerHTML = '<i class="lucide-chevron-left"></i>';
+        leftBtn.style.display = 'none';
 
         const rightBtn = document.createElement('button');
         rightBtn.className = 'scroll-arrow scroll-arrow-right';
@@ -54,15 +55,35 @@ const CariUI = (function() {
 
         function updateArrows() {
             var maxScroll = row.scrollWidth - row.clientWidth;
-            leftBtn.classList.toggle('hidden', row.scrollLeft <= 0);
-            rightBtn.classList.toggle('hidden', maxScroll <= 0 || row.scrollLeft >= maxScroll - 1);
+            leftBtn.style.display = (row.scrollLeft > 0) ? '' : 'none';
+            rightBtn.style.display = (maxScroll > 0 && row.scrollLeft < maxScroll - 1) ? '' : 'none';
         }
 
         row.addEventListener('scroll', updateArrows);
+
+        // Multiple retries to catch layout settling and lazy-loaded images
+        function scheduleCheck() {
+            setTimeout(updateArrows, 100);
+            setTimeout(updateArrows, 500);
+            setTimeout(updateArrows, 1500);
+        }
+
         if (window.ResizeObserver) {
             new ResizeObserver(updateArrows).observe(row);
         }
-        setTimeout(updateArrows, 150);
+
+        // Check immediately when added to DOM via MutationObserver
+        if (window.MutationObserver) {
+            var mo = new MutationObserver(function() {
+                if (row.isConnected) {
+                    mo.disconnect();
+                    scheduleCheck();
+                }
+            });
+            mo.observe(document.body, { childList: true, subtree: true });
+        }
+
+        scheduleCheck();
 
         return wrap;
     }
