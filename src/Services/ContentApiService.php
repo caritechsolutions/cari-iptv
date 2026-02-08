@@ -60,22 +60,28 @@ class ContentApiService
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Movies version
+        // Movies version (includes cast changes)
         $row = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM movies WHERE status = 'published'"
         ), ['cnt' => 0, 'latest' => null]);
+        $castRow = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM movie_cast"
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['movies'] = [
-            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '') . ':' . ($castRow['cnt'] ?? 0) . ':' . ($castRow['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Series version
+        // Series version (includes cast changes)
         $row = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM series WHERE status = 'published'"
         ), ['cnt' => 0, 'latest' => null]);
+        $castRow = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM series_cast"
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['series'] = [
-            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '') . ':' . ($castRow['cnt'] ?? 0) . ':' . ($castRow['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
             'updated_at' => $row['latest'] ?? null,
         ];

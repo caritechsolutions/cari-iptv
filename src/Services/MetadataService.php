@@ -612,10 +612,16 @@ class MetadataService
         }
 
         $directors = [];
+        $directorsDetail = [];
         if (!empty($data['credits']['crew'])) {
             foreach ($data['credits']['crew'] as $member) {
                 if ($member['job'] === 'Director') {
                     $directors[] = $member['name'];
+                    $directorsDetail[] = [
+                        'name' => $member['name'],
+                        'profile' => $member['profile_path'] ? self::TMDB_IMAGE_BASE . '/w185' . $member['profile_path'] : null,
+                        'tmdb_person_id' => $member['id'] ?? null,
+                    ];
                 }
             }
         }
@@ -637,6 +643,7 @@ class MetadataService
             'vote_average' => $data['vote_average'] ?? 0,
             'cast' => $cast,
             'directors' => $directors,
+            'directors_detail' => $directorsDetail,
             'production_countries' => array_column($data['production_countries'] ?? [], 'name'),
             'spoken_languages' => array_column($data['spoken_languages'] ?? [], 'english_name'),
         ];
@@ -660,6 +667,14 @@ class MetadataService
         }
 
         $creators = array_column($data['created_by'] ?? [], 'name');
+        $creatorsDetail = [];
+        foreach ($data['created_by'] ?? [] as $creator) {
+            $creatorsDetail[] = [
+                'name' => $creator['name'],
+                'profile' => !empty($creator['profile_path']) ? self::TMDB_IMAGE_BASE . '/w185' . $creator['profile_path'] : null,
+                'tmdb_person_id' => $creator['id'] ?? null,
+            ];
+        }
         $genres = array_column($data['genres'] ?? [], 'name');
         $networks = array_column($data['networks'] ?? [], 'name');
 
@@ -682,6 +697,7 @@ class MetadataService
             'vote_average' => $data['vote_average'] ?? 0,
             'cast' => $cast,
             'creators' => $creators,
+            'creators_detail' => $creatorsDetail,
             'networks' => $networks,
             'origin_country' => $data['origin_country'] ?? [],
         ];

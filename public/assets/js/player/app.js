@@ -276,8 +276,8 @@ const CariApp = (function() {
     function startManifestPolling() {
         // Fetch initial manifest to establish baseline versions
         checkForUpdates();
-        // Poll every 60 seconds for changes
-        manifestTimer = setInterval(checkForUpdates, 60000);
+        // Poll every 30 seconds for changes
+        manifestTimer = setInterval(checkForUpdates, 30000);
     }
 
     async function checkForUpdates() {
@@ -349,6 +349,8 @@ const CariApp = (function() {
 
     function setupRoutes() {
         CariRouter.beforeEach((path) => {
+            // Bust API cache on every navigation so content is always fresh
+            CariAPI.bustAllCaches();
             updateActiveNav(path);
             return true;
         });

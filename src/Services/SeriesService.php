@@ -662,9 +662,9 @@ class SeriesService
 
         $showId = $this->createShow($showData);
 
-        // Import cast
+        // Import cast (actors + creators)
+        $cast = [];
         if (!empty($tmdbData['cast'])) {
-            $cast = [];
             foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
                 $cast[] = [
                     'name' => $person['name'],
@@ -674,8 +674,24 @@ class SeriesService
                     'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 ];
             }
+        }
+        // Add creators as cast with role=creator
+        if (!empty($tmdbData['creators_detail'])) {
+            foreach ($tmdbData['creators_detail'] as $creator) {
+                $cast[] = [
+                    'name' => $creator['name'],
+                    'character_name' => 'Creator',
+                    'role' => 'creator',
+                    'profile_url' => $creator['profile'] ?? null,
+                    'tmdb_person_id' => $creator['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($cast)) {
             $this->saveSeriesCast($showId, $cast);
             $this->processCastImages($showId);
+        } else {
+            error_log("[SeriesService] importFromTmdb: No cast data for series ID {$showId} (tmdb:{$tmdbData['id']})");
         }
 
         // Auto-create categories from genres

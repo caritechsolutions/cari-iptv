@@ -722,9 +722,9 @@ class MovieService
         // Create movie
         $movieId = $this->createMovie($movieData);
 
-        // Import cast
+        // Import cast (actors + directors)
+        $cast = [];
         if (!empty($tmdbData['cast'])) {
-            $cast = [];
             foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
                 $cast[] = [
                     'name' => $person['name'],
@@ -734,8 +734,24 @@ class MovieService
                     'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 ];
             }
+        }
+        // Add directors as cast with role=director
+        if (!empty($tmdbData['directors_detail'])) {
+            foreach ($tmdbData['directors_detail'] as $director) {
+                $cast[] = [
+                    'name' => $director['name'],
+                    'character_name' => 'Director',
+                    'role' => 'director',
+                    'profile_url' => $director['profile'] ?? null,
+                    'tmdb_person_id' => $director['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($cast)) {
             $this->saveMovieCast($movieId, $cast);
             $this->processCastImages($movieId);
+        } else {
+            error_log("[MovieService] importFromTmdb: No cast data for movie ID {$movieId} (tmdb:{$tmdbData['id']}). Cast key exists: " . (isset($tmdbData['cast']) ? 'yes(' . count($tmdbData['cast']) . ')' : 'no'));
         }
 
         // Auto-create categories from genres
