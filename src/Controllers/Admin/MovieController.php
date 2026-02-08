@@ -112,7 +112,14 @@ class MovieController
 
             // Process images (download and convert to WebP)
             $this->movieService->processImages($movieId, $data);
-            $this->movieService->processCastImages($movieId);
+
+            // Fetch and save cast from TMDB if tmdb_id is present
+            if (!empty($data['tmdb_id'])) {
+                $tmdbDetails = $this->metadataService->getMovieDetails((int)$data['tmdb_id']);
+                if ($tmdbDetails) {
+                    $this->movieService->backfillCast($movieId, $tmdbDetails);
+                }
+            }
 
             // Log activity
             $this->auth->logActivity(
@@ -194,6 +201,17 @@ class MovieController
 
             // Process images if URLs changed (download and convert to WebP)
             $this->movieService->processImages($id, $data);
+
+            // Backfill cast from TMDB if missing
+            $tmdbId = $data['tmdb_id'] ?? $movie['tmdb_id'] ?? null;
+            if ($tmdbId) {
+                $tmdbDetails = $this->metadataService->getMovieDetails((int)$tmdbId);
+                if ($tmdbDetails) {
+                    $this->movieService->backfillCast($id, $tmdbDetails);
+                }
+            }
+
+            // Process cast images to WebP (handles already-processed ones)
             $this->movieService->processCastImages($id);
 
             // Add new trailers (don't replace existing ones)

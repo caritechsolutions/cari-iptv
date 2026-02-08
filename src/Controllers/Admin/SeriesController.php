@@ -114,7 +114,14 @@ class SeriesController
             $showId = $this->seriesService->createShow($data);
 
             $this->seriesService->processImages($showId, $data);
-            $this->seriesService->processCastImages($showId);
+
+            // Fetch and save cast from TMDB if tmdb_id is present
+            if (!empty($data['tmdb_id'])) {
+                $tmdbDetails = $this->metadataService->getTVShowDetails((int)$data['tmdb_id']);
+                if ($tmdbDetails) {
+                    $this->seriesService->backfillCast($showId, $tmdbDetails);
+                }
+            }
 
             $this->auth->logActivity(
                 $this->auth->id(),
@@ -189,6 +196,16 @@ class SeriesController
         try {
             $this->seriesService->updateShow($id, $data);
             $this->seriesService->processImages($id, $data);
+
+            // Backfill cast from TMDB if missing
+            $tmdbId = $data['tmdb_id'] ?? $show['tmdb_id'] ?? null;
+            if ($tmdbId) {
+                $tmdbDetails = $this->metadataService->getTVShowDetails((int)$tmdbId);
+                if ($tmdbDetails) {
+                    $this->seriesService->backfillCast($id, $tmdbDetails);
+                }
+            }
+            // Always process cast images (convert any remaining TMDB URLs to WebP)
             $this->seriesService->processCastImages($id);
 
             $this->auth->logActivity(
