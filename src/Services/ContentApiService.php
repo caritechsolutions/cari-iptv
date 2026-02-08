@@ -12,6 +12,14 @@ class ContentApiService
 {
     private Database $db;
 
+    private const CURRENCY_SYMBOLS = [
+        'USD' => '$', 'EUR' => '€', 'GBP' => '£', 'XCD' => 'EC$',
+        'TTD' => 'TT$', 'JMD' => 'J$', 'BBD' => 'Bds$', 'GYD' => 'G$',
+        'SRD' => 'SRD', 'HTG' => 'G', 'BZD' => 'BZ$', 'BSD' => 'B$',
+        'KYD' => 'CI$', 'BMD' => 'BD$', 'ANG' => 'NAƒ', 'AWG' => 'Afl',
+        'DOP' => 'RD$', 'CUP' => '₱', 'CAD' => 'C$', 'MXN' => 'MX$', 'BRL' => 'R$',
+    ];
+
     public function __construct()
     {
         $this->db = Database::getInstance();
@@ -219,9 +227,10 @@ class ContentApiService
             $pkg['is_adult'] = (bool) ($pkg['is_adult'] ?? false);
             $pkg['is_free'] = (bool) ($pkg['is_free'] ?? false);
             $pkg['is_featured'] = (bool) ($pkg['is_featured'] ?? false);
+            $currencySymbol = self::CURRENCY_SYMBOLS[$pkg['currency'] ?? 'USD'] ?? '$';
             $pkg['price_display'] = ($pkg['is_free'] || (float)$pkg['price'] === 0.0)
                 ? 'Free'
-                : ($pkg['currency'] ?? '$') . number_format((float)$pkg['price'], 2);
+                : $currencySymbol . number_format((float)$pkg['price'], 2);
         }
 
         return array_merge($entitlements, [
