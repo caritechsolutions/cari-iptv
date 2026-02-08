@@ -506,11 +506,15 @@ class MovieService
      */
     private function saveMovieCast(int $movieId, array $castList): void
     {
+        error_log("[MovieService] saveMovieCast START — movie_id:{$movieId}, castList count:" . count($castList));
+
         // Delete existing
-        $this->db->delete('movie_cast', 'movie_id = ?', [$movieId]);
+        $deleted = $this->db->delete('movie_cast', 'movie_id = ?', [$movieId]);
+        error_log("[MovieService] saveMovieCast — deleted {$deleted} existing rows");
 
         // Insert new
         $sortOrder = 0;
+        $inserted = 0;
         foreach ($castList as $person) {
             $this->db->insert('movie_cast', [
                 'movie_id' => $movieId,
@@ -521,6 +525,53 @@ class MovieService
                 'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 'sort_order' => $sortOrder++,
             ]);
+            $inserted++;
+        }
+        error_log("[MovieService] saveMovieCast DONE — inserted {$inserted} rows for movie_id:{$movieId}");
+    }
+
+    /**
+     * Backfill cast from TMDB data for an existing movie that has no cast
+     */
+    public function backfillCast(int $movieId, array $tmdbData): void
+    {
+        // Check if cast already exists
+        $existing = $this->db->fetch(
+            "SELECT COUNT(*) as cnt FROM movie_cast WHERE movie_id = ?",
+            [$movieId]
+        );
+        if ($existing && (int)$existing['cnt'] > 0) {
+            return;
+        }
+
+        // Build cast list (actors + directors)
+        $cast = [];
+        if (!empty($tmdbData['cast'])) {
+            foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
+                $cast[] = [
+                    'name' => $person['name'],
+                    'character_name' => $person['character'] ?? null,
+                    'role' => 'actor',
+                    'profile_url' => $person['profile'] ?? null,
+                    'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($tmdbData['directors_detail'])) {
+            foreach ($tmdbData['directors_detail'] as $director) {
+                $cast[] = [
+                    'name' => $director['name'],
+                    'character_name' => 'Director',
+                    'role' => 'director',
+                    'profile_url' => $director['profile'] ?? null,
+                    'tmdb_person_id' => $director['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($cast)) {
+            $this->saveMovieCast($movieId, $cast);
+            $this->processCastImages($movieId);
+            error_log("[MovieService] backfillCast: Saved " . count($cast) . " cast for movie ID {$movieId}");
         }
     }
 
@@ -700,6 +751,8 @@ class MovieService
      */
     public function importFromTmdb(array $tmdbData): int
     {
+        error_log("[MovieService] importFromTmdb START — tmdb_id:{$tmdbData['id']}, title:{$tmdbData['title']}, cast_count:" . count($tmdbData['cast'] ?? []) . ", directors_detail_count:" . count($tmdbData['directors_detail'] ?? []));
+
         // Map TMDB data to movie fields
         $movieData = [
             'tmdb_id' => $tmdbData['id'],
@@ -721,10 +774,11 @@ class MovieService
 
         // Create movie
         $movieId = $this->createMovie($movieData);
+        error_log("[MovieService] importFromTmdb — movie created with ID:{$movieId}");
 
-        // Import cast
+        // Import cast (actors + directors)
+        $cast = [];
         if (!empty($tmdbData['cast'])) {
-            $cast = [];
             foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
                 $cast[] = [
                     'name' => $person['name'],
@@ -734,8 +788,37 @@ class MovieService
                     'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 ];
             }
-            $this->saveMovieCast($movieId, $cast);
-            $this->processCastImages($movieId);
+        }
+        // Add directors as cast with role=director
+        if (!empty($tmdbData['directors_detail'])) {
+            foreach ($tmdbData['directors_detail'] as $director) {
+                $cast[] = [
+                    'name' => $director['name'],
+                    'character_name' => 'Director',
+                    'role' => 'director',
+                    'profile_url' => $director['profile'] ?? null,
+                    'tmdb_person_id' => $director['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+
+        error_log("[MovieService] importFromTmdb — built cast array with " . count($cast) . " members for movie ID:{$movieId}");
+
+        if (!empty($cast)) {
+            try {
+                $this->saveMovieCast($movieId, $cast);
+                error_log("[MovieService] importFromTmdb — saveMovieCast COMPLETED for movie ID:{$movieId}");
+
+                // Verify cast was saved
+                $savedCount = $this->db->fetch("SELECT COUNT(*) as cnt FROM movie_cast WHERE movie_id = ?", [$movieId]);
+                error_log("[MovieService] importFromTmdb — VERIFY: movie_cast rows for movie ID:{$movieId} = " . ($savedCount['cnt'] ?? 'QUERY_FAILED'));
+
+                $this->processCastImages($movieId);
+            } catch (\Throwable $e) {
+                error_log("[MovieService] importFromTmdb — EXCEPTION during saveMovieCast: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+            }
+        } else {
+            error_log("[MovieService] importFromTmdb: No cast data for movie ID {$movieId} (tmdb:{$tmdbData['id']}). Cast key exists: " . (isset($tmdbData['cast']) ? 'yes(' . count($tmdbData['cast']) . ')' : 'no'));
         }
 
         // Auto-create categories from genres

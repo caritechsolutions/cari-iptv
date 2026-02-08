@@ -311,9 +311,10 @@ const CariUI = (function() {
             } catch {}
         });
 
-        // Fetch full details for trailers (async, non-blocking)
-        if (item.id) {
-            fetchTrailers(item, modal);
+        // Fetch full details for trailers + cast (async, non-blocking)
+        // Only fetch for movie items — channels don't have trailers/cast
+        if (item.id && type !== 'channel') {
+            fetchFullDetails(item, modal);
         }
 
         overlay.classList.add('visible');
@@ -322,11 +323,14 @@ const CariUI = (function() {
         });
     }
 
-    async function fetchTrailers(item, modal) {
+    async function fetchFullDetails(item, modal) {
         try {
             const res = await CariAPI.getMovie(item.id);
             const full = res?.data;
-            if (!full) return;
+            if (!full) {
+                console.warn('[CariUI] getMovie returned no data for id:', item.id);
+                return;
+            }
 
             // Trailers
             if (full.trailers && full.trailers.length) {
@@ -359,8 +363,13 @@ const CariUI = (function() {
             }
 
             // Cast
-            renderCastRow(modal.querySelector('#detailCast'), full.cast);
-        } catch {}
+            const castContainer = modal.querySelector('#detailCast');
+            if (full.cast && full.cast.length) {
+                renderCastRow(castContainer, full.cast);
+            }
+        } catch (err) {
+            console.error('[CariUI] Failed to fetch movie details for id:', item.id, err);
+        }
     }
 
     function renderCastRow(container, cast) {

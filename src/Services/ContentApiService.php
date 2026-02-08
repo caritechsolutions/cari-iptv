@@ -33,7 +33,7 @@ class ContentApiService
         try {
             return $fn();
         } catch (\Throwable $e) {
-            error_log('ContentAPI query error: ' . $e->getMessage());
+            error_log('ContentAPI query error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
             return $default;
         }
     }
@@ -60,22 +60,28 @@ class ContentApiService
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Movies version
+        // Movies version (includes cast changes)
         $row = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM movies WHERE status = 'published'"
         ), ['cnt' => 0, 'latest' => null]);
+        $castRow = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM movie_cast"
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['movies'] = [
-            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '') . ':' . ($castRow['cnt'] ?? 0) . ':' . ($castRow['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Series version
+        // Series version (includes cast changes)
         $row = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM series WHERE status = 'published'"
         ), ['cnt' => 0, 'latest' => null]);
+        $castRow = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM series_cast"
+        ), ['cnt' => 0, 'latest' => null]);
         $manifest['series'] = [
-            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+            'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '') . ':' . ($castRow['cnt'] ?? 0) . ':' . ($castRow['latest'] ?? '')),
             'count' => (int)($row['cnt'] ?? 0),
             'updated_at' => $row['latest'] ?? null,
         ];
@@ -293,7 +299,8 @@ class ContentApiService
         $limit = min((int)($filters['limit'] ?? 500), 1000);
         $offset = max((int)($filters['offset'] ?? 0), 0);
 
-        $channels = $this->db->fetchAll(
+        // Try with content restriction check; fall back without it
+        $channels = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url,
                     c.epg_channel_id, c.category_id, c.country,
                     c.is_hd, c.is_adult, c.channel_number, c.sort_order, c.updated_at,
@@ -305,11 +312,22 @@ class ContentApiService
              ORDER BY c.sort_order ASC, c.name ASC
              LIMIT {$limit} OFFSET {$offset}",
             $params
-        );
+        ));
 
-        // Cast is_restricted to boolean
+        if ($channels === null) {
+            $channels = $this->safeQuery(fn() => $this->db->fetchAll(
+                "SELECT c.*, cat.name as category_name
+                 FROM channels c
+                 LEFT JOIN categories cat ON c.category_id = cat.id
+                 WHERE {$whereStr}
+                 ORDER BY c.sort_order ASC, c.name ASC
+                 LIMIT {$limit} OFFSET {$offset}",
+                $params
+            ), []);
+        }
+
         foreach ($channels as &$channel) {
-            $channel['is_restricted'] = (bool) $channel['is_restricted'];
+            $channel['is_restricted'] = (bool) ($channel['is_restricted'] ?? false);
             $channel['content_type'] = 'channel';
         }
 
@@ -328,20 +346,31 @@ class ContentApiService
 
     public function getChannel(int $id): ?array
     {
-        $channel = $this->db->fetch(
+        // Try with content restriction check; fall back without it
+        $channel = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT c.*, cat.name as category_name,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
              WHERE c.id = ? AND c.is_active = 1",
             [$id]
-        );
+        ));
+
+        if (!$channel) {
+            $channel = $this->db->fetch(
+                "SELECT c.*, cat.name as category_name
+                 FROM channels c
+                 LEFT JOIN categories cat ON c.category_id = cat.id
+                 WHERE c.id = ? AND c.is_active = 1",
+                [$id]
+            );
+        }
 
         if (!$channel) {
             return null;
         }
 
-        $channel['is_restricted'] = (bool) $channel['is_restricted'];
+        $channel['is_restricted'] = (bool) ($channel['is_restricted'] ?? false);
         $channel['content_type'] = 'channel';
 
         // Get current EPG programme (table is epg_programs)
@@ -413,7 +442,8 @@ class ContentApiService
         $limit = min((int)($filters['limit'] ?? 50), 200);
         $offset = max((int)($filters['offset'] ?? 0), 0);
 
-        $movies = $this->db->fetchAll(
+        // Try with content restriction check; fall back without it
+        $movies = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT m.id, m.title, m.slug, m.year, m.genres, m.runtime,
                     m.vote_average, m.poster_url, m.backdrop_url,
                     m.stream_url, m.is_featured, m.is_adult,
@@ -426,11 +456,23 @@ class ContentApiService
              ORDER BY {$orderBy}
              LIMIT {$limit} OFFSET {$offset}",
             $params
-        );
+        ));
 
-        // Cast is_restricted to boolean
+        if ($movies === null) {
+            // Minimal fallback without content_group_items or optional columns
+            $movies = $this->safeQuery(fn() => $this->db->fetchAll(
+                "SELECT m.*, cat.name as category_name
+                 FROM movies m
+                 LEFT JOIN categories cat ON m.category_id = cat.id
+                 WHERE {$whereStr}
+                 ORDER BY {$orderBy}
+                 LIMIT {$limit} OFFSET {$offset}",
+                $params
+            ), []);
+        }
+
         foreach ($movies as &$movie) {
-            $movie['is_restricted'] = (bool) $movie['is_restricted'];
+            $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
             $movie['content_type'] = 'movie';
         }
 
@@ -449,20 +491,33 @@ class ContentApiService
 
     public function getMovie(int $id): ?array
     {
-        $movie = $this->db->fetch(
+        // Try with content restriction check first; fall back without it
+        // if content_group_items table doesn't exist yet (migration 014)
+        $movie = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT m.*, cat.name as category_name,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = m.id LIMIT 1) IS NOT NULL as is_restricted
              FROM movies m
              LEFT JOIN categories cat ON m.category_id = cat.id
              WHERE m.id = ? AND m.status = 'published'",
             [$id]
-        );
+        ));
+
+        if (!$movie) {
+            // Fallback: query without content_group_items subquery
+            $movie = $this->db->fetch(
+                "SELECT m.*, cat.name as category_name
+                 FROM movies m
+                 LEFT JOIN categories cat ON m.category_id = cat.id
+                 WHERE m.id = ? AND m.status = 'published'",
+                [$id]
+            );
+        }
 
         if (!$movie) {
             return null;
         }
 
-        $movie['is_restricted'] = (bool) $movie['is_restricted'];
+        $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
         $movie['content_type'] = 'movie';
 
         // Trailers (video_key, url - not youtube_id, youtube_url)
@@ -532,8 +587,8 @@ class ContentApiService
         $limit = min((int)($filters['limit'] ?? 50), 200);
         $offset = max((int)($filters['offset'] ?? 0), 0);
 
-        // Use cached counts from series table (number_of_seasons, number_of_episodes)
-        $series = $this->db->fetchAll(
+        // Try with content restriction check; fall back without it
+        $series = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT s.id, s.title, s.slug, s.year, s.genres, s.synopsis,
                     s.vote_average, s.poster_url, s.backdrop_url,
                     s.is_featured, s.is_adult, s.category_id, s.updated_at,
@@ -547,11 +602,22 @@ class ContentApiService
              ORDER BY {$orderBy}
              LIMIT {$limit} OFFSET {$offset}",
             $params
-        );
+        ));
 
-        // Cast is_restricted to boolean
+        if ($series === null) {
+            $series = $this->safeQuery(fn() => $this->db->fetchAll(
+                "SELECT s.*, cat.name as category_name
+                 FROM series s
+                 LEFT JOIN categories cat ON s.category_id = cat.id
+                 WHERE {$whereStr}
+                 ORDER BY {$orderBy}
+                 LIMIT {$limit} OFFSET {$offset}",
+                $params
+            ), []);
+        }
+
         foreach ($series as &$show) {
-            $show['is_restricted'] = (bool) $show['is_restricted'];
+            $show['is_restricted'] = (bool) ($show['is_restricted'] ?? false);
             $show['content_type'] = 'series';
         }
 
@@ -570,20 +636,33 @@ class ContentApiService
 
     public function getSeriesDetail(int $id): ?array
     {
-        $show = $this->db->fetch(
+        // Try with content restriction check first; fall back without it
+        // if content_group_items table doesn't exist yet (migration 014)
+        $show = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT s.*, cat.name as category_name,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as is_restricted
              FROM series s
              LEFT JOIN categories cat ON s.category_id = cat.id
              WHERE s.id = ? AND s.status = 'published'",
             [$id]
-        );
+        ));
+
+        if (!$show) {
+            // Fallback: query without content_group_items subquery
+            $show = $this->db->fetch(
+                "SELECT s.*, cat.name as category_name
+                 FROM series s
+                 LEFT JOIN categories cat ON s.category_id = cat.id
+                 WHERE s.id = ? AND s.status = 'published'",
+                [$id]
+            );
+        }
 
         if (!$show) {
             return null;
         }
 
-        $show['is_restricted'] = (bool) $show['is_restricted'];
+        $show['is_restricted'] = (bool) ($show['is_restricted'] ?? false);
         $show['content_type'] = 'series';
 
         // Seasons (table is series_seasons)

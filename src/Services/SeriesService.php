@@ -662,9 +662,9 @@ class SeriesService
 
         $showId = $this->createShow($showData);
 
-        // Import cast
+        // Import cast (actors + creators)
+        $cast = [];
         if (!empty($tmdbData['cast'])) {
-            $cast = [];
             foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
                 $cast[] = [
                     'name' => $person['name'],
@@ -674,8 +674,24 @@ class SeriesService
                     'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 ];
             }
+        }
+        // Add creators as cast with role=creator
+        if (!empty($tmdbData['creators_detail'])) {
+            foreach ($tmdbData['creators_detail'] as $creator) {
+                $cast[] = [
+                    'name' => $creator['name'],
+                    'character_name' => 'Creator',
+                    'role' => 'creator',
+                    'profile_url' => $creator['profile'] ?? null,
+                    'tmdb_person_id' => $creator['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($cast)) {
             $this->saveSeriesCast($showId, $cast);
             $this->processCastImages($showId);
+        } else {
+            error_log("[SeriesService] importFromTmdb: No cast data for series ID {$showId} (tmdb:{$tmdbData['id']})");
         }
 
         // Auto-create categories from genres
@@ -931,6 +947,49 @@ class SeriesService
                 'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 'sort_order' => $sortOrder++,
             ]);
+        }
+    }
+
+    /**
+     * Backfill cast from TMDB data for an existing series that has no cast
+     */
+    public function backfillCast(int $seriesId, array $tmdbData): void
+    {
+        $existing = $this->db->fetch(
+            "SELECT COUNT(*) as cnt FROM series_cast WHERE series_id = ?",
+            [$seriesId]
+        );
+        if ($existing && (int)$existing['cnt'] > 0) {
+            return;
+        }
+
+        $cast = [];
+        if (!empty($tmdbData['cast'])) {
+            foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
+                $cast[] = [
+                    'name' => $person['name'],
+                    'character_name' => $person['character'] ?? null,
+                    'role' => 'actor',
+                    'profile_url' => $person['profile'] ?? null,
+                    'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($tmdbData['creators_detail'])) {
+            foreach ($tmdbData['creators_detail'] as $creator) {
+                $cast[] = [
+                    'name' => $creator['name'],
+                    'character_name' => 'Creator',
+                    'role' => 'creator',
+                    'profile_url' => $creator['profile'] ?? null,
+                    'tmdb_person_id' => $creator['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($cast)) {
+            $this->saveSeriesCast($seriesId, $cast);
+            $this->processCastImages($seriesId);
+            error_log("[SeriesService] backfillCast: Saved " . count($cast) . " cast for series ID {$seriesId}");
         }
     }
 

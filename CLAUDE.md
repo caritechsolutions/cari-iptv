@@ -654,6 +654,46 @@ To render the app for an end-user, a player/frontend needs to:
    - `text_divider`: Heading or separator
 5. **For pages without layouts** (search, watchlist, settings, player, details): Build standalone UI
 
+### Content Caching & Versioning
+
+The player uses a manifest-based cache invalidation system to detect admin changes at runtime.
+
+**Architecture:**
+```
+Admin makes change → DB updated → Manifest version hash changes
+                                        ↓
+Player polls manifest every 30s → Detects version mismatch
+                                        ↓
+                              bustAllCaches() → _v=timestamp appended to API calls
+                                        ↓
+                              CariRouter.refresh() → Re-renders current page
+```
+
+**Key files:**
+| File | Purpose |
+|------|---------|
+| `src/Services/ContentApiService.php:getManifest()` | Generates version hashes from DB state |
+| `src/Controllers/Api/BaseApiController.php` | Sets `Cache-Control: max-age=30` on API responses |
+| `public/assets/js/player/api.js` | `bustAllCaches()` adds `_v=timestamp` to bypass browser cache |
+| `public/assets/js/player/app.js` | `checkForUpdates()` polls manifest, `beforeEach` busts cache on navigation |
+
+**How versioning works:**
+- Each content type (movies, series, channels, categories, layouts, navigation) has a version hash
+- Version = `md5(count + ':' + max_updated_at)` — changes when content is added, removed, or updated
+- Movie/series versions also include cast table counts and timestamps
+- Player compares stored baseline against fresh manifest to detect changes
+
+**Cache layers:**
+1. **Browser HTTP cache**: `max-age=30` on API responses (30 seconds)
+2. **SPA navigation cache bust**: `CariAPI.bustAllCaches()` runs on every route change via `beforeEach` hook, appending `_v=timestamp` to bypass browser cache
+3. **Manifest polling**: Every 30 seconds, detects backend changes and triggers page refresh if not watching video
+
+**IMPORTANT for future development:**
+- When adding new content tables, include them in `getManifest()` version hashes
+- Always use `MovieService::importFromTmdb()` or `SeriesService::importFromTmdb()` for TMDB imports — never direct DB inserts — to ensure cast, categories, and images are saved
+- The TMDB API key is stored in settings with group `'metadata'`, key `'tmdb_api_key'`
+- Cast data (actors, directors, creators) is saved to `movie_cast` / `series_cast` tables during import
+
 ### Icons
 
 Lucide icon font is hosted locally at `public/assets/fonts/lucide/`. The CSS uses class prefix `lucide-` (e.g., `<i class="lucide-film"></i>`). The font files (woff2, woff, ttf) are in the same directory. Loaded via `<link rel="stylesheet" href="/assets/fonts/lucide/lucide.css">` in the admin layout.

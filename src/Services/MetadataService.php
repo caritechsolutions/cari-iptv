@@ -488,10 +488,9 @@ class MetadataService
         }
 
         try {
-            $url = self::TMDB_API . '/movie/' . $tmdbId . '?' . http_build_query([
-                'api_key' => $this->config['tmdb']['api_key'],
-                'append_to_response' => 'credits,images',
-            ]);
+            // Build URL with raw string to avoid http_build_query encoding commas in append_to_response
+            $apiKey = urlencode($this->config['tmdb']['api_key']);
+            $url = self::TMDB_API . '/movie/' . $tmdbId . '?api_key=' . $apiKey . '&append_to_response=credits,images';
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -505,11 +504,16 @@ class MetadataService
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
+                $hasCreditsCast = !empty($data['credits']['cast']);
+                $hasCreditsCrew = !empty($data['credits']['crew']);
+                error_log("[MetadataService] getMovieDetails tmdb:{$tmdbId} — credits.cast: " . ($hasCreditsCast ? count($data['credits']['cast']) . ' members' : 'MISSING') . ", credits.crew: " . ($hasCreditsCrew ? count($data['credits']['crew']) . ' members' : 'MISSING'));
                 return $this->formatMovieDetails($data);
             }
 
+            error_log("[MetadataService] getMovieDetails tmdb:{$tmdbId} — HTTP {$httpCode}");
             return null;
         } catch (\Exception $e) {
+            error_log("[MetadataService] getMovieDetails tmdb:{$tmdbId} — Exception: " . $e->getMessage());
             return null;
         }
     }
@@ -524,10 +528,9 @@ class MetadataService
         }
 
         try {
-            $url = self::TMDB_API . '/tv/' . $tmdbId . '?' . http_build_query([
-                'api_key' => $this->config['tmdb']['api_key'],
-                'append_to_response' => 'credits,images',
-            ]);
+            // Build URL with raw string to avoid http_build_query encoding commas in append_to_response
+            $apiKey = urlencode($this->config['tmdb']['api_key']);
+            $url = self::TMDB_API . '/tv/' . $tmdbId . '?api_key=' . $apiKey . '&append_to_response=credits,images';
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -541,11 +544,15 @@ class MetadataService
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
+                $hasCreditsCast = !empty($data['credits']['cast']);
+                error_log("[MetadataService] getTVShowDetails tmdb:{$tmdbId} — credits.cast: " . ($hasCreditsCast ? count($data['credits']['cast']) . ' members' : 'MISSING'));
                 return $this->formatTVShowDetails($data);
             }
 
+            error_log("[MetadataService] getTVShowDetails tmdb:{$tmdbId} — HTTP {$httpCode}");
             return null;
         } catch (\Exception $e) {
+            error_log("[MetadataService] getTVShowDetails tmdb:{$tmdbId} — Exception: " . $e->getMessage());
             return null;
         }
     }
@@ -612,10 +619,16 @@ class MetadataService
         }
 
         $directors = [];
+        $directorsDetail = [];
         if (!empty($data['credits']['crew'])) {
             foreach ($data['credits']['crew'] as $member) {
                 if ($member['job'] === 'Director') {
                     $directors[] = $member['name'];
+                    $directorsDetail[] = [
+                        'name' => $member['name'],
+                        'profile' => $member['profile_path'] ? self::TMDB_IMAGE_BASE . '/w185' . $member['profile_path'] : null,
+                        'tmdb_person_id' => $member['id'] ?? null,
+                    ];
                 }
             }
         }
@@ -637,6 +650,7 @@ class MetadataService
             'vote_average' => $data['vote_average'] ?? 0,
             'cast' => $cast,
             'directors' => $directors,
+            'directors_detail' => $directorsDetail,
             'production_countries' => array_column($data['production_countries'] ?? [], 'name'),
             'spoken_languages' => array_column($data['spoken_languages'] ?? [], 'english_name'),
         ];
@@ -660,6 +674,14 @@ class MetadataService
         }
 
         $creators = array_column($data['created_by'] ?? [], 'name');
+        $creatorsDetail = [];
+        foreach ($data['created_by'] ?? [] as $creator) {
+            $creatorsDetail[] = [
+                'name' => $creator['name'],
+                'profile' => !empty($creator['profile_path']) ? self::TMDB_IMAGE_BASE . '/w185' . $creator['profile_path'] : null,
+                'tmdb_person_id' => $creator['id'] ?? null,
+            ];
+        }
         $genres = array_column($data['genres'] ?? [], 'name');
         $networks = array_column($data['networks'] ?? [], 'name');
 
@@ -682,6 +704,7 @@ class MetadataService
             'vote_average' => $data['vote_average'] ?? 0,
             'cast' => $cast,
             'creators' => $creators,
+            'creators_detail' => $creatorsDetail,
             'networks' => $networks,
             'origin_country' => $data['origin_country'] ?? [],
         ];

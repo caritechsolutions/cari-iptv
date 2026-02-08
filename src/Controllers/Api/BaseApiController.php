@@ -72,14 +72,19 @@ class BaseApiController
         header('Access-Control-Allow-Headers: Content-Type, Authorization, If-None-Match');
         header('Access-Control-Expose-Headers: ETag, X-Content-Version');
 
-        // Default cache: 60 seconds for content, players can override via manifest
+        // Default cache: 30 seconds for content, players can override via manifest
         if ($status === 200) {
-            header('Cache-Control: public, max-age=60, stale-while-revalidate=300');
+            header('Cache-Control: public, max-age=30, stale-while-revalidate=60');
         } else {
             header('Cache-Control: no-cache');
         }
 
-        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if ($json === false) {
+            error_log('JSON encode failed: ' . json_last_error_msg() . ' — data keys: ' . implode(',', array_keys($data)));
+            $json = json_encode(['error' => ['code' => 'ENCODE_ERROR', 'message' => 'Response encoding failed']]);
+        }
+        echo $json;
         exit;
     }
 

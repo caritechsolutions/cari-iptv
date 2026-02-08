@@ -13,6 +13,8 @@ use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\AppLayoutService;
 use CariIPTV\Services\MetadataService;
 use CariIPTV\Services\ImageService;
+use CariIPTV\Services\MovieService;
+use CariIPTV\Services\SeriesService;
 
 class AppLayoutController
 {
@@ -843,35 +845,27 @@ class AppLayoutController
 
             if ($existing) {
                 $contentId = (int) $existing['id'];
+                // Backfill cast if missing
+                $details = $metadata->getTVShowDetails($tmdbId);
+                if ($details) {
+                    $seriesService = new SeriesService();
+                    $seriesService->backfillCast($contentId, $details);
+                }
             } else {
-                // Get details and import
+                // Get details and import via SeriesService (includes cast, categories)
                 $details = $metadata->getTVShowDetails($tmdbId);
                 if (!$details) {
                     $this->sendJson(['success' => false, 'message' => 'Could not fetch show details from TMDB']);
                     return;
                 }
 
-                $title = $details['name'] ?? 'Untitled';
-                $slug = $this->generateSlug($title, 'series');
+                $seriesService = new SeriesService();
+                $contentId = $seriesService->importFromTmdb($details);
 
-                $contentId = $this->db->insert('series', [
-                    'tmdb_id' => $tmdbId,
-                    'title' => $title,
-                    'slug' => $slug,
-                    'original_title' => $details['original_name'] ?? null,
-                    'tagline' => $details['tagline'] ?? null,
-                    'synopsis' => $details['overview'] ?? null,
-                    'year' => !empty($details['first_air_date']) ? (int) substr($details['first_air_date'], 0, 4) : null,
-                    'first_air_date' => $details['first_air_date'] ?: null,
-                    'show_status' => $details['status'] ?? null,
-                    'vote_average' => $details['vote_average'] ?? 0,
-                    'number_of_seasons' => $details['number_of_seasons'] ?? 0,
-                    'number_of_episodes' => $details['number_of_episodes'] ?? 0,
+                // Process images
+                $seriesService->processImages($contentId, [
                     'poster_url' => $details['poster'] ?? null,
                     'backdrop_url' => $details['backdrop'] ?? null,
-                    'genres' => !empty($details['genres']) ? json_encode($details['genres']) : null,
-                    'status' => 'draft',
-                    'source' => 'tmdb',
                 ]);
             }
         } else {
@@ -883,32 +877,27 @@ class AppLayoutController
 
             if ($existing) {
                 $contentId = (int) $existing['id'];
+                // Backfill cast if missing
+                $details = $metadata->getMovieDetails($tmdbId);
+                if ($details) {
+                    $movieService = new MovieService();
+                    $movieService->backfillCast($contentId, $details);
+                }
             } else {
+                // Get details and import via MovieService (includes cast, categories)
                 $details = $metadata->getMovieDetails($tmdbId);
                 if (!$details) {
                     $this->sendJson(['success' => false, 'message' => 'Could not fetch movie details from TMDB']);
                     return;
                 }
 
-                $title = $details['title'] ?? 'Untitled';
-                $slug = $this->generateSlug($title, 'movies');
+                $movieService = new MovieService();
+                $contentId = $movieService->importFromTmdb($details);
 
-                $contentId = $this->db->insert('movies', [
-                    'tmdb_id' => $tmdbId,
-                    'title' => $title,
-                    'slug' => $slug,
-                    'original_title' => $details['original_title'] ?? null,
-                    'tagline' => $details['tagline'] ?? null,
-                    'synopsis' => $details['overview'] ?? null,
-                    'year' => !empty($details['release_date']) ? (int) substr($details['release_date'], 0, 4) : null,
-                    'release_date' => $details['release_date'] ?? null,
-                    'runtime' => $details['runtime'] ?? null,
-                    'vote_average' => $details['vote_average'] ?? 0,
+                // Process images
+                $movieService->processImages($contentId, [
                     'poster_url' => $details['poster'] ?? null,
                     'backdrop_url' => $details['backdrop'] ?? null,
-                    'genres' => !empty($details['genres']) ? json_encode($details['genres']) : null,
-                    'status' => 'draft',
-                    'source' => 'tmdb',
                 ]);
             }
         }
