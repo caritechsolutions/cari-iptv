@@ -415,8 +415,9 @@ const CariApp = (function() {
             if (movies.length) {
                 const hero = CariUI.renderHero(
                     movies.slice(0, 5),
-                    (item) => CariRouter.navigate('/watch/movie/' + item.id),
-                    (item) => CariUI.showDetail(item, (it) => CariRouter.navigate('/watch/movie/' + it.id))
+                    (item) => playContent(item),
+                    (item) => CariUI.showDetail(item, playContent, isContentLocked(item)),
+                    isContentLocked
                 );
                 el.appendChild(hero);
             }
@@ -705,7 +706,7 @@ const CariApp = (function() {
             grid.innerHTML = '';
             movies.forEach(m => {
                 grid.appendChild(CariUI.posterCard(m, (item) => {
-                    CariUI.showDetail(item, playContent);
+                    CariUI.showDetail(item, playContent, isContentLocked(item));
                 }));
             });
         } catch {
@@ -754,7 +755,7 @@ const CariApp = (function() {
             grid.innerHTML = '';
             series.forEach(s => {
                 grid.appendChild(CariUI.posterCard(s, (item) => {
-                    CariUI.showDetail(item, playContent);
+                    CariUI.showDetail(item, playContent, isContentLocked(item));
                 }));
             });
         } catch {
@@ -1041,7 +1042,7 @@ const CariApp = (function() {
             grid.className = 'content-grid';
             results.forEach(item => {
                 grid.appendChild(CariUI.posterCard(item, (it) => {
-                    CariUI.showDetail(it, playContent);
+                    CariUI.showDetail(it, playContent, isContentLocked(it));
                 }));
             });
             container.innerHTML = '';
@@ -1082,7 +1083,7 @@ const CariApp = (function() {
                     }
                     if (detail) {
                         detail.content_type = item.content_type;
-                        grid.appendChild(CariUI.posterCard(detail, (it) => CariUI.showDetail(it, playContent)));
+                        grid.appendChild(CariUI.posterCard(detail, (it) => CariUI.showDetail(it, playContent, isContentLocked(it))));
                     }
                 } catch {}
             }
@@ -1642,6 +1643,10 @@ const CariApp = (function() {
 
     function playContent(item) {
         if (!item || !item.id) return;
+        if (isContentLocked(item)) {
+            CariRouter.navigate('/subscribe');
+            return;
+        }
         const type = item.content_type || (item.stream_url && !item.runtime ? 'channel' : 'movie');
         CariRouter.navigate('/watch/' + type + '/' + item.id);
     }
