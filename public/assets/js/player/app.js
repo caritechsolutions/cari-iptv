@@ -513,7 +513,7 @@ const CariApp = (function() {
             row.appendChild(card);
         });
 
-        section.appendChild(row);
+        section.appendChild(CariUI.wrapWithScrollNav(row));
         el.appendChild(section);
     }
 
@@ -874,7 +874,11 @@ const CariApp = (function() {
 
             // Render cast
             if (show.cast && show.cast.length) {
-                CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast);
+                CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast, {
+                    type: 'page',
+                    path: '/series/' + id,
+                    title: title
+                });
             }
 
             // Render seasons/episodes
@@ -966,6 +970,7 @@ const CariApp = (function() {
 
             el.innerHTML = `
                 <div class="person-page">
+                    <div id="personBackNav"></div>
                     <div class="person-header">
                         <img class="person-photo" src="${img ? CariUI.esc(img) : placeholderAvatar}" alt="${CariUI.esc(person.name)}"
                              onerror="this.src='${placeholderAvatar}'">
@@ -980,6 +985,32 @@ const CariApp = (function() {
                     <div id="personFilmography"></div>
                 </div>
             `;
+
+            // Add back navigation if user came from a detail modal or series page
+            const castSource = CariUI.getCastNavSource();
+            if (castSource) {
+                const backNav = document.getElementById('personBackNav');
+                const backBtn = document.createElement('button');
+                backBtn.className = 'person-back';
+
+                if (castSource.type === 'modal' && castSource.item) {
+                    const itemTitle = castSource.item.title || castSource.item.name || 'Details';
+                    backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to ' + CariUI.esc(itemTitle);
+                    backBtn.addEventListener('click', () => {
+                        const sourceItem = castSource.item;
+                        CariRouter.navigate(castSource.fromPath || '/');
+                        CariUI.showDetail(sourceItem, playContent, isContentLocked(sourceItem));
+                    });
+                } else if (castSource.type === 'page' && castSource.path) {
+                    backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to ' + CariUI.esc(castSource.title || 'Previous Page');
+                    backBtn.addEventListener('click', () => {
+                        CariRouter.navigate(castSource.path);
+                    });
+                }
+
+                backNav.appendChild(backBtn);
+                CariUI.clearCastNavSource();
+            }
 
             const filmEl = document.getElementById('personFilmography');
 

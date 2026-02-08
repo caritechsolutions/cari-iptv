@@ -831,6 +831,62 @@ img { max-width: 100%; display: block; }
 
 .content-row::-webkit-scrollbar { display: none; }
 
+/* Scroll navigation arrows for content rows */
+.content-row-wrap {
+    position: relative;
+}
+
+.content-row-wrap:hover .scroll-arrow {
+    opacity: 1;
+}
+
+.scroll-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid var(--p-border);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.scroll-arrow:hover {
+    background: var(--p-primary);
+    border-color: var(--p-primary);
+}
+
+.scroll-arrow.hidden {
+    display: none !important;
+}
+
+.scroll-arrow-left {
+    left: 0;
+}
+
+.scroll-arrow-right {
+    right: 0;
+}
+
+.scroll-arrow i {
+    font-size: 1.125rem;
+}
+
+/* Hide scroll arrows on touch devices (touch scrolling works natively) */
+@media (max-width: 1024px) {
+    .scroll-arrow { display: none !important; }
+}
+
 /* Content cards */
 .card-poster {
     flex-shrink: 0;
@@ -2486,6 +2542,31 @@ img { max-width: 100%; display: block; }
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Person back navigation */
+.person-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--p-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    background: none;
+    border: none;
+    transition: color var(--p-transition);
+    margin-bottom: 0.5rem;
+    font-family: inherit;
+}
+
+.person-back:hover {
+    color: var(--p-primary);
+}
+
+.person-back i {
+    font-size: 1rem;
 }
 
 /* Person Page */
