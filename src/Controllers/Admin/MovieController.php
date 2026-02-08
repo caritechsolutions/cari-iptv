@@ -543,9 +543,15 @@ class MovieController
         // Check if already imported
         $existing = $this->movieService->findByTmdbId($tmdbId);
         if ($existing) {
+            // Backfill cast if missing (for movies imported before cast fix)
+            $details = $this->metadataService->getMovieDetails($tmdbId);
+            if ($details) {
+                $this->movieService->backfillCast((int)$existing['id'], $details);
+            }
+
             Response::json([
-                'success' => false,
-                'message' => 'Movie already exists',
+                'success' => true,
+                'message' => 'Movie already exists (cast updated)',
                 'movie_id' => $existing['id'],
             ]);
             return;

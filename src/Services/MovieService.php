@@ -525,6 +525,51 @@ class MovieService
     }
 
     /**
+     * Backfill cast from TMDB data for an existing movie that has no cast
+     */
+    public function backfillCast(int $movieId, array $tmdbData): void
+    {
+        // Check if cast already exists
+        $existing = $this->db->fetch(
+            "SELECT COUNT(*) as cnt FROM movie_cast WHERE movie_id = ?",
+            [$movieId]
+        );
+        if ($existing && (int)$existing['cnt'] > 0) {
+            return;
+        }
+
+        // Build cast list (actors + directors)
+        $cast = [];
+        if (!empty($tmdbData['cast'])) {
+            foreach (array_slice($tmdbData['cast'], 0, 15) as $person) {
+                $cast[] = [
+                    'name' => $person['name'],
+                    'character_name' => $person['character'] ?? null,
+                    'role' => 'actor',
+                    'profile_url' => $person['profile'] ?? null,
+                    'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($tmdbData['directors_detail'])) {
+            foreach ($tmdbData['directors_detail'] as $director) {
+                $cast[] = [
+                    'name' => $director['name'],
+                    'character_name' => 'Director',
+                    'role' => 'director',
+                    'profile_url' => $director['profile'] ?? null,
+                    'tmdb_person_id' => $director['tmdb_person_id'] ?? null,
+                ];
+            }
+        }
+        if (!empty($cast)) {
+            $this->saveMovieCast($movieId, $cast);
+            $this->processCastImages($movieId);
+            error_log("[MovieService] backfillCast: Saved " . count($cast) . " cast for movie ID {$movieId}");
+        }
+    }
+
+    /**
      * Process movie images (poster, backdrop) and convert to WebP
      */
     public function processImages(int $movieId, array $data): array

@@ -878,9 +878,15 @@ class SeriesController
 
         $existing = $this->seriesService->findByTmdbId($tmdbId);
         if ($existing) {
+            // Backfill cast if missing (for series imported before cast fix)
+            $details = $this->metadataService->getTVShowDetails($tmdbId);
+            if ($details) {
+                $this->seriesService->backfillCast((int)$existing['id'], $details);
+            }
+
             $this->sendJson([
-                'success' => false,
-                'message' => 'TV show already exists',
+                'success' => true,
+                'message' => 'TV show already exists (cast updated)',
                 'show_id' => $existing['id'],
             ]);
             return;

@@ -845,6 +845,12 @@ class AppLayoutController
 
             if ($existing) {
                 $contentId = (int) $existing['id'];
+                // Backfill cast if missing
+                $details = $metadata->getTVShowDetails($tmdbId);
+                if ($details) {
+                    $seriesService = new SeriesService();
+                    $seriesService->backfillCast($contentId, $details);
+                }
             } else {
                 // Get details and import via SeriesService (includes cast, categories)
                 $details = $metadata->getTVShowDetails($tmdbId);
@@ -871,6 +877,12 @@ class AppLayoutController
 
             if ($existing) {
                 $contentId = (int) $existing['id'];
+                // Backfill cast if missing
+                $details = $metadata->getMovieDetails($tmdbId);
+                if ($details) {
+                    $movieService = new MovieService();
+                    $movieService->backfillCast($contentId, $details);
+                }
             } else {
                 // Get details and import via MovieService (includes cast, categories)
                 $details = $metadata->getMovieDetails($tmdbId);
