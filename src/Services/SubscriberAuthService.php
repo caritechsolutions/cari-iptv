@@ -457,11 +457,14 @@ class SubscriberAuthService
         $trialEndsAt = null;
         $paymentMethod = 'free';
 
-        if ($package['is_free'] || (float) $package['price'] === 0.0) {
+        $isFree = !empty($package['is_free']) || (float) ($package['price'] ?? 0) === 0.0;
+        $trialDays = (int) ($package['trial_days'] ?? 0);
+
+        if ($isFree) {
             // Free package — activate immediately, no expiry
             $status = 'active';
             $paymentMethod = 'free';
-        } elseif ((int) $package['trial_days'] > 0) {
+        } elseif ($trialDays > 0) {
             // Paid package with trial — check if subscriber already used trial
             $hadTrial = $this->db->fetch(
                 "SELECT 1 FROM subscriber_subscriptions WHERE subscriber_id = ? AND package_id = ?",
@@ -470,7 +473,7 @@ class SubscriberAuthService
 
             if (!$hadTrial) {
                 $status = 'trial';
-                $trialEndsAt = date('Y-m-d H:i:s', strtotime("+{$package['trial_days']} days"));
+                $trialEndsAt = date('Y-m-d H:i:s', strtotime("+{$trialDays} days"));
                 $expiresAt = $trialEndsAt;
                 $paymentMethod = 'trial';
             } else {

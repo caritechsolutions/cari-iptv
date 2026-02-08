@@ -201,20 +201,24 @@ class ContentApiService
         $activeIds = array_column($activePackageIds, 'package_id');
 
         // Get ALL available packages (for subscription page display)
+        // Use SELECT * to handle schema variations across installs
         $allPackages = $this->db->fetchAll(
-            "SELECT p.id, p.name, p.slug, p.description, p.price, p.currency,
-                    p.billing_period, p.is_free, p.is_featured, p.features,
-                    p.trial_days, p.is_adult
+            "SELECT p.*
              FROM packages p
              WHERE p.is_active = 1
              ORDER BY p.is_featured DESC, p.sort_order, p.price ASC"
         );
 
-        // Parse features JSON and mark subscribed packages
+        // Parse features JSON and mark subscribed packages with safe defaults
         foreach ($allPackages as &$pkg) {
             $features = json_decode($pkg['features'] ?? '[]', true);
             $pkg['features'] = is_array($features) ? $features : [];
             $pkg['is_subscribed'] = in_array((int)$pkg['id'], $activeIds);
+            $pkg['billing_period'] = $pkg['billing_period'] ?? 'monthly';
+            $pkg['trial_days'] = (int) ($pkg['trial_days'] ?? 0);
+            $pkg['is_adult'] = (bool) ($pkg['is_adult'] ?? false);
+            $pkg['is_free'] = (bool) ($pkg['is_free'] ?? false);
+            $pkg['is_featured'] = (bool) ($pkg['is_featured'] ?? false);
             $pkg['price_display'] = ($pkg['is_free'] || (float)$pkg['price'] === 0.0)
                 ? 'Free'
                 : ($pkg['currency'] ?? '$') . number_format((float)$pkg['price'], 2);
