@@ -123,7 +123,7 @@ class AppLayoutService
                 'max_per_layout' => 3,
                 'supports_items' => true,
                 'default_settings' => [
-                    'source' => 'curated',
+                    'source' => 'popular',
                     'columns' => 5,
                     'max_items' => 15,
                     'show_now_playing' => true,
@@ -167,6 +167,22 @@ class AppLayoutService
                     'text' => '',
                     'style' => 'heading',
                     'alignment' => 'left',
+                ],
+            ],
+            'packages_list' => [
+                'name' => 'Packages List',
+                'description' => 'Display available subscription packages with pricing',
+                'icon' => 'lucide-credit-card',
+                'category' => 'subscription',
+                'max_per_layout' => 1,
+                'supports_items' => false,
+                'default_settings' => [
+                    'layout' => 'cards',
+                    'show_features' => true,
+                    'show_pricing' => true,
+                    'highlight_featured' => true,
+                    'filter_platform' => true,
+                    'filter_geo' => true,
                 ],
             ],
         ];
@@ -329,13 +345,7 @@ class AppLayoutService
                 [$layout['platform']]
             );
 
-            // Archive currently published layouts for this platform
-            $this->db->execute(
-                "UPDATE app_layouts SET status = 'archived' WHERE platform = ? AND status = 'published' AND id != ?",
-                [$layout['platform'], $id]
-            );
-
-            // Publish this one
+            // Publish this one and set as default
             $this->db->update('app_layouts', [
                 'status' => 'published',
                 'is_default' => 1,
@@ -348,6 +358,36 @@ class AppLayoutService
             $this->db->rollback();
             return false;
         }
+    }
+
+    /**
+     * Unpublish a layout (set back to draft)
+     */
+    public function unpublishLayout(int $id, int $userId): bool
+    {
+        $layout = $this->getLayout($id);
+        if (!$layout) return false;
+
+        $wasDefault = (bool) $layout['is_default'];
+
+        $this->db->update('app_layouts', [
+            'status' => 'draft',
+            'is_default' => 0,
+            'updated_by' => $userId,
+        ], 'id = ?', [$id]);
+
+        // If this was the default, promote the next published layout
+        if ($wasDefault) {
+            $next = $this->db->fetch(
+                "SELECT id FROM app_layouts WHERE platform = ? AND status = 'published' AND id != ? ORDER BY updated_at DESC LIMIT 1",
+                [$layout['platform'], $id]
+            );
+            if ($next) {
+                $this->db->update('app_layouts', ['is_default' => 1], 'id = ?', [$next['id']]);
+            }
+        }
+
+        return true;
     }
 
     // ========================================================================
@@ -528,6 +568,7 @@ class AppLayoutService
     public function searchContent(string $type, string $query = '', int $limit = 20): array
     {
         $results = [];
+        $limit = (int) $limit;
 
         switch ($type) {
             case 'movie':
@@ -540,8 +581,7 @@ class AppLayoutService
                     $params[] = "%{$query}%";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY title LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY title LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
 
@@ -554,22 +594,20 @@ class AppLayoutService
                     $params[] = "%{$query}%";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY title LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY title LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
 
             case 'channel':
                 $sql = "SELECT id, name, channel_number as meta, logo_url as image
-                        FROM channels WHERE is_active = 1 AND is_published = 1";
+                        FROM channels WHERE 1=1";
                 $params = [];
                 if ($query) {
                     $sql .= " AND (name LIKE ? OR key_code LIKE ?)";
                     $params[] = "%{$query}%";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY name LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY name LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
 
@@ -581,8 +619,7 @@ class AppLayoutService
                     $sql .= " AND name LIKE ?";
                     $params[] = "%{$query}%";
                 }
-                $sql .= " ORDER BY name LIMIT ?";
-                $params[] = $limit;
+                $sql .= " ORDER BY name LIMIT {$limit}";
                 $results = $this->db->fetchAll($sql, $params);
                 break;
         }
@@ -632,6 +669,206 @@ class AppLayoutService
         return $items;
     }
 
+    /**
+     * Get auto-populated items for sections with non-curated sources.
+     * Used by content_row and channel_grid when source != 'curated'.
+     */
+    public function getAutoPopulatedItems(string $sectionType, array $settings): array
+    {
+        try {
+            return $this->doGetAutoPopulatedItems($sectionType, $settings);
+        } catch (\Exception $e) {
+            error_log('[AppLayoutService] getAutoPopulatedItems error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function doGetAutoPopulatedItems(string $sectionType, array $settings): array
+    {
+        $source = $settings['source'] ?? 'curated';
+        if ($source === 'curated') {
+            return [];
+        }
+
+        $maxItems = max(1, (int) ($settings['max_items'] ?? 20));
+        $contentType = $settings['content_type'] ?? 'movie';
+        $categoryId = !empty($settings['category_id']) ? (int) $settings['category_id'] : null;
+
+        if ($sectionType === 'channel_grid') {
+            return $this->getAutoChannels($source, $maxItems, $categoryId);
+        }
+
+        // content_row
+        $items = [];
+        if ($contentType === 'mixed') {
+            $half = (int) ceil($maxItems / 2);
+            $movies = $this->getAutoMovies($source, $half, $categoryId);
+            $series = $this->getAutoSeries($source, $half, $categoryId);
+            $items = array_merge($movies, $series);
+            usort($items, fn($a, $b) => strtotime($b['created_at'] ?? '0') - strtotime($a['created_at'] ?? '0'));
+            $items = array_slice($items, 0, $maxItems);
+        } elseif ($contentType === 'series') {
+            $items = $this->getAutoSeries($source, $maxItems, $categoryId);
+        } else {
+            $items = $this->getAutoMovies($source, $maxItems, $categoryId);
+        }
+
+        // Transform into the same format as manually added items
+        $result = [];
+        foreach ($items as $i => $row) {
+            $type = $row['_type'] ?? 'movie';
+            unset($row['_type'], $row['created_at']);
+            $result[] = [
+                'id' => 0,
+                'content_type' => $type,
+                'content_id' => $row['id'],
+                'settings' => '{}',
+                'sort_order' => $i,
+                'content' => $row,
+                '_auto' => true,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function getAutoMovies(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "status = 'published'";
+        $params = [];
+        $order = 'created_at DESC';
+
+        if ($categoryId) {
+            $where .= " AND category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'latest':
+                $order = 'created_at DESC';
+                break;
+            case 'popular':
+                $order = 'views DESC, created_at DESC';
+                break;
+            case 'top_rated':
+                $order = 'vote_average DESC, created_at DESC';
+                break;
+            case 'featured':
+                $where .= " AND is_featured = 1";
+                $order = 'updated_at DESC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'title ASC';
+                break;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT id, title, year, poster_url, backdrop_url, synopsis as overview,
+                    vote_average, created_at
+             FROM movies WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        );
+
+        foreach ($rows as &$r) $r['_type'] = 'movie';
+        return $rows;
+    }
+
+    private function getAutoSeries(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "status = 'published'";
+        $params = [];
+        $order = 'created_at DESC';
+
+        if ($categoryId) {
+            $where .= " AND category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'latest':
+                $order = 'created_at DESC';
+                break;
+            case 'popular':
+                $order = 'views DESC, created_at DESC';
+                break;
+            case 'top_rated':
+                $order = 'vote_average DESC, created_at DESC';
+                break;
+            case 'featured':
+                $where .= " AND is_featured = 1";
+                $order = 'updated_at DESC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'title ASC';
+                break;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT id, title, year, poster_url, backdrop_url, synopsis as overview,
+                    vote_average, created_at
+             FROM series WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        );
+
+        foreach ($rows as &$r) $r['_type'] = 'series';
+        return $rows;
+    }
+
+    private function getAutoChannels(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "1=1";
+        $params = [];
+        $order = 'c.channel_number ASC, c.name ASC';
+        $join = '';
+
+        if ($categoryId) {
+            $join = " JOIN channel_categories cc ON c.id = cc.channel_id AND cc.category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'popular':
+                $order = 'c.channel_number ASC, c.name ASC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'c.channel_number ASC, c.name ASC';
+                break;
+        }
+
+        try {
+            $rows = $this->db->fetchAll(
+                "SELECT c.id, c.name, c.logo_url, c.channel_number
+                 FROM channels c {$join}
+                 WHERE {$where}
+                 ORDER BY {$order} LIMIT {$limit}",
+                $params
+            );
+        } catch (\Exception $e) {
+            error_log('[AppLayoutService] getAutoChannels error: ' . $e->getMessage());
+            return [];
+        }
+
+        $result = [];
+        foreach ($rows as $i => $row) {
+            $result[] = [
+                'id' => 0,
+                'content_type' => 'channel',
+                'content_id' => $row['id'],
+                'settings' => '{}',
+                'sort_order' => $i,
+                'content' => $row,
+                '_auto' => true,
+            ];
+        }
+
+        return $result;
+    }
+
     // ========================================================================
     // PAGES
     // ========================================================================
@@ -653,6 +890,8 @@ class AppLayoutService
             'player' => ['name' => 'Player', 'icon' => 'lucide-play', 'description' => 'Media player page', 'has_layout' => false],
             'details' => ['name' => 'Details', 'icon' => 'lucide-info', 'description' => 'Content detail view', 'has_layout' => false],
             'custom' => ['name' => 'Custom Page', 'icon' => 'lucide-file-plus', 'description' => 'Custom user-defined page', 'has_layout' => true],
+            'subscription' => ['name' => 'Subscribe', 'icon' => 'lucide-credit-card', 'description' => 'Package subscription & payment', 'has_layout' => true],
+            'profile' => ['name' => 'Profile', 'icon' => 'lucide-user', 'description' => 'User profile & settings', 'has_layout' => false],
         ];
     }
 

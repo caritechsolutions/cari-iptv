@@ -355,16 +355,19 @@ foreach ($stats['platforms'] as $p) {
                         <button class="btn btn-secondary btn-sm" onclick="duplicateLayout(<?= $layout['id'] ?>)" title="Duplicate">
                             <i class="lucide-copy"></i>
                         </button>
-                        <?php if ($layout['status'] === 'draft'): ?>
+                        <?php if ($layout['status'] !== 'published'): ?>
                             <button class="btn btn-secondary btn-sm" onclick="publishLayout(<?= $layout['id'] ?>)" title="Publish" style="color: var(--success);">
                                 <i class="lucide-upload"></i>
                             </button>
                         <?php endif; ?>
-                        <?php if ($layout['status'] !== 'published'): ?>
-                            <button class="btn btn-secondary btn-sm" onclick="deleteLayout(<?= $layout['id'] ?>, '<?= htmlspecialchars(addslashes($layout['name'])) ?>')" title="Delete" style="color: var(--danger);">
-                                <i class="lucide-trash-2"></i>
+                        <?php if ($layout['status'] === 'published'): ?>
+                            <button class="btn btn-secondary btn-sm" onclick="unpublishLayout(<?= $layout['id'] ?>)" title="Set to Draft" style="color: var(--warning);">
+                                <i class="lucide-archive-restore"></i>
                             </button>
                         <?php endif; ?>
+                        <button class="btn btn-secondary btn-sm" onclick="deleteLayout(<?= $layout['id'] ?>, '<?= htmlspecialchars(addslashes($layout['name'])) ?>')" title="Delete" style="color: var(--danger);">
+                            <i class="lucide-trash-2"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -496,7 +499,7 @@ async function duplicateLayout(id) {
 }
 
 async function publishLayout(id) {
-    if (!confirm('Publish this layout? It will become the default for its platform and archive any currently published layout.')) return;
+    if (!confirm('Publish this layout and set it as the default for its platform?')) return;
 
     const form = new FormData();
     form.append('_token', csrfToken);
@@ -508,6 +511,25 @@ async function publishLayout(id) {
             window.location.reload();
         } else {
             alert(data.message || 'Failed to publish');
+        }
+    } catch (e) {
+        alert('Network error');
+    }
+}
+
+async function unpublishLayout(id) {
+    if (!confirm('Set this layout back to draft? It will no longer be available for pages.')) return;
+
+    const form = new FormData();
+    form.append('_token', csrfToken);
+
+    try {
+        const res = await fetch('/admin/app-layout/' + id + '/unpublish', { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.message || 'Failed to unpublish');
         }
     } catch (e) {
         alert('Network error');

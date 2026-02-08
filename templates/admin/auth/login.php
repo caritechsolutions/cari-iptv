@@ -376,20 +376,6 @@
                 </button>
             </form>
 
-            <div class="login-links">
-                <span class="register-link">Don't have an account? <a href="/admin/register"><strong>Register</strong></a></span>
-            </div>
-
-            <?php if (!empty($error) && str_contains($error, 'verify your email')): ?>
-            <div class="resend-form">
-                <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 0.5rem;">Didn't receive the email?</p>
-                <form method="POST" action="/admin/resend-verification" style="display: inline;">
-                    <input type="hidden" name="_token" value="<?= htmlspecialchars($csrf) ?>">
-                    <input type="email" name="email" placeholder="Enter your email" required>
-                    <button type="submit">Resend verification email</button>
-                </form>
-            </div>
-            <?php endif; ?>
         </div>
 
         <div class="version">

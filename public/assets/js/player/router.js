@@ -88,5 +88,10 @@ const CariRouter = (function() {
         return window.location.pathname;
     }
 
-    return { addRoute, navigate, beforeEach, start, getCurrentPath, handleRoute };
+    function refresh() {
+        currentPath = null;
+        handleRoute();
+    }
+
+    return { addRoute, navigate, beforeEach, start, getCurrentPath, handleRoute, refresh };
 })();

@@ -581,16 +581,33 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
                 </div>
 
                 <!-- Items (for types that support them) -->
-                <?php if ($typeDef && $typeDef['supports_items']): ?>
+                <?php if ($typeDef && $typeDef['supports_items']):
+                    $sectionSettings = is_array($section['settings']) ? $section['settings'] : json_decode($section['settings'] ?? '{}', true);
+                    $sectionSource = $sectionSettings['source'] ?? 'curated';
+                    $isAuto = ($sectionSource !== 'curated');
+                ?>
                     <div class="items-header">
                         <h4>Content Items</h4>
-                        <button class="btn btn-sm btn-secondary" onclick="openContentPicker(<?= $section['id'] ?>)">
-                            <i class="lucide-plus"></i> Add Content
-                        </button>
+                        <?php if ($isAuto): ?>
+                            <span class="badge badge-info" style="font-size:0.75rem;">Auto: <?= htmlspecialchars(ucwords(str_replace('_', ' ', $sectionSource))) ?></span>
+                        <?php else: ?>
+                            <button class="btn btn-sm btn-secondary" onclick="openContentPicker(<?= $section['id'] ?>, '<?= htmlspecialchars($section['section_type']) ?>')">
+                                <i class="lucide-plus"></i> Add Content
+                            </button>
+                        <?php endif; ?>
                     </div>
+                    <?php if ($isAuto): ?>
+                        <div class="text-muted text-sm" style="padding: 0.5rem 0 0.75rem;">
+                            Items are automatically populated from your library. Change source to "Curated (manual)" to pick items yourself.
+                        </div>
+                    <?php endif; ?>
                     <div class="items-list" id="itemsList-<?= $section['id'] ?>">
                         <?php if (empty($section['items'])): ?>
-                            <div class="text-muted text-sm" style="padding: 1rem 0;">No items added yet. Click "Add Content" to get started.</div>
+                            <?php if ($isAuto): ?>
+                                <div class="text-muted text-sm" style="padding: 1rem 0;">No matching content found in your library for this source.</div>
+                            <?php else: ?>
+                                <div class="text-muted text-sm" style="padding: 1rem 0;">No items added yet. Click "Add Content" to get started.</div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <?php foreach ($section['items'] as $item):
                                 $content = $item['content'] ?? null;
@@ -605,9 +622,11 @@ $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'ar
                                         <div class="item-card-name"><?= htmlspecialchars($content['name'] ?? $content['title'] ?? 'Unknown') ?></div>
                                         <div class="item-card-type"><?= ucfirst($item['content_type']) ?><?= !empty($content['year']) ? ' &middot; ' . $content['year'] : '' ?></div>
                                     </div>
-                                    <button class="item-card-remove" onclick="removeItem(<?= $section['id'] ?>, <?= $item['id'] ?>)" title="Remove">
-                                        <i class="lucide-x"></i>
-                                    </button>
+                                    <?php if (!$isAuto): ?>
+                                        <button class="item-card-remove" onclick="removeItem(<?= $section['id'] ?>, <?= $item['id'] ?>)" title="Remove">
+                                            <i class="lucide-x"></i>
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -944,6 +963,11 @@ async function saveSection(sectionId) {
         const res = await fetch(`/admin/app-layout/${layoutId}/sections/${sectionId}/update`, { method: 'POST', body: form });
         const data = await res.json();
         if (data.success) {
+            // Reload if source setting changed (to refresh auto-populated items)
+            if (settings.source !== undefined) {
+                window.location.reload();
+                return;
+            }
             // Update header name
             const nameEl = card.querySelector('.section-header-name');
             if (nameEl && title) nameEl.textContent = title;
@@ -972,11 +996,18 @@ let currentPickerSource = 'library';
 let tmdbSearchType = 'movie';
 let tmdbSearchTimeout = null;
 
-function openContentPicker(sectionId) {
+function openContentPicker(sectionId, sectionType) {
     activeSectionForPicker = sectionId;
-    currentContentType = 'movie';
     currentPickerSource = 'library';
-    tmdbSearchType = 'movie';
+
+    // Default content type based on section type
+    if (sectionType === 'channel_grid') {
+        currentContentType = 'channel';
+        tmdbSearchType = 'movie';
+    } else {
+        currentContentType = 'movie';
+        tmdbSearchType = 'movie';
+    }
 
     // Reset all panels
     document.querySelectorAll('.picker-source-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
@@ -985,7 +1016,11 @@ function openContentPicker(sectionId) {
     // Reset library search
     document.getElementById('contentSearchInput').value = '';
     document.getElementById('contentResults').innerHTML = '<div class="text-muted text-sm" style="padding:2rem;text-align:center;">Type to search or browse content</div>';
-    document.querySelectorAll('#pickerLibrary .content-type-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+
+    // Set active tab based on content type
+    const typeTabMap = { movie: 0, series: 1, channel: 2, category: 3 };
+    const activeIdx = typeTabMap[currentContentType] || 0;
+    document.querySelectorAll('#pickerLibrary .content-type-tab').forEach((t, i) => t.classList.toggle('active', i === activeIdx));
 
     // Reset TMDB search
     document.getElementById('tmdbSearchInput').value = '';

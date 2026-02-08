@@ -92,35 +92,51 @@ class ContentApiService
             'updated_at' => $row['latest'] ?? null,
         ];
 
-        // Layout versions per platform
+        // Layout versions per platform — tracks ALL published layouts, not just default
         $platforms = $platform ? [$platform] : ['web', 'mobile', 'tv', 'stb'];
         $manifest['layouts'] = [];
         foreach ($platforms as $p) {
             $row = $this->safeQuery(fn() => $this->db->fetch(
-                "SELECT id, updated_at FROM app_layouts WHERE platform = ? AND is_default = 1 AND status = 'published' LIMIT 1",
+                "SELECT COUNT(*) as cnt, MAX(updated_at) as latest FROM app_layouts WHERE platform = ? AND status = 'published'",
                 [$p]
-            ));
-            if ($row) {
+            ), ['cnt' => 0, 'latest' => null]);
+            if ($row && $row['latest']) {
                 $manifest['layouts'][$p] = [
-                    'version' => md5($row['id'] . ':' . $row['updated_at']),
-                    'layout_id' => (int)$row['id'],
-                    'updated_at' => $row['updated_at'],
+                    'version' => md5(($row['cnt'] ?? 0) . ':' . ($row['latest'] ?? '')),
+                    'count' => (int)($row['cnt'] ?? 0),
+                    'updated_at' => $row['latest'],
                 ];
             }
         }
 
-        // Navigation versions per platform
+        // Navigation versions per platform — includes nav settings, items, and linked pages
         $manifest['navigation'] = [];
         foreach ($platforms as $p) {
             $row = $this->safeQuery(fn() => $this->db->fetch(
-                "SELECT MAX(n.updated_at) as latest
-                 FROM app_navigation n WHERE n.platform = ?",
+                "SELECT
+                    COUNT(ni.id) as item_count,
+                    MAX(n.updated_at) as nav_latest,
+                    MAX(ni.created_at) as item_latest,
+                    MAX(p.updated_at) as page_latest
+                 FROM app_navigation n
+                 LEFT JOIN app_navigation_items ni ON ni.navigation_id = n.id
+                 LEFT JOIN app_pages p ON p.platform = n.platform AND p.is_active = 1
+                 WHERE n.platform = ?",
                 [$p]
             ));
-            if ($row && $row['latest']) {
+            if ($row && ($row['nav_latest'] || $row['item_latest'])) {
                 $manifest['navigation'][$p] = [
-                    'version' => md5($p . ':' . $row['latest']),
-                    'updated_at' => $row['latest'],
+                    'version' => md5(
+                        ($row['item_count'] ?? 0) . ':' .
+                        ($row['nav_latest'] ?? '') . ':' .
+                        ($row['item_latest'] ?? '') . ':' .
+                        ($row['page_latest'] ?? '')
+                    ),
+                    'updated_at' => max(
+                        $row['nav_latest'] ?? '',
+                        $row['item_latest'] ?? '',
+                        $row['page_latest'] ?? ''
+                    ),
                 ];
             }
         }
@@ -135,6 +151,108 @@ class ContentApiService
     {
         $manifest = $this->getManifest();
         return $manifest[$type]['version'] ?? 'unknown';
+    }
+
+    // =========================================================================
+    // ENTITLEMENTS & ACCESS CONTROL
+    // =========================================================================
+
+    /**
+     * Get subscriber's entitlements - content they have access to via their packages
+     */
+    public function getSubscriberEntitlements(int $subscriberId): array
+    {
+        // Get all content IDs the subscriber is entitled to via their active packages
+        $items = $this->db->fetchAll(
+            "SELECT DISTINCT cgi.content_type, cgi.content_id
+             FROM subscriber_subscriptions ss
+             INNER JOIN package_content_groups pcg ON ss.package_id = pcg.package_id
+             INNER JOIN content_group_items cgi ON pcg.group_id = cgi.group_id
+             WHERE ss.subscriber_id = ?
+               AND ss.status IN ('active', 'trial')
+               AND (ss.expires_at IS NULL OR ss.expires_at > NOW())",
+            [$subscriberId]
+        );
+
+        // Use plural keys to match content_type + 's'
+        $entitlements = [
+            'movies' => [],
+            'series' => [],
+            'channels' => [],
+            'categories' => [],
+        ];
+
+        foreach ($items as $item) {
+            $type = $item['content_type'] . 's'; // movie -> movies
+            if ($type === 'seriess') $type = 'series'; // fix double s
+            if (isset($entitlements[$type])) {
+                $entitlements[$type][] = (int) $item['content_id'];
+            }
+        }
+
+        // Get subscriber's active package IDs
+        $activePackageIds = $this->db->fetchAll(
+            "SELECT package_id FROM subscriber_subscriptions
+             WHERE subscriber_id = ?
+               AND status IN ('active', 'trial')
+               AND (expires_at IS NULL OR expires_at > NOW())",
+            [$subscriberId]
+        );
+        $activeIds = array_column($activePackageIds, 'package_id');
+
+        // Get ALL available packages (for subscription page display)
+        $allPackages = $this->db->fetchAll(
+            "SELECT p.id, p.name, p.slug, p.description, p.price, p.currency,
+                    p.billing_period, p.is_free, p.is_featured, p.features,
+                    p.trial_days, p.is_adult
+             FROM packages p
+             WHERE p.is_active = 1
+             ORDER BY p.is_featured DESC, p.sort_order, p.price ASC"
+        );
+
+        // Parse features JSON and mark subscribed packages
+        foreach ($allPackages as &$pkg) {
+            $features = json_decode($pkg['features'] ?? '[]', true);
+            $pkg['features'] = is_array($features) ? $features : [];
+            $pkg['is_subscribed'] = in_array((int)$pkg['id'], $activeIds);
+            $pkg['price_display'] = ($pkg['is_free'] || (float)$pkg['price'] === 0.0)
+                ? 'Free'
+                : ($pkg['currency'] ?? '$') . number_format((float)$pkg['price'], 2);
+        }
+
+        return array_merge($entitlements, [
+            'packages' => $allPackages,
+        ]);
+    }
+
+    /**
+     * Check if content is restricted (belongs to any content group)
+     * If not in any group, it's free/unrestricted
+     */
+    public function isContentRestricted(string $contentType, int $contentId): bool
+    {
+        $result = $this->db->fetch(
+            "SELECT 1 FROM content_group_items WHERE content_type = ? AND content_id = ? LIMIT 1",
+            [$contentType, $contentId]
+        );
+        return $result !== null;
+    }
+
+    /**
+     * Get packages that include specific content
+     */
+    public function getPackagesForContent(string $contentType, int $contentId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT DISTINCT p.id, p.name, p.slug, p.price, p.currency, p.is_free, p.is_featured
+             FROM packages p
+             INNER JOIN package_content_groups pcg ON p.id = pcg.package_id
+             INNER JOIN content_group_items cgi ON pcg.group_id = cgi.group_id
+             WHERE cgi.content_type = ? AND cgi.content_id = ?
+               AND p.is_active = 1
+             ORDER BY p.is_featured DESC, p.sort_order, p.price ASC",
+            [$contentType, $contentId]
+        );
     }
 
     // =========================================================================
@@ -164,8 +282,9 @@ class ContentApiService
         $channels = $this->db->fetchAll(
             "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url,
                     c.epg_channel_id, c.category_id, c.country,
-                    c.is_hd, c.channel_number, c.sort_order, c.updated_at,
-                    cat.name as category_name
+                    c.is_hd, c.is_adult, c.channel_number, c.sort_order, c.updated_at,
+                    cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
              WHERE {$whereStr}
@@ -173,6 +292,12 @@ class ContentApiService
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Cast is_restricted to boolean
+        foreach ($channels as &$channel) {
+            $channel['is_restricted'] = (bool) $channel['is_restricted'];
+            $channel['content_type'] = 'channel';
+        }
 
         $total = $this->db->fetch(
             "SELECT COUNT(*) as cnt FROM channels c WHERE {$whereStr}",
@@ -190,7 +315,8 @@ class ContentApiService
     public function getChannel(int $id): ?array
     {
         $channel = $this->db->fetch(
-            "SELECT c.*, cat.name as category_name
+            "SELECT c.*, cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
              WHERE c.id = ? AND c.is_active = 1",
@@ -200,6 +326,9 @@ class ContentApiService
         if (!$channel) {
             return null;
         }
+
+        $channel['is_restricted'] = (bool) $channel['is_restricted'];
+        $channel['content_type'] = 'channel';
 
         // Get current EPG programme (table is epg_programs)
         $channel['now_playing'] = $this->safeQuery(fn() => $this->db->fetch(
@@ -273,9 +402,10 @@ class ContentApiService
         $movies = $this->db->fetchAll(
             "SELECT m.id, m.title, m.slug, m.year, m.genres, m.runtime,
                     m.vote_average, m.poster_url, m.backdrop_url,
-                    m.stream_url, m.is_featured,
+                    m.stream_url, m.is_featured, m.is_adult,
                     m.category_id, m.updated_at,
-                    cat.name as category_name
+                    cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = m.id LIMIT 1) IS NOT NULL as is_restricted
              FROM movies m
              LEFT JOIN categories cat ON m.category_id = cat.id
              WHERE {$whereStr}
@@ -283,6 +413,12 @@ class ContentApiService
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Cast is_restricted to boolean
+        foreach ($movies as &$movie) {
+            $movie['is_restricted'] = (bool) $movie['is_restricted'];
+            $movie['content_type'] = 'movie';
+        }
 
         $total = $this->db->fetch(
             "SELECT COUNT(*) as cnt FROM movies m WHERE {$whereStr}",
@@ -300,7 +436,8 @@ class ContentApiService
     public function getMovie(int $id): ?array
     {
         $movie = $this->db->fetch(
-            "SELECT m.*, cat.name as category_name
+            "SELECT m.*, cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = m.id LIMIT 1) IS NOT NULL as is_restricted
              FROM movies m
              LEFT JOIN categories cat ON m.category_id = cat.id
              WHERE m.id = ? AND m.status = 'published'",
@@ -310,6 +447,9 @@ class ContentApiService
         if (!$movie) {
             return null;
         }
+
+        $movie['is_restricted'] = (bool) $movie['is_restricted'];
+        $movie['content_type'] = 'movie';
 
         // Trailers (video_key, url - not youtube_id, youtube_url)
         $movie['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
@@ -383,10 +523,11 @@ class ContentApiService
         $series = $this->db->fetchAll(
             "SELECT s.id, s.title, s.slug, s.year, s.genres, s.synopsis,
                     s.vote_average, s.poster_url, s.backdrop_url,
-                    s.is_featured, s.category_id, s.updated_at,
+                    s.is_featured, s.is_adult, s.category_id, s.updated_at,
                     s.number_of_seasons as season_count,
                     s.number_of_episodes as episode_count,
-                    cat.name as category_name
+                    cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as is_restricted
              FROM series s
              LEFT JOIN categories cat ON s.category_id = cat.id
              WHERE {$whereStr}
@@ -394,6 +535,12 @@ class ContentApiService
              LIMIT {$limit} OFFSET {$offset}",
             $params
         );
+
+        // Cast is_restricted to boolean
+        foreach ($series as &$show) {
+            $show['is_restricted'] = (bool) $show['is_restricted'];
+            $show['content_type'] = 'series';
+        }
 
         $total = $this->db->fetch(
             "SELECT COUNT(*) as cnt FROM series s WHERE {$whereStr}",
@@ -411,7 +558,8 @@ class ContentApiService
     public function getSeriesDetail(int $id): ?array
     {
         $show = $this->db->fetch(
-            "SELECT s.*, cat.name as category_name
+            "SELECT s.*, cat.name as category_name,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as is_restricted
              FROM series s
              LEFT JOIN categories cat ON s.category_id = cat.id
              WHERE s.id = ? AND s.status = 'published'",
@@ -421,6 +569,9 @@ class ContentApiService
         if (!$show) {
             return null;
         }
+
+        $show['is_restricted'] = (bool) $show['is_restricted'];
+        $show['content_type'] = 'series';
 
         // Seasons (table is series_seasons)
         $show['seasons'] = $this->safeQuery(fn() => $this->db->fetchAll(
@@ -451,6 +602,27 @@ class ContentApiService
         ), []);
 
         return $show;
+    }
+
+    /**
+     * Get a single episode by ID (for the player)
+     */
+    public function getEpisode(int $id): ?array
+    {
+        $episode = $this->db->fetch(
+            "SELECT e.id, e.series_id, e.season_id, e.episode_number, e.name as title,
+                    e.overview as synopsis, e.runtime, e.stream_url, e.still_url,
+                    e.air_date, e.vote_average,
+                    s.title as series_title, s.poster_url as series_poster_url,
+                    sn.season_number, sn.name as season_name
+             FROM series_episodes e
+             JOIN series s ON e.series_id = s.id
+             JOIN series_seasons sn ON e.season_id = sn.id
+             WHERE e.id = ? AND s.status = 'published'",
+            [$id]
+        );
+
+        return $episode ?: null;
     }
 
     // =========================================================================
@@ -530,6 +702,35 @@ class ContentApiService
     // APP LAYOUT
     // =========================================================================
 
+    /**
+     * Get a specific layout by ID (used when page has a linked layout_id).
+     * No status filter — if admin linked it to a page, serve it regardless of status.
+     */
+    public function getLayoutById(int $id): ?array
+    {
+        $layout = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT id, name, platform, status, updated_at
+             FROM app_layouts
+             WHERE id = ?
+             LIMIT 1",
+            [$id]
+        ));
+
+        if (!$layout) {
+            error_log("[ContentAPI] getLayoutById({$id}): no layout row found");
+            return null;
+        }
+
+        try {
+            return $this->loadLayoutSections($layout);
+        } catch (\Throwable $e) {
+            error_log("[ContentAPI] getLayoutById({$id}): loadLayoutSections failed: " . $e->getMessage());
+            // Return layout with empty sections rather than failing entirely
+            $layout['sections'] = [];
+            return $layout;
+        }
+    }
+
     public function getLayout(string $platform): ?array
     {
         $layout = $this->safeQuery(fn() => $this->db->fetch(
@@ -544,7 +745,20 @@ class ContentApiService
             return null;
         }
 
-        // Get sections
+        try {
+            return $this->loadLayoutSections($layout);
+        } catch (\Throwable $e) {
+            error_log("[ContentAPI] getLayout({$platform}): loadLayoutSections failed: " . $e->getMessage());
+            $layout['sections'] = [];
+            return $layout;
+        }
+    }
+
+    /**
+     * Load sections and items for a layout
+     */
+    private function loadLayoutSections(array $layout): array
+    {
         $layout['sections'] = $this->db->fetchAll(
             "SELECT id, section_type, title, settings, sort_order, is_active
              FROM app_layout_sections
@@ -553,26 +767,155 @@ class ContentApiService
             [$layout['id']]
         );
 
-        // Get items for each section and decode settings
         foreach ($layout['sections'] as &$section) {
             $section['settings'] = json_decode($section['settings'] ?? '{}', true);
+            $source = $section['settings']['source'] ?? 'curated';
 
-            $section['items'] = $this->db->fetchAll(
-                "SELECT i.id, i.content_type, i.content_id, i.settings, i.sort_order
-                 FROM app_layout_items i
-                 WHERE i.section_id = ?
-                 ORDER BY i.sort_order ASC",
-                [$section['id']]
-            );
+            // For non-curated sources, auto-populate items from the database
+            if ($source !== 'curated' && in_array($section['section_type'], ['content_row', 'channel_grid'])) {
+                $section['items'] = $this->getAutoItems($section['section_type'], $section['settings']);
+            } else {
+                $section['items'] = $this->db->fetchAll(
+                    "SELECT i.id, i.content_type, i.content_id, i.settings, i.sort_order
+                     FROM app_layout_items i
+                     WHERE i.section_id = ?
+                     ORDER BY i.sort_order ASC",
+                    [$section['id']]
+                );
 
-            // Resolve content for each item
-            foreach ($section['items'] as &$item) {
-                $item['settings'] = json_decode($item['settings'] ?? '{}', true);
-                $item['content'] = $this->resolveContentItem($item['content_type'], $item['content_id'], $item['settings']);
+                foreach ($section['items'] as &$item) {
+                    $item['settings'] = json_decode($item['settings'] ?? '{}', true);
+                    $item['content'] = $this->resolveContentItem($item['content_type'], $item['content_id'], $item['settings']);
+                }
             }
         }
 
         return $layout;
+    }
+
+    /**
+     * Auto-populate items for content_row / channel_grid based on source settings
+     */
+    private function getAutoItems(string $sectionType, array $settings): array
+    {
+        $source = $settings['source'] ?? 'curated';
+        $maxItems = (int) ($settings['max_items'] ?? 20);
+        $contentType = $settings['content_type'] ?? 'movie';
+        $categoryId = !empty($settings['category_id']) ? (int) $settings['category_id'] : null;
+
+        if ($sectionType === 'channel_grid') {
+            return $this->getAutoChannelItems($source, $maxItems, $categoryId);
+        }
+
+        $items = [];
+        if ($contentType === 'mixed') {
+            $half = (int) ceil($maxItems / 2);
+            $movies = $this->getAutoContentItems('movie', $source, $half, $categoryId);
+            $series = $this->getAutoContentItems('series', $source, $half, $categoryId);
+            $items = array_merge($movies, $series);
+            $items = array_slice($items, 0, $maxItems);
+        } elseif ($contentType === 'series') {
+            $items = $this->getAutoContentItems('series', $source, $maxItems, $categoryId);
+        } else {
+            $items = $this->getAutoContentItems('movie', $source, $maxItems, $categoryId);
+        }
+
+        return $items;
+    }
+
+    private function getAutoContentItems(string $type, string $source, int $limit, ?int $categoryId): array
+    {
+        $table = $type === 'series' ? 'series' : 'movies';
+        $where = "status = 'published'";
+        $params = [];
+        $order = 'created_at DESC';
+
+        if ($categoryId) {
+            $where .= " AND category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        switch ($source) {
+            case 'latest':
+                $order = 'created_at DESC';
+                break;
+            case 'popular':
+                $order = 'views DESC, created_at DESC';
+                break;
+            case 'top_rated':
+                $order = 'vote_average DESC, created_at DESC';
+                break;
+            case 'featured':
+                $where .= " AND is_featured = 1";
+                $order = 'updated_at DESC';
+                break;
+            case 'category':
+                if (!$categoryId) return [];
+                $order = 'title ASC';
+                break;
+        }
+
+        $titleCol = 'title';
+        $extraCols = $table === 'movies'
+            ? 'slug, genres, runtime, vote_average, poster_url, backdrop_url, stream_url, synopsis'
+            : 'slug, genres, vote_average, poster_url, backdrop_url, synopsis';
+
+        $rows = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, {$titleCol}, year, {$extraCols}
+             FROM {$table} WHERE {$where}
+             ORDER BY {$order} LIMIT {$limit}",
+            $params
+        ), []);
+
+        $items = [];
+        foreach ($rows as $i => $row) {
+            $items[] = [
+                'id' => 0,
+                'content_type' => $type,
+                'content_id' => $row['id'],
+                'settings' => [],
+                'sort_order' => $i,
+                'content' => $row,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function getAutoChannelItems(string $source, int $limit, ?int $categoryId): array
+    {
+        $where = "c.is_active = 1";
+        $params = [];
+        $join = '';
+
+        if ($categoryId) {
+            $join = " JOIN channel_categories cc ON c.id = cc.channel_id AND cc.category_id = ?";
+            $params[] = $categoryId;
+        }
+
+        if ($source === 'category' && !$categoryId) return [];
+
+        $rows = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.is_hd
+             FROM channels c {$join}
+             WHERE {$where}
+             ORDER BY c.channel_number ASC LIMIT {$limit}",
+            $params
+        ), []);
+
+        $items = [];
+        foreach ($rows as $i => $row) {
+            $items[] = [
+                'id' => 0,
+                'content_type' => 'channel',
+                'content_id' => $row['id'],
+                'settings' => [],
+                'sort_order' => $i,
+                'content' => $row,
+            ];
+        }
+
+        return $items;
     }
 
     /**

@@ -4,6 +4,7 @@
  */
 const CariAPI = (function() {
     const BASE = '/api/v1';
+    let _cacheBust = '';
 
     function getAccessToken() {
         return localStorage.getItem('access_token');
@@ -108,8 +109,20 @@ const CariAPI = (function() {
         return res.json();
     }
 
-    function get(path) { return request('GET', path); }
+    function get(path) {
+        if (_cacheBust) {
+            path += (path.includes('?') ? '&' : '?') + '_v=' + _cacheBust;
+        }
+        return request('GET', path);
+    }
     function post(path, body) { return request('POST', path, body); }
+
+    function bustAllCaches() {
+        _cacheBust = String(Date.now());
+    }
+    function clearCacheBust() {
+        _cacheBust = '';
+    }
 
     async function logout() {
         const token = getRefreshToken();
@@ -123,10 +136,16 @@ const CariAPI = (function() {
     // ---- Content API helpers ----
 
     function getAppConfig() { return get('/app/config/web'); }
-    function getLayout() { return get('/app/layout/web'); }
+    function getLayout(layoutId) {
+        const q = layoutId ? '?id=' + layoutId : '';
+        return get('/app/layout/web' + q);
+    }
     function getNavigation() { return get('/app/navigation/web'); }
     function getPages() { return get('/app/pages/web'); }
-    function getManifest() { return get('/manifest'); }
+    function getManifest() {
+        // Always bypass browser cache for manifest checks
+        return request('GET', '/manifest?_t=' + Date.now());
+    }
 
     function getChannels(params) {
         const q = params ? '?' + new URLSearchParams(params) : '';
@@ -148,6 +167,7 @@ const CariAPI = (function() {
     }
 
     function getSeriesDetail(id) { return get('/series/' + id); }
+    function getEpisode(id) { return get('/episodes/' + id); }
 
     function getCategories(params) {
         const q = params ? '?' + new URLSearchParams(params) : '';
@@ -170,12 +190,14 @@ const CariAPI = (function() {
     function getContinueWatching() { return get('/auth/continue-watching'); }
     function toggleWatchlist(contentType, contentId) { return post('/auth/watchlist/toggle', { content_type: contentType, content_id: contentId }); }
     function getWatchlist() { return get('/auth/watchlist'); }
+    function getEntitlements() { return get('/auth/entitlements'); }
 
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
-        getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail,
+        getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
         getCategories, search, getEpg,
-        updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist,
+        updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
+        bustAllCaches, clearCacheBust,
     };
 })();

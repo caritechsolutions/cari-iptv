@@ -20,6 +20,181 @@ class SubscriberAuthService
     }
 
     /**
+     * Register a new subscriber account (requires email verification)
+     */
+    public function register(array $data): array
+    {
+        $email = trim($data['email'] ?? '');
+        $firstName = trim($data['first_name'] ?? '');
+        $lastName = trim($data['last_name'] ?? '');
+        $password = $data['password'] ?? '';
+        $passwordConfirm = $data['password_confirm'] ?? '';
+        $phone = trim($data['phone'] ?? '');
+        $country = trim($data['country'] ?? '');
+        $birthday = trim($data['birthday'] ?? '');
+
+        // Validation
+        if (empty($firstName)) {
+            return ['success' => false, 'error' => 'First name is required'];
+        }
+        if (empty($lastName)) {
+            return ['success' => false, 'error' => 'Last name is required'];
+        }
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'error' => 'A valid email address is required'];
+        }
+        if (strlen($password) < 8) {
+            return ['success' => false, 'error' => 'Password must be at least 8 characters'];
+        }
+        if ($password !== $passwordConfirm) {
+            return ['success' => false, 'error' => 'Passwords do not match'];
+        }
+
+        // Check if email already exists
+        $existing = $this->db->fetch(
+            "SELECT id FROM subscribers WHERE email = ?",
+            [$email]
+        );
+        if ($existing) {
+            return ['success' => false, 'error' => 'An account with this email already exists'];
+        }
+
+        // Generate username from email (prefix before @)
+        $baseUsername = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', explode('@', $email)[0]));
+        $username = $baseUsername;
+        $counter = 1;
+        while ($this->db->fetch("SELECT id FROM subscribers WHERE username = ?", [$username])) {
+            $username = $baseUsername . $counter;
+            $counter++;
+        }
+
+        // Validate birthday if provided
+        if (!empty($birthday)) {
+            $parsedDate = \DateTime::createFromFormat('Y-m-d', $birthday);
+            if (!$parsedDate) {
+                $birthday = null;
+            }
+        } else {
+            $birthday = null;
+        }
+
+        // Generate email verification token
+        $verificationToken = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $verificationToken);
+
+        // Create subscriber (email_verified = 0, pending verification)
+        $this->db->execute(
+            "INSERT INTO subscribers (username, email, password, first_name, last_name, phone, country, birthday, status, max_connections, email_verified, email_verification_token)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, 0, ?)",
+            [
+                $username,
+                $email,
+                password_hash($password, PASSWORD_BCRYPT),
+                $firstName,
+                $lastName,
+                $phone ?: null,
+                $country ?: null,
+                $birthday,
+                $tokenHash,
+            ]
+        );
+
+        $subscriberId = $this->db->lastInsertId();
+        if (!$subscriberId) {
+            return ['success' => false, 'error' => 'Registration failed. Please try again.'];
+        }
+
+        // Send verification email
+        $this->sendVerificationEmail($email, $firstName, $verificationToken);
+
+        return [
+            'success' => true,
+            'requires_verification' => true,
+            'message' => 'Account created! Please check your email to verify your account.',
+        ];
+    }
+
+    /**
+     * Verify subscriber email with token
+     */
+    public function verifyEmail(string $token): array
+    {
+        $tokenHash = hash('sha256', $token);
+
+        $subscriber = $this->db->fetch(
+            "SELECT id, email, first_name, username FROM subscribers
+             WHERE email_verification_token = ? AND email_verified = 0",
+            [$tokenHash]
+        );
+
+        if (!$subscriber) {
+            return ['success' => false, 'error' => 'Invalid or expired verification link.'];
+        }
+
+        $this->db->execute(
+            "UPDATE subscribers SET email_verified = 1, email_verified_at = NOW(), email_verification_token = NULL WHERE id = ?",
+            [$subscriber['id']]
+        );
+
+        return [
+            'success' => true,
+            'message' => 'Your email has been verified. You can now sign in.',
+        ];
+    }
+
+    /**
+     * Resend verification email
+     */
+    public function resendVerification(string $email): array
+    {
+        $subscriber = $this->db->fetch(
+            "SELECT id, first_name, username FROM subscribers WHERE email = ? AND email_verified = 0",
+            [$email]
+        );
+
+        if (!$subscriber) {
+            // Generic message to prevent email enumeration
+            return ['success' => true, 'message' => 'If an unverified account exists with that email, a new verification link has been sent.'];
+        }
+
+        $verificationToken = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $verificationToken);
+
+        $this->db->execute(
+            "UPDATE subscribers SET email_verification_token = ? WHERE id = ?",
+            [$tokenHash, $subscriber['id']]
+        );
+
+        $name = $subscriber['first_name'] ?: $subscriber['username'];
+        $this->sendVerificationEmail($email, $name, $verificationToken);
+
+        return [
+            'success' => true,
+            'message' => 'If an unverified account exists with that email, a new verification link has been sent.',
+        ];
+    }
+
+    /**
+     * Send verification email helper
+     */
+    private function sendVerificationEmail(string $email, string $name, string $verificationToken): void
+    {
+        $settings = new SettingsService();
+        $siteUrl = $settings->get('site_url', '', 'general');
+        if (empty($siteUrl)) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $siteUrl = "{$protocol}://{$_SERVER['HTTP_HOST']}";
+        }
+        $verifyUrl = rtrim($siteUrl, '/') . "/verify-email/{$verificationToken}";
+
+        $emailService = new EmailService();
+
+        if ($emailService->isConfigured()) {
+            $emailService->sendEmailVerification($email, $name, $verifyUrl);
+        }
+    }
+
+    /**
      * Authenticate a subscriber with username/email and password
      */
     public function login(string $identity, string $password, array $deviceInfo = []): array
@@ -36,6 +211,16 @@ class SubscriberAuthService
 
         if (!$subscriber['password'] || !password_verify($password, $subscriber['password'])) {
             return ['success' => false, 'error' => 'Invalid credentials'];
+        }
+
+        // Check email verification
+        if (empty($subscriber['email_verified']) || $subscriber['email_verified'] == 0) {
+            return [
+                'success' => false,
+                'error' => 'Please verify your email address before signing in. Check your inbox for the activation link.',
+                'needs_verification' => true,
+                'email' => $subscriber['email'],
+            ];
         }
 
         // Check max connections

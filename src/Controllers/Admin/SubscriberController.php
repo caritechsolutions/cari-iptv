@@ -6,16 +6,19 @@ use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\SubscriberService;
+use CariIPTV\Services\PackageService;
 
 class SubscriberController
 {
     private AdminAuthService $auth;
     private SubscriberService $subscriberService;
+    private PackageService $packageService;
 
     public function __construct()
     {
         $this->auth = new AdminAuthService();
         $this->subscriberService = new SubscriberService();
+        $this->packageService = new PackageService();
     }
 
     /**
@@ -34,6 +37,7 @@ class SubscriberController
         $result = $this->subscriberService->getSubscribers($filters);
         $groups = $this->subscriberService->getGroups();
         $stats = $this->subscriberService->getStatistics();
+        $packages = $this->packageService->getPackages();
 
         Response::view('admin/subscribers/index', [
             'pageTitle' => 'Subscribers',
@@ -46,6 +50,7 @@ class SubscriberController
             ],
             'filters' => $filters,
             'groups' => $groups,
+            'packages' => $packages,
             'stats' => $stats,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
@@ -376,6 +381,7 @@ class SubscriberController
             'npvr_limit' => (int) ($post['npvr_limit'] ?? 0),
             'birthday' => $post['birthday'] ?? null,
             'parental_pin' => $post['parental_pin'] ?? '0000',
+            'adult_enabled' => isset($post['adult_enabled']) ? 1 : 0,
             'country' => trim($post['country'] ?? ''),
             'city' => trim($post['city'] ?? ''),
             'address' => trim($post['address'] ?? ''),
@@ -383,6 +389,7 @@ class SubscriberController
             'external_id' => trim($post['external_id'] ?? ''),
             'notes' => trim($post['notes'] ?? ''),
             'groups' => $post['groups'] ?? [],
+            'packages' => $post['packages'] ?? [],
         ];
     }
 }

@@ -18,6 +18,72 @@ class AuthController extends BaseApiController
     }
 
     /**
+     * POST /api/v1/auth/register
+     * Body: { first_name, last_name, email, password, password_confirm, phone?, country?, birthday? }
+     */
+    public function register(): void
+    {
+        $input = $this->getJsonInput();
+
+        $result = $this->auth->register([
+            'first_name' => $input['first_name'] ?? '',
+            'last_name' => $input['last_name'] ?? '',
+            'email' => $input['email'] ?? '',
+            'password' => $input['password'] ?? '',
+            'password_confirm' => $input['password_confirm'] ?? '',
+            'phone' => $input['phone'] ?? '',
+            'country' => $input['country'] ?? '',
+            'birthday' => $input['birthday'] ?? '',
+        ]);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 422, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $this->json([
+            'data' => [
+                'requires_verification' => true,
+                'message' => $result['message'],
+            ],
+        ], 201);
+    }
+
+    /**
+     * GET /api/v1/auth/verify-email/{token}
+     */
+    public function verifyEmail(string $token): void
+    {
+        $result = $this->auth->verifyEmail($token);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 400, 'VERIFICATION_FAILED');
+            return;
+        }
+
+        $this->json(['data' => ['message' => $result['message']]], 200);
+    }
+
+    /**
+     * POST /api/v1/auth/resend-verification
+     * Body: { email }
+     */
+    public function resendVerification(): void
+    {
+        $input = $this->getJsonInput();
+        $email = trim($input['email'] ?? '');
+
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->error('A valid email address is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->resendVerification($email);
+
+        $this->json(['data' => ['message' => $result['message']]], 200);
+    }
+
+    /**
      * POST /api/v1/auth/login
      * Body: { identity, password, device_name?, device_type? }
      */
@@ -39,7 +105,13 @@ class AuthController extends BaseApiController
         ]);
 
         if (!$result['success']) {
-            $this->error($result['error'], 401, 'AUTH_FAILED');
+            $code = !empty($result['needs_verification']) ? 'EMAIL_NOT_VERIFIED' : 'AUTH_FAILED';
+            $response = ['error' => ['message' => $result['error'], 'code' => $code]];
+            if (!empty($result['needs_verification'])) {
+                $response['error']['needs_verification'] = true;
+                $response['error']['email'] = $result['email'];
+            }
+            $this->json($response, 401);
             return;
         }
 
@@ -203,6 +275,32 @@ class AuthController extends BaseApiController
 
         $items = $this->auth->getWatchlist($subscriberId);
         $this->json(['data' => $items], 200);
+    }
+
+    // =========================================================================
+    // ENTITLEMENTS
+    // =========================================================================
+
+    /**
+     * GET /api/v1/auth/entitlements
+     * Returns the subscriber's entitled content based on their active packages
+     */
+    public function entitlements(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $service = new \CariIPTV\Services\ContentApiService();
+        $data = $service->getSubscriberEntitlements($subscriberId);
+
+        // Also get subscriber's adult_enabled status
+        $profile = $this->auth->getProfile($subscriberId);
+        $data['adult_enabled'] = (bool) ($profile['adult_enabled'] ?? false);
+
+        $this->json(['data' => $data], 200);
     }
 
     // =========================================================================

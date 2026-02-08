@@ -77,6 +77,18 @@ if ($uri === '/login') {
     exit;
 }
 
+// Registration page
+if ($uri === '/register') {
+    $controller->register();
+    exit;
+}
+
+// Email verification page
+if (preg_match('#^/verify-email/([a-f0-9]+)$#', $uri, $matches)) {
+    $controller->verifyEmail($matches[1]);
+    exit;
+}
+
 // All other paths serve the SPA app shell.
 // Client-side JavaScript handles routing for:
 //   /  /movies  /series  /live  /search  /my-list  /watch/:type/:id  /categories

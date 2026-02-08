@@ -74,14 +74,10 @@ $router = new Router();
 $router->addMiddleware('auth', [AdminAuthMiddleware::class, 'handle']);
 $router->addMiddleware('guest', [AdminAuthMiddleware::class, 'guest']);
 
-// Guest routes (login, register, forgot password)
+// Guest routes (login, forgot password)
 $router->group(['prefix' => 'admin', 'middleware' => ['guest']], function ($router) {
     $router->get('/login', [AuthController::class, 'showLogin']);
     $router->post('/login', [AuthController::class, 'login']);
-    $router->get('/register', [AuthController::class, 'showRegister']);
-    $router->post('/register', [AuthController::class, 'register']);
-    $router->get('/verify-email/{token}', [AuthController::class, 'verifyEmail']);
-    $router->post('/resend-verification', [AuthController::class, 'resendVerification']);
     $router->get('/forgot-password', [AuthController::class, 'showForgotPassword']);
     $router->post('/forgot-password', [AuthController::class, 'forgotPassword']);
     $router->get('/reset-password/{token}', [AuthController::class, 'showResetPassword']);
@@ -249,6 +245,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/app-layout/{id}/delete', [AppLayoutController::class, 'delete']);
     $router->post('/app-layout/{id}/duplicate', [AppLayoutController::class, 'duplicate']);
     $router->post('/app-layout/{id}/publish', [AppLayoutController::class, 'publish']);
+    $router->post('/app-layout/{id}/unpublish', [AppLayoutController::class, 'unpublish']);
 
     // App Layout Sections
     $router->post('/app-layout/{id}/sections/add', [AppLayoutController::class, 'addSection']);

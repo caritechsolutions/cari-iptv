@@ -30,6 +30,16 @@
                 </div>
 
                 <div id="loginError" class="login-error"></div>
+                <div id="loginSuccess" class="login-success"></div>
+
+                <div id="verificationNotice" style="display: none;">
+                    <div class="login-error visible" style="display: block;">
+                        <span id="verificationMsg"></span>
+                        <br><br>
+                        <button type="button" class="resend-link" id="resendBtn">Resend verification email</button>
+                        <span id="resendStatus" style="display: none; margin-left: 0.5rem;"></span>
+                    </div>
+                </div>
 
                 <form id="loginForm" class="login-form" novalidate>
                     <div class="form-group">
@@ -60,6 +70,10 @@
                         Sign In
                     </button>
                 </form>
+
+                <div class="login-footer">
+                    Don't have an account? <a href="/register" class="form-link">Register</a>
+                </div>
             </div>
         </div>
     </div>
@@ -70,8 +84,10 @@
         const form = document.getElementById('loginForm');
         const btn = document.getElementById('loginBtn');
         const errorEl = document.getElementById('loginError');
+        const successEl = document.getElementById('loginSuccess');
         const togglePw = document.getElementById('togglePassword');
         const pwInput = document.getElementById('password');
+        let unverifiedEmail = null;
 
         // Toggle password visibility
         togglePw.addEventListener('click', function() {
@@ -95,6 +111,8 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="login-spinner"></span> Signing in...';
             hideError();
+            hideSuccess();
+            hideVerificationNotice();
 
             try {
                 const res = await fetch(API_BASE + '/auth/login', {
@@ -110,7 +128,13 @@
                 const data = await res.json();
 
                 if (!res.ok || data.error) {
-                    showError(data.error?.message || 'Invalid username or password');
+                    // Check if it's a verification error
+                    if (data.error?.needs_verification) {
+                        unverifiedEmail = data.error.email;
+                        showVerificationNotice(data.error.message);
+                    } else {
+                        showError(data.error?.message || 'Invalid username or password');
+                    }
                     btn.disabled = false;
                     btn.textContent = 'Sign In';
                     return;
@@ -136,6 +160,45 @@
             }
         });
 
+        // Resend verification email
+        document.getElementById('resendBtn').addEventListener('click', async function() {
+            if (!unverifiedEmail) return;
+
+            const resendBtn = this;
+            const statusEl = document.getElementById('resendStatus');
+
+            resendBtn.disabled = true;
+            resendBtn.textContent = 'Sending...';
+
+            try {
+                const res = await fetch(API_BASE + '/auth/resend-verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: unverifiedEmail }),
+                });
+
+                const data = await res.json();
+
+                resendBtn.textContent = 'Sent!';
+                statusEl.textContent = 'Check your inbox.';
+                statusEl.style.display = 'inline';
+                statusEl.style.color = '#86efac';
+
+                // Re-enable after 30 seconds
+                setTimeout(function() {
+                    resendBtn.disabled = false;
+                    resendBtn.textContent = 'Resend verification email';
+                    statusEl.style.display = 'none';
+                }, 30000);
+            } catch (err) {
+                resendBtn.disabled = false;
+                resendBtn.textContent = 'Resend verification email';
+                statusEl.textContent = 'Failed to send.';
+                statusEl.style.display = 'inline';
+                statusEl.style.color = '#fca5a5';
+            }
+        });
+
         function showError(msg) {
             errorEl.textContent = msg;
             errorEl.classList.add('visible');
@@ -143,6 +206,25 @@
 
         function hideError() {
             errorEl.classList.remove('visible');
+        }
+
+        function showSuccess(msg) {
+            successEl.textContent = msg;
+            successEl.classList.add('visible');
+        }
+
+        function hideSuccess() {
+            successEl.classList.remove('visible');
+        }
+
+        function showVerificationNotice(msg) {
+            hideError();
+            document.getElementById('verificationMsg').textContent = msg;
+            document.getElementById('verificationNotice').style.display = 'block';
+        }
+
+        function hideVerificationNotice() {
+            document.getElementById('verificationNotice').style.display = 'none';
         }
 
         // If already authenticated, redirect to app

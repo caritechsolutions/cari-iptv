@@ -88,6 +88,9 @@ $router->addMiddleware('api_auth', [ApiAuthMiddleware::class, 'handle']);
 $router->group(['prefix' => 'api/v1'], function ($router) {
 
     // ----- Authentication (public) -----
+    $router->post('/auth/register', [AuthController::class, 'register']);
+    $router->get('/auth/verify-email/{token}', [AuthController::class, 'verifyEmail']);
+    $router->post('/auth/resend-verification', [AuthController::class, 'resendVerification']);
     $router->post('/auth/login', [AuthController::class, 'login']);
     $router->post('/auth/refresh', [AuthController::class, 'refresh']);
     $router->post('/auth/logout', [AuthController::class, 'logout']);
@@ -98,6 +101,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/auth/continue-watching', [AuthController::class, 'continueWatching'], ['api_auth']);
     $router->post('/auth/watchlist/toggle', [AuthController::class, 'toggleWatchlist'], ['api_auth']);
     $router->get('/auth/watchlist', [AuthController::class, 'getWatchlist'], ['api_auth']);
+    $router->get('/auth/entitlements', [AuthController::class, 'entitlements'], ['api_auth']);
 
     // ----- Content (protected — requires Bearer token) -----
 
@@ -116,6 +120,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     // Series / TV Shows
     $router->get('/series', [ContentController::class, 'seriesList'], ['api_auth']);
     $router->get('/series/{id}', [ContentController::class, 'seriesDetail'], ['api_auth']);
+
+    // Episodes
+    $router->get('/episodes/{id}', [ContentController::class, 'episode'], ['api_auth']);
 
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);
