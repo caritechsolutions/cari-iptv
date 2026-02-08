@@ -566,6 +566,61 @@ class MovieService
     }
 
     /**
+     * Process cast profile images - download from TMDB and convert to local WebP
+     * Uses tmdb_person_id as entity ID so images are shared across movies/series
+     */
+    public function processCastImages(int $movieId): int
+    {
+        $castMembers = $this->db->fetchAll(
+            "SELECT id, profile_url, profile_image, tmdb_person_id
+             FROM movie_cast WHERE movie_id = ? AND profile_url IS NOT NULL",
+            [$movieId]
+        );
+
+        $processed = 0;
+        foreach ($castMembers as $member) {
+            // Skip if already has local image
+            if (!empty($member['profile_image'])) {
+                $processed++;
+                continue;
+            }
+
+            $url = $member['profile_url'];
+            if (empty($url) || !str_starts_with($url, 'http')) {
+                continue;
+            }
+
+            // Use tmdb_person_id as entity ID for shared caching
+            $entityId = $member['tmdb_person_id'] ?: 'mc_' . $member['id'];
+
+            // Check if we already processed this person for another movie
+            $existingPath = '/uploads/cast/' . $entityId . '/profile_medium.webp';
+            if (file_exists(BASE_PATH . '/public' . $existingPath)) {
+                $this->db->execute(
+                    "UPDATE movie_cast SET profile_image = ? WHERE id = ?",
+                    [$existingPath, $member['id']]
+                );
+                $processed++;
+                continue;
+            }
+
+            $result = $this->imageService->processFromUrl($url, 'cast', $entityId, 'profile');
+            if ($result['success']) {
+                $imagePath = $result['variants']['medium'] ?? $result['variants']['thumb'] ?? null;
+                if ($imagePath) {
+                    $this->db->execute(
+                        "UPDATE movie_cast SET profile_image = ? WHERE id = ?",
+                        [$imagePath, $member['id']]
+                    );
+                    $processed++;
+                }
+            }
+        }
+
+        return $processed;
+    }
+
+    /**
      * Generate unique slug
      */
     private function generateSlug(string $title, ?int $excludeId = null): string
@@ -666,9 +721,11 @@ class MovieService
                     'character_name' => $person['character'] ?? null,
                     'role' => 'actor',
                     'profile_url' => $person['profile'] ?? null,
+                    'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 ];
             }
             $this->saveMovieCast($movieId, $cast);
+            $this->processCastImages($movieId);
         }
 
         // Auto-create categories from genres

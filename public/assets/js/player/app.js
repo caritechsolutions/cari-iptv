@@ -363,6 +363,7 @@ const CariApp = (function() {
         CariRouter.addRoute('/series/:id', pageSeriesDetail);
         CariRouter.addRoute('/watch/:type/:id', pageWatch);
         CariRouter.addRoute('/categories', pageCategories);
+        CariRouter.addRoute('/person/:id', pagePerson);
         CariRouter.addRoute('/subscribe', pageSubscribe);
         CariRouter.addRoute('/profile', pageProfile);
     }
@@ -817,6 +818,8 @@ const CariApp = (function() {
                         </div>
                     </div>
 
+                    <div class="detail-cast" id="seriesCast"></div>
+
                     ${seasons.length ? `
                     <div class="series-seasons">
                         <div class="season-tabs" id="seasonTabs">
@@ -866,6 +869,9 @@ const CariApp = (function() {
                     } catch {}
                 });
             }
+
+            // Render cast
+            CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast);
 
             // Render seasons/episodes
             if (seasons.length) {
@@ -931,6 +937,67 @@ const CariApp = (function() {
                 CariRouter.navigate('/watch/episode/' + epId);
             });
         });
+    }
+
+    // ---- PAGE: Person (Cast Member Filmography) ----
+
+    async function pagePerson(params) {
+        const el = content();
+        const personId = params.id;
+        el.innerHTML = CariUI.loading();
+
+        try {
+            const res = await CariAPI.getPerson(personId);
+            const person = res?.data;
+
+            if (!person) {
+                el.innerHTML = CariUI.emptyState('lucide-user-x', 'Not Found', 'Person not found.');
+                return;
+            }
+
+            const img = person.profile_image || person.profile_url || '';
+            const placeholderAvatar = 'data:image/svg+xml,' + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="185" height="278" fill="%231e293b"><rect width="185" height="278"/><text x="92" y="150" text-anchor="middle" fill="%235a5f7a" font-family="sans-serif" font-size="48">?</text></svg>'
+            );
+
+            el.innerHTML = `
+                <div class="person-page">
+                    <div class="person-header">
+                        <img class="person-photo" src="${img ? CariUI.esc(img) : placeholderAvatar}" alt="${CariUI.esc(person.name)}"
+                             onerror="this.src='${placeholderAvatar}'">
+                        <div class="person-info">
+                            <h1 class="person-name">${CariUI.esc(person.name)}</h1>
+                            <div class="person-stats">
+                                ${person.movies.length ? '<span>' + person.movies.length + ' Movie' + (person.movies.length !== 1 ? 's' : '') + '</span>' : ''}
+                                ${person.series.length ? '<span>' + person.series.length + ' TV Show' + (person.series.length !== 1 ? 's' : '') + '</span>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div id="personFilmography"></div>
+                </div>
+            `;
+
+            const filmEl = document.getElementById('personFilmography');
+
+            if (person.movies.length) {
+                appendContentRow(filmEl, 'Movies', person.movies.map(m => ({
+                    ...m, content_type: 'movie'
+                })), 'poster', 'movie');
+            }
+
+            if (person.series.length) {
+                appendContentRow(filmEl, 'TV Shows', person.series.map(s => ({
+                    ...s, content_type: 'series'
+                })), 'poster', 'series');
+            }
+
+            if (!person.movies.length && !person.series.length) {
+                filmEl.innerHTML = CariUI.emptyState('lucide-film', 'No Content', 'No movies or shows found for this person on our platform.');
+            }
+        } catch (err) {
+            console.error('[CariApp] Person page failed:', err);
+            el.innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load person details.');
+        }
     }
 
     // ---- PAGE: Live TV ----

@@ -671,9 +671,11 @@ class SeriesService
                     'character_name' => $person['character'] ?? null,
                     'role' => 'actor',
                     'profile_url' => $person['profile'] ?? null,
+                    'tmdb_person_id' => $person['tmdb_person_id'] ?? null,
                 ];
             }
             $this->saveSeriesCast($showId, $cast);
+            $this->processCastImages($showId);
         }
 
         // Auto-create categories from genres
@@ -832,6 +834,58 @@ class SeriesService
         return $this->db->fetchAll(
             "SELECT DISTINCT year FROM series WHERE year IS NOT NULL ORDER BY year DESC"
         );
+    }
+
+    /**
+     * Process cast profile images - download from TMDB and convert to local WebP
+     */
+    public function processCastImages(int $seriesId): int
+    {
+        $castMembers = $this->db->fetchAll(
+            "SELECT id, profile_url, profile_image, tmdb_person_id
+             FROM series_cast WHERE series_id = ? AND profile_url IS NOT NULL",
+            [$seriesId]
+        );
+
+        $processed = 0;
+        foreach ($castMembers as $member) {
+            if (!empty($member['profile_image'])) {
+                $processed++;
+                continue;
+            }
+
+            $url = $member['profile_url'];
+            if (empty($url) || !str_starts_with($url, 'http')) {
+                continue;
+            }
+
+            $entityId = $member['tmdb_person_id'] ?: 'sc_' . $member['id'];
+
+            // Check if already processed (shared across movies/series)
+            $existingPath = '/uploads/cast/' . $entityId . '/profile_medium.webp';
+            if (file_exists(BASE_PATH . '/public' . $existingPath)) {
+                $this->db->execute(
+                    "UPDATE series_cast SET profile_image = ? WHERE id = ?",
+                    [$existingPath, $member['id']]
+                );
+                $processed++;
+                continue;
+            }
+
+            $result = $this->imageService->processFromUrl($url, 'cast', $entityId, 'profile');
+            if ($result['success']) {
+                $imagePath = $result['variants']['medium'] ?? $result['variants']['thumb'] ?? null;
+                if ($imagePath) {
+                    $this->db->execute(
+                        "UPDATE series_cast SET profile_image = ? WHERE id = ?",
+                        [$imagePath, $member['id']]
+                    );
+                    $processed++;
+                }
+            }
+        }
+
+        return $processed;
     }
 
     // ========================================================================

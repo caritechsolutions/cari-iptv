@@ -284,6 +284,7 @@ const CariUI = (function() {
                     <button class="btn btn-icon" id="detailWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
                 </div>
                 <div class="trailer-embed" id="trailerEmbed" style="display:none"></div>
+                <div class="detail-cast" id="detailCast"></div>
             </div>
         `;
 
@@ -325,34 +326,79 @@ const CariUI = (function() {
         try {
             const res = await CariAPI.getMovie(item.id);
             const full = res?.data;
-            if (!full || !full.trailers || !full.trailers.length) return;
+            if (!full) return;
 
-            const trailerBtn = modal.querySelector('#detailTrailer');
-            if (!trailerBtn) return;
-            trailerBtn.style.display = '';
+            // Trailers
+            if (full.trailers && full.trailers.length) {
+                const trailerBtn = modal.querySelector('#detailTrailer');
+                if (trailerBtn) {
+                    trailerBtn.style.display = '';
 
-            let trailerOpen = false;
-            trailerBtn.addEventListener('click', () => {
-                const embed = modal.querySelector('#trailerEmbed');
-                if (!embed) return;
-                trailerOpen = !trailerOpen;
-                if (trailerOpen) {
-                    const trailer = full.trailers[0];
-                    const key = trailer.video_key || '';
-                    if (key) {
-                        embed.innerHTML = `<iframe src="https://www.youtube.com/embed/${esc(key)}?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
-                    } else if (trailer.url) {
-                        embed.innerHTML = `<iframe src="${esc(trailer.url)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
-                    }
-                    embed.style.display = '';
-                    trailerBtn.innerHTML = '<i class="lucide-x"></i> Close Trailer';
-                } else {
-                    embed.innerHTML = '';
-                    embed.style.display = 'none';
-                    trailerBtn.innerHTML = '<i class="lucide-clapperboard"></i> Trailer';
+                    let trailerOpen = false;
+                    trailerBtn.addEventListener('click', () => {
+                        const embed = modal.querySelector('#trailerEmbed');
+                        if (!embed) return;
+                        trailerOpen = !trailerOpen;
+                        if (trailerOpen) {
+                            const trailer = full.trailers[0];
+                            const key = trailer.video_key || '';
+                            if (key) {
+                                embed.innerHTML = `<iframe src="https://www.youtube.com/embed/${esc(key)}?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                            } else if (trailer.url) {
+                                embed.innerHTML = `<iframe src="${esc(trailer.url)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                            }
+                            embed.style.display = '';
+                            trailerBtn.innerHTML = '<i class="lucide-x"></i> Close Trailer';
+                        } else {
+                            embed.innerHTML = '';
+                            embed.style.display = 'none';
+                            trailerBtn.innerHTML = '<i class="lucide-clapperboard"></i> Trailer';
+                        }
+                    });
+                }
+            }
+
+            // Cast
+            renderCastRow(modal.querySelector('#detailCast'), full.cast);
+        } catch {}
+    }
+
+    function renderCastRow(container, cast) {
+        if (!container || !cast || !cast.length) return;
+
+        const placeholderAvatar = 'data:image/svg+xml,' + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="180" fill="%231e293b"><rect width="120" height="180"/><text x="60" y="100" text-anchor="middle" fill="%235a5f7a" font-family="sans-serif" font-size="32">?</text></svg>'
+        );
+
+        container.innerHTML = `
+            <h3 class="cast-section-title">Cast</h3>
+            <div class="cast-row">
+                ${cast.map(person => {
+                    const img = person.profile_image || person.profile_url || '';
+                    const personId = person.tmdb_person_id || '';
+                    return `
+                        <div class="cast-card" ${personId ? 'data-person-id="' + esc(String(personId)) + '"' : ''}>
+                            <img class="cast-photo" src="${img ? esc(img) : placeholderAvatar}" alt="${esc(person.name)}" loading="lazy"
+                                 onerror="this.src='${placeholderAvatar}'">
+                            <div class="cast-name">${esc(person.name)}</div>
+                            ${person.character_name ? '<div class="cast-character">' + esc(person.character_name) + '</div>' : ''}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+        // Make cast cards clickable (navigate to person page)
+        container.querySelectorAll('.cast-card[data-person-id]').forEach(card => {
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', () => {
+                const pid = card.dataset.personId;
+                if (pid) {
+                    hideDetail();
+                    CariRouter.navigate('/person/' + pid);
                 }
             });
-        } catch {}
+        });
     }
 
     function hideDetail() {
@@ -389,6 +435,6 @@ const CariUI = (function() {
     return {
         esc, posterCard, backdropCard, channelCard, categoryCard,
         renderHero, renderContentRow, renderBanner, renderTextDivider,
-        showDetail, hideDetail, loading, emptyState, skeletonRow,
+        showDetail, hideDetail, renderCastRow, loading, emptyState, skeletonRow,
     };
 })();

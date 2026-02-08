@@ -601,11 +601,12 @@ class MetadataService
     {
         $cast = [];
         if (!empty($data['credits']['cast'])) {
-            foreach (array_slice($data['credits']['cast'], 0, 10) as $member) {
+            foreach (array_slice($data['credits']['cast'], 0, 15) as $member) {
                 $cast[] = [
                     'name' => $member['name'],
                     'character' => $member['character'],
                     'profile' => $member['profile_path'] ? self::TMDB_IMAGE_BASE . '/w185' . $member['profile_path'] : null,
+                    'tmdb_person_id' => $member['id'] ?? null,
                 ];
             }
         }
@@ -648,11 +649,12 @@ class MetadataService
     {
         $cast = [];
         if (!empty($data['credits']['cast'])) {
-            foreach (array_slice($data['credits']['cast'], 0, 10) as $member) {
+            foreach (array_slice($data['credits']['cast'], 0, 15) as $member) {
                 $cast[] = [
                     'name' => $member['name'],
                     'character' => $member['character'],
                     'profile' => $member['profile_path'] ? self::TMDB_IMAGE_BASE . '/w185' . $member['profile_path'] : null,
+                    'tmdb_person_id' => $member['id'] ?? null,
                 ];
             }
         }

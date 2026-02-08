@@ -130,6 +130,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);
 
+    // Person (cast member filmography)
+    $router->get('/person/{tmdbPersonId}', [ContentController::class, 'person'], ['api_auth']);
+
     // Search
     $router->get('/search', [ContentController::class, 'search'], ['api_auth']);
 

@@ -481,7 +481,7 @@ class ContentApiService
 
         // Cast
         $movie['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT name, character_name, profile_url, role, sort_order
+            "SELECT name, character_name, profile_url, profile_image, role, tmdb_person_id, sort_order
              FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
             [$id]
         ), []);
@@ -612,6 +612,13 @@ class ContentApiService
         $show['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT id, name as title, video_key, url, is_primary
              FROM series_trailers WHERE series_id = ? ORDER BY is_primary DESC, sort_order ASC",
+            [$id]
+        ), []);
+
+        // Cast
+        $show['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT name, character_name, profile_url, profile_image, role, tmdb_person_id, sort_order
+             FROM series_cast WHERE series_id = ? ORDER BY sort_order ASC LIMIT 20",
             [$id]
         ), []);
 
@@ -1063,5 +1070,66 @@ class ContentApiService
         }
 
         return $results;
+    }
+
+    // =========================================================================
+    // PERSON / CAST
+    // =========================================================================
+
+    /**
+     * Get person details and all content they appear in on the platform
+     * Looks up by tmdb_person_id across both movie_cast and series_cast
+     */
+    public function getPerson(int $tmdbPersonId): ?array
+    {
+        // Get person info from either cast table
+        $person = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT name, profile_url, profile_image, tmdb_person_id
+             FROM movie_cast WHERE tmdb_person_id = ? LIMIT 1",
+            [$tmdbPersonId]
+        ));
+
+        if (!$person) {
+            $person = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT name, profile_url, profile_image, tmdb_person_id
+                 FROM series_cast WHERE tmdb_person_id = ? LIMIT 1",
+                [$tmdbPersonId]
+            ));
+        }
+
+        if (!$person) {
+            return null;
+        }
+
+        // Get movies they appear in
+        $movies = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT m.id, m.title, m.slug, m.poster_url, m.year, m.vote_average,
+                    mc.character_name, mc.role, 'movie' as content_type
+             FROM movie_cast mc
+             JOIN movies m ON mc.movie_id = m.id
+             WHERE mc.tmdb_person_id = ? AND m.status = 'published'
+             ORDER BY m.year DESC",
+            [$tmdbPersonId]
+        ), []);
+
+        // Get series they appear in
+        $series = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT s.id, s.title, s.slug, s.poster_url, s.year, s.vote_average,
+                    sc.character_name, sc.role, 'series' as content_type
+             FROM series_cast sc
+             JOIN series s ON sc.series_id = s.id
+             WHERE sc.tmdb_person_id = ? AND s.status = 'published'
+             ORDER BY s.year DESC",
+            [$tmdbPersonId]
+        ), []);
+
+        return [
+            'name' => $person['name'],
+            'profile_url' => $person['profile_url'],
+            'profile_image' => $person['profile_image'],
+            'tmdb_person_id' => (int) $person['tmdb_person_id'],
+            'movies' => $movies,
+            'series' => $series,
+        ];
     }
 }

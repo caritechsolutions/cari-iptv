@@ -174,6 +174,8 @@ const CariAPI = (function() {
         return get('/categories' + q);
     }
 
+    function getPerson(tmdbPersonId) { return get('/person/' + tmdbPersonId); }
+
     function search(query, type) {
         return get('/search?q=' + encodeURIComponent(query) + (type ? '&type=' + type : ''));
     }
@@ -199,7 +201,7 @@ const CariAPI = (function() {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
         getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
-        getCategories, search, getEpg,
+        getCategories, getPerson, search, getEpg,
         updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
         bustAllCaches, clearCacheBust,
