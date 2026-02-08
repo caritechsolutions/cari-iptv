@@ -37,7 +37,7 @@ $db = Database::getInstance();
 
 // Check TMDB API key
 $settings = new SettingsService();
-$tmdbKey = $settings->get('tmdb_api_key', '', 'api_keys');
+$tmdbKey = $settings->get('tmdb_api_key', '', 'metadata');
 if (empty($tmdbKey)) {
     die("[FAIL] No TMDB API key configured. Go to Admin > Settings > API Keys and add your TMDB key.\n");
 }
