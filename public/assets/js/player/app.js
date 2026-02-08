@@ -871,7 +871,9 @@ const CariApp = (function() {
             }
 
             // Render cast
-            CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast);
+            if (show.cast && show.cast.length) {
+                CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast);
+            }
 
             // Render seasons/episodes
             if (seasons.length) {

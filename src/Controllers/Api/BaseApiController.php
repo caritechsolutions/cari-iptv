@@ -79,7 +79,12 @@ class BaseApiController
             header('Cache-Control: no-cache');
         }
 
-        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if ($json === false) {
+            error_log('JSON encode failed: ' . json_last_error_msg() . ' — data keys: ' . implode(',', array_keys($data)));
+            $json = json_encode(['error' => ['code' => 'ENCODE_ERROR', 'message' => 'Response encoding failed']]);
+        }
+        echo $json;
         exit;
     }
 
