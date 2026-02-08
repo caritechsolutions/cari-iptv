@@ -488,10 +488,9 @@ class MetadataService
         }
 
         try {
-            $url = self::TMDB_API . '/movie/' . $tmdbId . '?' . http_build_query([
-                'api_key' => $this->config['tmdb']['api_key'],
-                'append_to_response' => 'credits,images',
-            ]);
+            // Build URL with raw string to avoid http_build_query encoding commas in append_to_response
+            $apiKey = urlencode($this->config['tmdb']['api_key']);
+            $url = self::TMDB_API . '/movie/' . $tmdbId . '?api_key=' . $apiKey . '&append_to_response=credits,images';
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -505,11 +504,16 @@ class MetadataService
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
+                $hasCreditsCast = !empty($data['credits']['cast']);
+                $hasCreditsCrew = !empty($data['credits']['crew']);
+                error_log("[MetadataService] getMovieDetails tmdb:{$tmdbId} — credits.cast: " . ($hasCreditsCast ? count($data['credits']['cast']) . ' members' : 'MISSING') . ", credits.crew: " . ($hasCreditsCrew ? count($data['credits']['crew']) . ' members' : 'MISSING'));
                 return $this->formatMovieDetails($data);
             }
 
+            error_log("[MetadataService] getMovieDetails tmdb:{$tmdbId} — HTTP {$httpCode}");
             return null;
         } catch (\Exception $e) {
+            error_log("[MetadataService] getMovieDetails tmdb:{$tmdbId} — Exception: " . $e->getMessage());
             return null;
         }
     }
@@ -524,10 +528,9 @@ class MetadataService
         }
 
         try {
-            $url = self::TMDB_API . '/tv/' . $tmdbId . '?' . http_build_query([
-                'api_key' => $this->config['tmdb']['api_key'],
-                'append_to_response' => 'credits,images',
-            ]);
+            // Build URL with raw string to avoid http_build_query encoding commas in append_to_response
+            $apiKey = urlencode($this->config['tmdb']['api_key']);
+            $url = self::TMDB_API . '/tv/' . $tmdbId . '?api_key=' . $apiKey . '&append_to_response=credits,images';
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -541,11 +544,15 @@ class MetadataService
 
             if ($httpCode === 200) {
                 $data = json_decode($response, true);
+                $hasCreditsCast = !empty($data['credits']['cast']);
+                error_log("[MetadataService] getTVShowDetails tmdb:{$tmdbId} — credits.cast: " . ($hasCreditsCast ? count($data['credits']['cast']) . ' members' : 'MISSING'));
                 return $this->formatTVShowDetails($data);
             }
 
+            error_log("[MetadataService] getTVShowDetails tmdb:{$tmdbId} — HTTP {$httpCode}");
             return null;
         } catch (\Exception $e) {
+            error_log("[MetadataService] getTVShowDetails tmdb:{$tmdbId} — Exception: " . $e->getMessage());
             return null;
         }
     }
