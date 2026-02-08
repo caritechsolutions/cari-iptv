@@ -12,6 +12,14 @@ class ContentApiService
 {
     private Database $db;
 
+    private const CURRENCY_SYMBOLS = [
+        'USD' => '$', 'EUR' => '€', 'GBP' => '£', 'XCD' => 'EC$',
+        'TTD' => 'TT$', 'JMD' => 'J$', 'BBD' => 'Bds$', 'GYD' => 'G$',
+        'SRD' => 'SRD', 'HTG' => 'G', 'BZD' => 'BZ$', 'BSD' => 'B$',
+        'KYD' => 'CI$', 'BMD' => 'BD$', 'ANG' => 'NAƒ', 'AWG' => 'Afl',
+        'DOP' => 'RD$', 'CUP' => '₱', 'CAD' => 'C$', 'MXN' => 'MX$', 'BRL' => 'R$',
+    ];
+
     public function __construct()
     {
         $this->db = Database::getInstance();
@@ -201,27 +209,33 @@ class ContentApiService
         $activeIds = array_column($activePackageIds, 'package_id');
 
         // Get ALL available packages (for subscription page display)
+        // Use SELECT * to handle schema variations across installs
         $allPackages = $this->db->fetchAll(
-            "SELECT p.id, p.name, p.slug, p.description, p.price, p.currency,
-                    p.billing_period, p.is_free, p.is_featured, p.features,
-                    p.trial_days, p.is_adult
+            "SELECT p.*
              FROM packages p
              WHERE p.is_active = 1
              ORDER BY p.is_featured DESC, p.sort_order, p.price ASC"
         );
 
-        // Parse features JSON and mark subscribed packages
+        // Parse features JSON and mark subscribed packages with safe defaults
         foreach ($allPackages as &$pkg) {
             $features = json_decode($pkg['features'] ?? '[]', true);
             $pkg['features'] = is_array($features) ? $features : [];
             $pkg['is_subscribed'] = in_array((int)$pkg['id'], $activeIds);
+            $pkg['billing_period'] = $pkg['billing_period'] ?? 'monthly';
+            $pkg['trial_days'] = (int) ($pkg['trial_days'] ?? 0);
+            $pkg['is_adult'] = (bool) ($pkg['is_adult'] ?? false);
+            $pkg['is_free'] = (bool) ($pkg['is_free'] ?? false);
+            $pkg['is_featured'] = (bool) ($pkg['is_featured'] ?? false);
+            $currencySymbol = self::CURRENCY_SYMBOLS[$pkg['currency'] ?? 'USD'] ?? '$';
             $pkg['price_display'] = ($pkg['is_free'] || (float)$pkg['price'] === 0.0)
                 ? 'Free'
-                : ($pkg['currency'] ?? '$') . number_format((float)$pkg['price'], 2);
+                : $currencySymbol . number_format((float)$pkg['price'], 2);
         }
 
         return array_merge($entitlements, [
             'packages' => $allPackages,
+            'has_subscription' => !empty($activeIds),
         ]);
     }
 
@@ -465,10 +479,9 @@ class ContentApiService
             [$id]
         ), []);
 
-        // Cast
+        // Cast (SELECT * to handle schema variations - profile_image added in migration 020)
         $movie['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT name, character_name, profile_url, role, sort_order
-             FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
+            "SELECT * FROM movie_cast WHERE movie_id = ? ORDER BY sort_order ASC LIMIT 20",
             [$id]
         ), []);
 
@@ -598,6 +611,12 @@ class ContentApiService
         $show['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT id, name as title, video_key, url, is_primary
              FROM series_trailers WHERE series_id = ? ORDER BY is_primary DESC, sort_order ASC",
+            [$id]
+        ), []);
+
+        // Cast (SELECT * to handle schema variations - profile_image added in migration 020)
+        $show['cast'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT * FROM series_cast WHERE series_id = ? ORDER BY sort_order ASC LIMIT 20",
             [$id]
         ), []);
 
@@ -1049,5 +1068,64 @@ class ContentApiService
         }
 
         return $results;
+    }
+
+    // =========================================================================
+    // PERSON / CAST
+    // =========================================================================
+
+    /**
+     * Get person details and all content they appear in on the platform
+     * Looks up by tmdb_person_id across both movie_cast and series_cast
+     */
+    public function getPerson(int $tmdbPersonId): ?array
+    {
+        // Get person info from either cast table (SELECT * for schema compatibility)
+        $person = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT * FROM movie_cast WHERE tmdb_person_id = ? LIMIT 1",
+            [$tmdbPersonId]
+        ));
+
+        if (!$person) {
+            $person = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT * FROM series_cast WHERE tmdb_person_id = ? LIMIT 1",
+                [$tmdbPersonId]
+            ));
+        }
+
+        if (!$person) {
+            return null;
+        }
+
+        // Get movies they appear in
+        $movies = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT m.id, m.title, m.slug, m.poster_url, m.year, m.vote_average,
+                    mc.character_name, mc.role, 'movie' as content_type
+             FROM movie_cast mc
+             JOIN movies m ON mc.movie_id = m.id
+             WHERE mc.tmdb_person_id = ? AND m.status = 'published'
+             ORDER BY m.year DESC",
+            [$tmdbPersonId]
+        ), []);
+
+        // Get series they appear in
+        $series = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT s.id, s.title, s.slug, s.poster_url, s.year, s.vote_average,
+                    sc.character_name, sc.role, 'series' as content_type
+             FROM series_cast sc
+             JOIN series s ON sc.series_id = s.id
+             WHERE sc.tmdb_person_id = ? AND s.status = 'published'
+             ORDER BY s.year DESC",
+            [$tmdbPersonId]
+        ), []);
+
+        return [
+            'name' => $person['name'],
+            'profile_url' => $person['profile_url'] ?? null,
+            'profile_image' => $person['profile_image'] ?? null,
+            'tmdb_person_id' => (int) ($person['tmdb_person_id'] ?? 0),
+            'movies' => $movies,
+            'series' => $series,
+        ];
     }
 }

@@ -174,6 +174,8 @@ const CariAPI = (function() {
         return get('/categories' + q);
     }
 
+    function getPerson(tmdbPersonId) { return get('/person/' + tmdbPersonId); }
+
     function search(query, type) {
         return get('/search?q=' + encodeURIComponent(query) + (type ? '&type=' + type : ''));
     }
@@ -190,14 +192,18 @@ const CariAPI = (function() {
     function getContinueWatching() { return get('/auth/continue-watching'); }
     function toggleWatchlist(contentType, contentId) { return post('/auth/watchlist/toggle', { content_type: contentType, content_id: contentId }); }
     function getWatchlist() { return get('/auth/watchlist'); }
-    function getEntitlements() { return get('/auth/entitlements'); }
+    function getEntitlements() { return request('GET', '/auth/entitlements?_t=' + Date.now()); }
+    function subscribeTo(packageId) { return post('/auth/subscribe', { package_id: packageId }); }
+    function unsubscribeFrom(packageId) { return post('/auth/unsubscribe', { package_id: packageId }); }
+    function updateProfile(data) { return post('/auth/update-profile', data); }
 
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
         getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
-        getCategories, search, getEpg,
+        getCategories, getPerson, search, getEpg,
         updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
+        subscribeTo, unsubscribeFrom, updateProfile,
         bustAllCaches, clearCacheBust,
     };
 })();

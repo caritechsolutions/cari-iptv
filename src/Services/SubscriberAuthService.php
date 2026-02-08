@@ -422,6 +422,147 @@ class SubscriberAuthService
     }
 
     // =========================================================================
+    // SUBSCRIPTIONS
+    // =========================================================================
+
+    /**
+     * Subscribe a subscriber to a package
+     * Handles free packages (instant activation), trial packages, and paid packages
+     */
+    public function subscribe(int $subscriberId, int $packageId): array
+    {
+        // Get package details
+        $package = $this->db->fetch(
+            "SELECT * FROM packages WHERE id = ? AND is_active = 1",
+            [$packageId]
+        );
+
+        if (!$package) {
+            return ['success' => false, 'error' => 'Package not found or inactive'];
+        }
+
+        // Check if already subscribed to this package
+        $existing = $this->db->fetch(
+            "SELECT id, status FROM subscriber_subscriptions
+             WHERE subscriber_id = ? AND package_id = ? AND status IN ('active', 'trial')",
+            [$subscriberId, $packageId]
+        );
+
+        if ($existing) {
+            return ['success' => false, 'error' => 'You are already subscribed to this package'];
+        }
+
+        $status = 'active';
+        $expiresAt = null;
+        $trialEndsAt = null;
+        $paymentMethod = 'free';
+
+        $isFree = !empty($package['is_free']) || (float) ($package['price'] ?? 0) === 0.0;
+        $trialDays = (int) ($package['trial_days'] ?? 0);
+
+        if ($isFree) {
+            // Free package — activate immediately, no expiry
+            $status = 'active';
+            $paymentMethod = 'free';
+        } elseif ($trialDays > 0) {
+            // Paid package with trial — check if subscriber already used trial
+            $hadTrial = $this->db->fetch(
+                "SELECT 1 FROM subscriber_subscriptions WHERE subscriber_id = ? AND package_id = ?",
+                [$subscriberId, $packageId]
+            );
+
+            if (!$hadTrial) {
+                $status = 'trial';
+                $trialEndsAt = date('Y-m-d H:i:s', strtotime("+{$trialDays} days"));
+                $expiresAt = $trialEndsAt;
+                $paymentMethod = 'trial';
+            } else {
+                // Already used trial — requires payment
+                return ['success' => false, 'error' => 'Payment is required for this package. Trial has already been used.', 'requires_payment' => true];
+            }
+        } else {
+            // Paid package, no trial — requires payment
+            return ['success' => false, 'error' => 'Payment is required for this package.', 'requires_payment' => true];
+        }
+
+        // Create subscription
+        $this->db->execute(
+            "INSERT INTO subscriber_subscriptions
+                (subscriber_id, package_id, status, started_at, expires_at, trial_ends_at, payment_method)
+             VALUES (?, ?, ?, NOW(), ?, ?, ?)",
+            [$subscriberId, $packageId, $status, $expiresAt, $trialEndsAt, $paymentMethod]
+        );
+
+        return [
+            'success' => true,
+            'status' => $status,
+            'message' => $status === 'trial'
+                ? "Trial started! You have {$package['trial_days']} days to try this package."
+                : 'Successfully subscribed to ' . $package['name'],
+        ];
+    }
+
+    /**
+     * Cancel a subscriber's subscription to a package
+     */
+    public function unsubscribe(int $subscriberId, int $packageId): array
+    {
+        $subscription = $this->db->fetch(
+            "SELECT id, status FROM subscriber_subscriptions
+             WHERE subscriber_id = ? AND package_id = ? AND status IN ('active', 'trial')",
+            [$subscriberId, $packageId]
+        );
+
+        if (!$subscription) {
+            return ['success' => false, 'error' => 'No active subscription found for this package'];
+        }
+
+        $this->db->execute(
+            "UPDATE subscriber_subscriptions
+             SET status = 'cancelled', cancelled_at = NOW()
+             WHERE id = ?",
+            [$subscription['id']]
+        );
+
+        return ['success' => true, 'message' => 'Subscription cancelled successfully'];
+    }
+
+    /**
+     * Update subscriber profile (adult_enabled, parental_pin)
+     */
+    public function updateProfile(int $subscriberId, array $data): array
+    {
+        $fields = [];
+        $params = [];
+
+        if (array_key_exists('adult_enabled', $data)) {
+            $fields[] = 'adult_enabled = ?';
+            $params[] = $data['adult_enabled'] ? 1 : 0;
+        }
+
+        if (array_key_exists('parental_pin', $data)) {
+            $pin = $data['parental_pin'];
+            if ($pin !== null && (!is_string($pin) || !preg_match('/^\d{4}$/', $pin))) {
+                return ['success' => false, 'error' => 'PIN must be exactly 4 digits'];
+            }
+            $fields[] = 'parental_pin = ?';
+            $params[] = $pin;
+        }
+
+        if (empty($fields)) {
+            return ['success' => false, 'error' => 'No fields to update'];
+        }
+
+        $params[] = $subscriberId;
+        $this->db->execute(
+            "UPDATE subscribers SET " . implode(', ', $fields) . " WHERE id = ?",
+            $params
+        );
+
+        return ['success' => true, 'message' => 'Profile updated'];
+    }
+
+    // =========================================================================
     // PRIVATE HELPERS
     // =========================================================================
 
@@ -436,6 +577,7 @@ class SubscriberAuthService
             'avatar' => $subscriber['avatar'],
             'max_connections' => (int) $subscriber['max_connections'],
             'parental_pin' => $subscriber['parental_pin'],
+            'adult_enabled' => (bool) ($subscriber['adult_enabled'] ?? false),
         ];
     }
 

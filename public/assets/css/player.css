@@ -2108,6 +2108,90 @@ img { max-width: 100%; display: block; }
     font-size: 0.8125rem !important;
 }
 
+.payment-action {
+    text-align: center;
+    padding: 1.5rem 0;
+}
+
+.payment-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--p-success);
+    font-size: 0.9375rem;
+    margin-bottom: 1.25rem;
+}
+
+.payment-error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--p-danger);
+    padding: 0.75rem 1rem;
+    border-radius: var(--p-radius);
+    font-size: 0.875rem;
+    margin: 1rem 0;
+    text-align: center;
+}
+
+.btn-subscribed {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--p-success);
+    cursor: default;
+    pointer-events: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.package-card.subscribed {
+    border-color: var(--p-success);
+}
+
+.subscribed-badge {
+    background: var(--p-success) !important;
+}
+
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.locked-player-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+
+.locked-player-message {
+    text-align: center;
+    padding: 3rem;
+}
+
+.locked-player-message i.lucide-lock {
+    font-size: 3rem;
+    color: var(--p-danger);
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.locked-player-message h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.locked-player-message p {
+    color: var(--p-text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.subscription-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 /* ============================================
    PROFILE PAGE
    ============================================ */
@@ -2323,4 +2407,160 @@ img { max-width: 100%; display: block; }
     .price-amount { font-size: 2rem; }
     .profile-page { padding: 0 1rem 3rem; }
     .profile-section { padding: 1.25rem; }
+}
+
+/* ============================================
+   Cast & Person Styles
+   ============================================ */
+
+/* Cast row in detail modal & series detail */
+.detail-cast {
+    margin-top: 1.5rem;
+}
+
+.cast-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--p-text);
+    margin-bottom: 0.75rem;
+}
+
+.cast-row {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--p-border) transparent;
+}
+
+.cast-row::-webkit-scrollbar {
+    height: 4px;
+}
+
+.cast-row::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cast-row::-webkit-scrollbar-thumb {
+    background: var(--p-border);
+    border-radius: 2px;
+}
+
+.cast-card {
+    flex-shrink: 0;
+    width: 100px;
+    text-align: center;
+    transition: transform 0.2s;
+}
+
+.cast-card:hover {
+    transform: translateY(-2px);
+}
+
+.cast-photo {
+    width: 80px;
+    height: 120px;
+    border-radius: var(--p-radius-sm);
+    object-fit: cover;
+    background: var(--p-surface);
+    display: block;
+    margin: 0 auto 0.5rem;
+}
+
+.cast-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--p-text);
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cast-character {
+    font-size: 0.6875rem;
+    color: var(--p-text-muted);
+    line-height: 1.2;
+    margin-top: 0.125rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Person Page */
+.person-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.person-header {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+    margin-bottom: 2.5rem;
+}
+
+.person-photo {
+    width: 185px;
+    height: 278px;
+    border-radius: var(--p-radius);
+    object-fit: cover;
+    background: var(--p-surface);
+    flex-shrink: 0;
+}
+
+.person-info {
+    flex: 1;
+    padding-top: 1rem;
+}
+
+.person-name {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--p-text);
+    margin-bottom: 0.75rem;
+}
+
+.person-stats {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.9375rem;
+    color: var(--p-text-secondary);
+}
+
+.person-stats span {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+@media (max-width: 640px) {
+    .person-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 1rem;
+    }
+    .person-photo {
+        width: 140px;
+        height: 210px;
+    }
+    .person-name {
+        font-size: 1.5rem;
+    }
+    .person-stats {
+        justify-content: center;
+    }
+    .person-page {
+        padding: 1rem;
+    }
+    .cast-card {
+        width: 85px;
+    }
+    .cast-photo {
+        width: 70px;
+        height: 105px;
+    }
 }

@@ -114,6 +114,7 @@ class SeriesController
             $showId = $this->seriesService->createShow($data);
 
             $this->seriesService->processImages($showId, $data);
+            $this->seriesService->processCastImages($showId);
 
             $this->auth->logActivity(
                 $this->auth->id(),
@@ -188,6 +189,7 @@ class SeriesController
         try {
             $this->seriesService->updateShow($id, $data);
             $this->seriesService->processImages($id, $data);
+            $this->seriesService->processCastImages($id);
 
             $this->auth->logActivity(
                 $this->auth->id(),
@@ -959,12 +961,16 @@ class SeriesController
             if (!empty($show['poster_url']) && str_starts_with($show['poster_url'], 'http')) {
                 $processed = $this->seriesService->processImages($id, [
                     'poster_url' => $show['poster_url'],
+                    'backdrop_url' => $show['backdrop_url'] ?? null,
                 ]);
             }
 
+            // Process cast profile images
+            $castProcessed = $this->seriesService->processCastImages($id);
+
             $this->sendJson([
                 'success' => true,
-                'message' => 'Images processed',
+                'message' => 'Images processed' . ($castProcessed ? " ({$castProcessed} cast photos)" : ''),
                 'processed' => $processed,
             ]);
         } catch (\Throwable $e) {

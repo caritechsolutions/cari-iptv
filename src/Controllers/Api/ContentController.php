@@ -233,6 +233,20 @@ class ContentController extends BaseApiController
     // =========================================================================
 
     /**
+     * GET /api/v1/person/{tmdbPersonId}
+     */
+    public function person(string $tmdbPersonId): void
+    {
+        $person = $this->service->getPerson((int)$tmdbPersonId);
+
+        if (!$person) {
+            $this->notFound('Person not found');
+        }
+
+        $this->ok($person);
+    }
+
+    /**
      * GET /api/v1/search
      * ?q=batman&type=all|movie|series|channel&limit=20
      */

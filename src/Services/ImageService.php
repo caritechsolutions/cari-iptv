@@ -41,6 +41,10 @@ class ImageService
             'banner_square' => ['width' => 300, 'height' => 250],
             'full' => ['width' => 1920, 'height' => 1080],
         ],
+        'cast' => [
+            'thumb' => ['width' => 80, 'height' => 120],
+            'medium' => ['width' => 185, 'height' => 278],
+        ],
     ];
 
     private int $quality = 85;
