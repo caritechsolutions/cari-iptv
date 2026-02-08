@@ -23,7 +23,9 @@ const CariRouter = (function() {
     }
 
     function navigate(path, replace) {
-        if (path === currentPath) return;
+        // Compare full path+query so search?q=foo → search?q=bar triggers re-render
+        const fullCurrent = currentPath || '';
+        if (path === fullCurrent) return;
 
         if (replace) {
             history.replaceState(null, '', path);
@@ -35,8 +37,9 @@ const CariRouter = (function() {
 
     function handleRoute() {
         const path = window.location.pathname;
-        if (path === currentPath) return;
-        currentPath = path;
+        const fullPath = path + window.location.search;
+        if (fullPath === currentPath) return;
+        currentPath = fullPath;
 
         if (beforeEachHook) {
             const proceed = beforeEachHook(path);
