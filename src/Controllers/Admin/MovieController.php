@@ -112,6 +112,7 @@ class MovieController
 
             // Process images (download and convert to WebP)
             $this->movieService->processImages($movieId, $data);
+            $this->movieService->processCastImages($movieId);
 
             // Log activity
             $this->auth->logActivity(
@@ -193,6 +194,7 @@ class MovieController
 
             // Process images if URLs changed (download and convert to WebP)
             $this->movieService->processImages($id, $data);
+            $this->movieService->processCastImages($id);
 
             // Add new trailers (don't replace existing ones)
             foreach ($newTrailers as $trailer) {
@@ -814,16 +816,20 @@ class MovieController
         try {
             $processed = [];
 
-            // Process poster if it's a remote URL
+            // Process poster/backdrop if remote URLs
             if (!empty($movie['poster_url']) && str_starts_with($movie['poster_url'], 'http')) {
                 $processed = $this->movieService->processImages($id, [
                     'poster_url' => $movie['poster_url'],
+                    'backdrop_url' => $movie['backdrop_url'] ?? null,
                 ]);
             }
 
+            // Process cast profile images
+            $castProcessed = $this->movieService->processCastImages($id);
+
             $this->sendJson([
                 'success' => true,
-                'message' => 'Images processed',
+                'message' => 'Images processed' . ($castProcessed ? " ({$castProcessed} cast photos)" : ''),
                 'processed' => $processed,
             ]);
         } catch (\Throwable $e) {
