@@ -513,7 +513,7 @@ const CariApp = (function() {
             row.appendChild(card);
         });
 
-        section.appendChild(row);
+        section.appendChild(CariUI.wrapWithScrollNav(row));
         el.appendChild(section);
     }
 
@@ -874,12 +874,16 @@ const CariApp = (function() {
 
             // Render cast
             if (show.cast && show.cast.length) {
-                CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast);
+                CariUI.renderCastRow(document.getElementById('seriesCast'), show.cast, {
+                    type: 'page',
+                    path: '/series/' + id,
+                    title: title
+                });
             }
 
             // Render seasons/episodes
             if (seasons.length) {
-                renderEpisodes(seasons[0]);
+                renderEpisodes(seasons[0], show.id);
 
                 document.getElementById('seasonTabs').addEventListener('click', (e) => {
                     const tab = e.target.closest('.season-tab');
@@ -887,7 +891,7 @@ const CariApp = (function() {
                     document.querySelectorAll('.season-tab').forEach(t => t.classList.remove('active'));
                     tab.classList.add('active');
                     const idx = parseInt(tab.dataset.seasonIdx);
-                    renderEpisodes(seasons[idx]);
+                    renderEpisodes(seasons[idx], show.id);
                 });
             }
         } catch (err) {
@@ -896,7 +900,7 @@ const CariApp = (function() {
         }
     }
 
-    function renderEpisodes(season) {
+    function renderEpisodes(season, seriesId) {
         const list = document.getElementById('episodeList');
         if (!list) return;
 
@@ -916,7 +920,7 @@ const CariApp = (function() {
             const hasStream = !!(ep.stream_url);
 
             return `
-                <div class="episode-card${hasStream ? ' playable' : ''}" data-episode-id="${ep.id}" data-stream="${CariUI.esc(ep.stream_url || '')}">
+                <div class="episode-card" data-episode-idx="${ep.id}">
                     <div class="episode-thumb">
                         ${thumb ? '<img src="' + CariUI.esc(thumb) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
                         ${hasStream ? '<div class="episode-play-overlay"><i class="lucide-play"></i></div>' : ''}
@@ -934,12 +938,77 @@ const CariApp = (function() {
             `;
         }).join('');
 
-        // Attach play handlers to playable episodes
-        list.querySelectorAll('.episode-card.playable').forEach(card => {
+        // Build a lookup for episodes by id
+        const epMap = {};
+        episodes.forEach(ep => { epMap[ep.id] = ep; });
+
+        // Make all episode cards clickable — open episode detail modal
+        list.querySelectorAll('.episode-card').forEach(card => {
+            card.style.cursor = 'pointer';
             card.addEventListener('click', () => {
-                const epId = card.dataset.episodeId;
-                CariRouter.navigate('/watch/episode/' + epId);
+                const epId = card.dataset.episodeIdx;
+                const ep = epMap[epId];
+                if (ep) showEpisodeDetail(ep, seriesId, season);
             });
+        });
+    }
+
+    function showEpisodeDetail(ep, seriesId, season) {
+        const overlay = document.getElementById('detailOverlay');
+        const modal = document.getElementById('detailModal');
+
+        const thumb = ep.still_url || '';
+        const epTitle = ep.title || ep.name || 'Episode ' + ep.episode_number;
+        const epNum = ep.episode_number || '';
+        const epDesc = ep.synopsis || ep.overview || '';
+        const runtime = ep.runtime || '';
+        const rating = ep.vote_average || '';
+        const airDate = ep.air_date || '';
+        const hasStream = !!(ep.stream_url);
+        const seasonName = season.name || 'Season ' + (season.season_number || '');
+
+        modal.innerHTML = `
+            <button class="detail-close" id="epModalClose"><i class="lucide-x"></i></button>
+            ${thumb ? '<img class="detail-backdrop" src="' + CariUI.esc(thumb) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
+            <div class="detail-body">
+                <div class="ep-modal-badge">${CariUI.esc(seasonName)} &middot; Episode ${CariUI.esc(String(epNum))}</div>
+                <h2 class="detail-title">${CariUI.esc(epTitle)}</h2>
+                <div class="detail-meta">
+                    ${runtime ? '<span><i class="lucide-clock" style="font-size:.75rem"></i> ' + CariUI.esc(String(runtime)) + ' min</span>' : ''}
+                    ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.75rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                    ${airDate ? '<span><i class="lucide-calendar" style="font-size:.75rem"></i> ' + CariUI.esc(airDate) + '</span>' : ''}
+                </div>
+                ${epDesc ? '<p class="detail-desc">' + CariUI.esc(epDesc) + '</p>' : '<p class="detail-desc" style="color:var(--p-text-muted)">No description available.</p>'}
+                <div class="detail-actions">
+                    ${hasStream
+                        ? '<button class="btn btn-play" id="epModalPlay"><i class="lucide-play"></i> Play Episode</button>'
+                        : '<div class="episode-no-stream"><i class="lucide-cloud-off"></i> Stream not available yet</div>'}
+                    <button class="btn btn-info" id="epModalBack"><i class="lucide-arrow-left"></i> Back to Series</button>
+                </div>
+            </div>
+        `;
+
+        // Close button
+        modal.querySelector('#epModalClose').addEventListener('click', () => {
+            overlay.classList.remove('visible');
+        });
+
+        // Play button
+        if (hasStream) {
+            modal.querySelector('#epModalPlay').addEventListener('click', () => {
+                overlay.classList.remove('visible');
+                CariRouter.navigate('/watch/episode/' + ep.id);
+            });
+        }
+
+        // Back to series button
+        modal.querySelector('#epModalBack').addEventListener('click', () => {
+            overlay.classList.remove('visible');
+        });
+
+        overlay.classList.add('visible');
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.classList.remove('visible');
         });
     }
 
@@ -966,6 +1035,7 @@ const CariApp = (function() {
 
             el.innerHTML = `
                 <div class="person-page">
+                    <div id="personBackNav"></div>
                     <div class="person-header">
                         <img class="person-photo" src="${img ? CariUI.esc(img) : placeholderAvatar}" alt="${CariUI.esc(person.name)}"
                              onerror="this.src='${placeholderAvatar}'">
@@ -980,6 +1050,32 @@ const CariApp = (function() {
                     <div id="personFilmography"></div>
                 </div>
             `;
+
+            // Add back navigation if user came from a detail modal or series page
+            const castSource = CariUI.getCastNavSource();
+            if (castSource) {
+                const backNav = document.getElementById('personBackNav');
+                const backBtn = document.createElement('button');
+                backBtn.className = 'person-back';
+
+                if (castSource.type === 'modal' && castSource.item) {
+                    const itemTitle = castSource.item.title || castSource.item.name || 'Details';
+                    backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to ' + CariUI.esc(itemTitle);
+                    backBtn.addEventListener('click', () => {
+                        const sourceItem = castSource.item;
+                        CariRouter.navigate(castSource.fromPath || '/');
+                        CariUI.showDetail(sourceItem, playContent, isContentLocked(sourceItem));
+                    });
+                } else if (castSource.type === 'page' && castSource.path) {
+                    backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to ' + CariUI.esc(castSource.title || 'Previous Page');
+                    backBtn.addEventListener('click', () => {
+                        CariRouter.navigate(castSource.path);
+                    });
+                }
+
+                backNav.appendChild(backBtn);
+                CariUI.clearCastNavSource();
+            }
 
             const filmEl = document.getElementById('personFilmography');
 

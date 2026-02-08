@@ -18,6 +18,76 @@ const CariUI = (function() {
         '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="169" fill="%23141422"><rect width="300" height="169"/></svg>'
     );
 
+    let _castNavSource = null;
+
+    // ---- Scroll Navigation ----
+
+    function wrapWithScrollNav(row) {
+        const wrap = document.createElement('div');
+        wrap.className = 'content-row-wrap';
+
+        const leftBtn = document.createElement('button');
+        leftBtn.className = 'scroll-arrow scroll-arrow-left';
+        leftBtn.type = 'button';
+        leftBtn.innerHTML = '<i class="lucide-chevron-left"></i>';
+        leftBtn.style.display = 'none';
+
+        const rightBtn = document.createElement('button');
+        rightBtn.className = 'scroll-arrow scroll-arrow-right';
+        rightBtn.type = 'button';
+        rightBtn.innerHTML = '<i class="lucide-chevron-right"></i>';
+
+        wrap.appendChild(leftBtn);
+        wrap.appendChild(row);
+        wrap.appendChild(rightBtn);
+
+        const scrollAmount = 600;
+
+        leftBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            row.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+        });
+
+        rightBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            row.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+        });
+
+        function updateArrows() {
+            var maxScroll = row.scrollWidth - row.clientWidth;
+            leftBtn.style.display = (row.scrollLeft > 0) ? '' : 'none';
+            rightBtn.style.display = (maxScroll > 0 && row.scrollLeft < maxScroll - 1) ? '' : 'none';
+        }
+
+        row.addEventListener('scroll', updateArrows);
+
+        // Multiple retries to catch layout settling and lazy-loaded images
+        function scheduleCheck() {
+            setTimeout(updateArrows, 100);
+            setTimeout(updateArrows, 500);
+            setTimeout(updateArrows, 1500);
+        }
+
+        if (window.ResizeObserver) {
+            new ResizeObserver(updateArrows).observe(row);
+        }
+
+        // Check immediately when added to DOM via MutationObserver
+        if (window.MutationObserver) {
+            var mo = new MutationObserver(function() {
+                if (row.isConnected) {
+                    mo.disconnect();
+                    scheduleCheck();
+                }
+            });
+            mo.observe(document.body, { childList: true, subtree: true });
+        }
+
+        scheduleCheck();
+
+        return wrap;
+    }
+
     // ---- Cards ----
 
     function posterCard(item, onclick, isLocked) {
@@ -211,7 +281,7 @@ const CariUI = (function() {
             row.appendChild(card);
         });
 
-        section.appendChild(row);
+        section.appendChild(wrapWithScrollNav(row));
         return section;
     }
 
@@ -365,14 +435,18 @@ const CariUI = (function() {
             // Cast
             const castContainer = modal.querySelector('#detailCast');
             if (full.cast && full.cast.length) {
-                renderCastRow(castContainer, full.cast);
+                renderCastRow(castContainer, full.cast, {
+                    type: 'modal',
+                    item: item,
+                    fromPath: (typeof CariRouter !== 'undefined') ? CariRouter.getCurrentPath() : '/'
+                });
             }
         } catch (err) {
             console.error('[CariUI] Failed to fetch movie details for id:', item.id, err);
         }
     }
 
-    function renderCastRow(container, cast) {
+    function renderCastRow(container, cast, source) {
         if (!container || !cast || !cast.length) return;
 
         const placeholderAvatar = 'data:image/svg+xml,' + encodeURIComponent(
@@ -403,6 +477,7 @@ const CariUI = (function() {
             card.addEventListener('click', () => {
                 const pid = card.dataset.personId;
                 if (pid) {
+                    _castNavSource = source || null;
                     hideDetail();
                     CariRouter.navigate('/person/' + pid);
                 }
@@ -441,9 +516,13 @@ const CariUI = (function() {
         return html;
     }
 
+    function getCastNavSource() { return _castNavSource; }
+    function clearCastNavSource() { _castNavSource = null; }
+
     return {
         esc, posterCard, backdropCard, channelCard, categoryCard,
         renderHero, renderContentRow, renderBanner, renderTextDivider,
         showDetail, hideDetail, renderCastRow, loading, emptyState, skeletonRow,
+        wrapWithScrollNav, getCastNavSource, clearCastNavSource,
     };
 })();
