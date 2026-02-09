@@ -10,7 +10,6 @@ const CariApp = (function() {
     let pageLayouts = {}; // page_type → layout_id map from navigation
     let pages = [];
     let shakaPlayer = null;
-    let searchTimeout = null;
     let lastManifest = null;
     let manifestTimer = null;
     let entitlements = null; // { movies: [], series: [], channels: [], packages: [] }
@@ -26,7 +25,6 @@ const CariApp = (function() {
 
         setupUser();
         setupSidebar();
-        setupSearch();
         setupRoutes();
         await Promise.all([loadNavigation(), loadEntitlements()]);
 
@@ -97,26 +95,6 @@ const CariApp = (function() {
         backdrop.addEventListener('click', () => {
             sidebar.classList.remove('open');
             backdrop.classList.remove('visible');
-        });
-    }
-
-    function setupSearch() {
-        const input = document.getElementById('searchInput');
-        input.addEventListener('input', () => {
-            clearTimeout(searchTimeout);
-            const q = input.value.trim();
-            if (q.length >= 2) {
-                searchTimeout = setTimeout(() => CariRouter.navigate('/search?q=' + encodeURIComponent(q)), 400);
-            }
-        });
-
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                const q = input.value.trim();
-                if (q.length >= 2) {
-                    CariRouter.navigate('/search?q=' + encodeURIComponent(q));
-                }
-            }
         });
     }
 
@@ -1181,6 +1159,7 @@ const CariApp = (function() {
 
     const RECENT_SEARCHES_KEY = 'cari_recent_searches';
     const MAX_RECENT_SEARCHES = 8;
+    let searchTimeout = null;
 
     function getRecentSearches() {
         try {
@@ -1201,15 +1180,65 @@ const CariApp = (function() {
         localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recent));
     }
 
+    function doSearch(query) {
+        if (!query || query.length < 2) return;
+        CariRouter.navigate('/search?q=' + encodeURIComponent(query));
+    }
+
+    function setupPageSearchInput() {
+        const input = document.getElementById('pageSearchInput');
+        if (!input) return;
+        input.focus();
+
+        input.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            const q = input.value.trim();
+            if (q.length >= 2) {
+                searchTimeout = setTimeout(() => doSearch(q), 500);
+            }
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                clearTimeout(searchTimeout);
+                doSearch(input.value.trim());
+            }
+        });
+
+        const clearBtn = document.getElementById('searchClearBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                input.focus();
+                CariRouter.navigate('/search');
+            });
+        }
+    }
+
+    /**
+     * Renders the search input bar that lives on the search page.
+     * Shows a clear button when there's a query.
+     */
+    function searchInputHTML(q) {
+        return `
+            <div class="search-input-bar">
+                <div class="search-input-wrap">
+                    <i class="lucide-search search-input-icon"></i>
+                    <input type="text" id="pageSearchInput" placeholder="Search movies, shows, channels..."
+                           value="${CariUI.esc(q)}" autocomplete="off" spellcheck="false">
+                    ${q ? '<button class="search-input-clear" id="searchClearBtn"><i class="lucide-x"></i></button>' : ''}
+                </div>
+            </div>
+        `;
+    }
+
     async function pageSearch() {
         const el = content();
         const params = new URLSearchParams(window.location.search);
         const q = params.get('q') || '';
 
-        document.getElementById('searchInput').value = q;
-
         if (!q || q.length < 2) {
-            renderSearchDiscovery(el);
+            renderSearchDiscovery(el, q);
             return;
         }
 
@@ -1219,23 +1248,25 @@ const CariApp = (function() {
 
     /**
      * Pre-search discovery state — shown when no query is entered.
-     * Shows recent searches, trending content, and browse-by-category.
+     * Shows search input, quick filters, recent searches, featured promo,
+     * trending content, and browse-by-category.
      */
-    async function renderSearchDiscovery(el) {
+    async function renderSearchDiscovery(el, q) {
         const recent = getRecentSearches();
 
         el.innerHTML = `
             <div class="search-page">
-                <div class="search-hero">
-                    <div class="search-hero-icon"><i class="lucide-search"></i></div>
-                    <h1 class="search-hero-title">Search</h1>
-                    <p class="search-hero-subtitle">Find movies, TV shows, and live channels</p>
-                </div>
+                ${searchInputHTML(q || '')}
+                <div id="searchQuickFilters" class="search-quick-filters"></div>
                 ${recent.length ? '<div id="recentSearches" class="search-section"></div>' : ''}
+                <div id="searchFeatured" class="search-section"></div>
                 <div id="searchTrending" class="search-section"></div>
+                <div id="searchNewReleases" class="search-section"></div>
                 <div id="searchCategories" class="search-section"></div>
             </div>
         `;
+
+        setupPageSearchInput();
 
         // Render recent searches
         if (recent.length) {
@@ -1258,9 +1289,7 @@ const CariApp = (function() {
             recentEl.addEventListener('click', (e) => {
                 const chipText = e.target.closest('.recent-chip-text');
                 if (chipText) {
-                    const query = chipText.dataset.query;
-                    document.getElementById('searchInput').value = query;
-                    CariRouter.navigate('/search?q=' + encodeURIComponent(query));
+                    doSearch(chipText.dataset.query);
                     return;
                 }
                 const removeBtn = e.target.closest('.recent-chip-remove');
@@ -1277,13 +1306,65 @@ const CariApp = (function() {
             });
         }
 
-        // Load trending content and categories in parallel
+        // Load all discovery data in parallel
         try {
-            const [moviesRes, seriesRes, catRes] = await Promise.all([
-                CariAPI.getMovies({ sort: 'popular', limit: 12 }),
-                CariAPI.getSeries({ sort: 'popular', limit: 12 }),
+            const [moviesRes, seriesRes, catRes, featuredRes, latestRes] = await Promise.all([
+                CariAPI.getMovies({ sort: 'popular', limit: 14 }),
+                CariAPI.getSeries({ sort: 'popular', limit: 14 }),
                 CariAPI.getCategories({ type: 'vod' }),
+                CariAPI.getMovies({ featured: 1, limit: 5 }),
+                CariAPI.getMovies({ sort: 'latest', limit: 14 }),
             ]);
+
+            // Quick filter chips from categories
+            const cats = catRes?.data || [];
+            const filtersEl = document.getElementById('searchQuickFilters');
+            if (cats.length && filtersEl) {
+                filtersEl.innerHTML = `
+                    <button class="quick-filter-chip" data-type="movie"><i class="lucide-film"></i> Movies</button>
+                    <button class="quick-filter-chip" data-type="series"><i class="lucide-clapperboard"></i> TV Shows</button>
+                    <button class="quick-filter-chip" data-type="channel"><i class="lucide-radio"></i> Live TV</button>
+                    <span class="quick-filter-divider"></span>
+                    ${cats.slice(0, 8).map(c => `<button class="quick-filter-chip" data-category="${c.id}">${CariUI.esc(c.name)}</button>`).join('')}
+                `;
+                filtersEl.addEventListener('click', (e) => {
+                    const chip = e.target.closest('.quick-filter-chip');
+                    if (!chip) return;
+                    const type = chip.dataset.type;
+                    if (type === 'movie') CariRouter.navigate('/movies');
+                    else if (type === 'series') CariRouter.navigate('/series');
+                    else if (type === 'channel') CariRouter.navigate('/live');
+                    else if (chip.dataset.category) CariRouter.navigate('/categories?cat=' + chip.dataset.category);
+                });
+            }
+
+            // Featured promo banner (from featured movies)
+            const featured = featuredRes?.data || [];
+            const featuredEl = document.getElementById('searchFeatured');
+            if (featured.length && featuredEl) {
+                const pick = featured[Math.floor(Math.random() * Math.min(featured.length, 3))];
+                const bg = pick.backdrop_url || pick.poster_url || '';
+                featuredEl.innerHTML = `
+                    <div class="search-promo-banner" id="searchPromoBanner">
+                        ${bg ? '<img class="search-promo-bg" src="' + CariUI.esc(bg) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
+                        <div class="search-promo-gradient"></div>
+                        <div class="search-promo-content">
+                            <div class="search-promo-badge">Featured</div>
+                            <h3 class="search-promo-title">${CariUI.esc(pick.title || '')}</h3>
+                            <p class="search-promo-desc">${CariUI.esc((pick.synopsis || '').substring(0, 120))}${(pick.synopsis || '').length > 120 ? '...' : ''}</p>
+                            <div class="search-promo-meta">
+                                ${pick.year ? '<span>' + CariUI.esc(pick.year) + '</span>' : ''}
+                                ${pick.vote_average ? '<span><i class="lucide-star" style="font-size:.7rem"></i> ' + CariUI.esc(String(pick.vote_average)) + '</span>' : ''}
+                                ${pick.genres ? '<span>' + CariUI.esc(pick.genres) + '</span>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                featuredEl.querySelector('#searchPromoBanner').addEventListener('click', () => {
+                    pick.content_type = 'movie';
+                    CariUI.showDetail(pick, playContent, isContentLocked(pick));
+                });
+            }
 
             // Trending content row
             const trendingEl = document.getElementById('searchTrending');
@@ -1303,8 +1384,20 @@ const CariApp = (function() {
                 }
             }
 
-            // Browse by category
-            const cats = catRes?.data || [];
+            // New releases row
+            const latest = (latestRes?.data || []).map(m => ({ ...m, content_type: 'movie' }));
+            const newReleasesEl = document.getElementById('searchNewReleases');
+            if (latest.length && newReleasesEl) {
+                const section = CariUI.renderContentRow('New Releases', latest, 'backdrop', (item) => {
+                    CariUI.showDetail(item, playContent, isContentLocked(item));
+                });
+                if (section) {
+                    newReleasesEl.innerHTML = '';
+                    newReleasesEl.appendChild(section);
+                }
+            }
+
+            // Browse by category grid
             const catsEl = document.getElementById('searchCategories');
             if (cats.length && catsEl) {
                 catsEl.innerHTML = `
@@ -1325,17 +1418,21 @@ const CariApp = (function() {
 
     /**
      * Search results state — grouped by content type with filter tabs.
+     * Search input stays at top for easy refinement.
      */
     async function renderSearchResults(el, q) {
         el.innerHTML = `
             <div class="search-page">
+                ${searchInputHTML(q)}
                 <div class="search-results-header">
-                    <h2 class="search-results-title">Searching for "${CariUI.esc(q)}"...</h2>
+                    <h2 class="search-results-title">Searching...</h2>
                 </div>
                 <div id="searchFilterTabs" class="search-filter-tabs"></div>
                 <div id="searchResults">${CariUI.loading()}</div>
             </div>
         `;
+
+        setupPageSearchInput();
 
         try {
             // Fetch all types in parallel for grouped results + counts
