@@ -16,7 +16,7 @@ set -e
 # ============================================
 INSTALL_DIR="/var/www/cari-iptv"
 REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-BRANCH="claude/player-search-design-RGeBd"
+BRANCH="claude/live-tv-routing-uDNuY"
 BACKUP_ENABLED=false
 BACKUP_DIR="/var/backups/cari-iptv"
 WEB_USER="www-data"
