@@ -48,10 +48,6 @@
                 <button class="header-menu-btn" id="menuBtn">
                     <i class="lucide-menu"></i>
                 </button>
-                <div class="header-search">
-                    <i class="lucide-search header-search-icon"></i>
-                    <input type="text" id="searchInput" placeholder="Search movies, shows, channels..." autocomplete="off">
-                </div>
                 <div class="header-spacer"></div>
             </header>
 
