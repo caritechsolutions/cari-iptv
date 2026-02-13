@@ -1179,6 +1179,7 @@ const CariApp = (function() {
                     <div class="live-player-section">
                         <div class="live-player-container" id="livePlayerContainer">
                             <video id="liveVideo" autoplay></video>
+                            <button class="live-player-fullscreen" id="liveFullscreenBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
                         </div>
                     </div>
                     <div class="live-info-panel" id="liveInfoPanel">
@@ -1241,6 +1242,7 @@ const CariApp = (function() {
             renderCategoryFilters();
             renderEpgGrid();
             setupEpgNavControls();
+            setupFullscreenButton();
 
             // Auto-play preselected or first channel
             const startChannel = preselectedId
@@ -1397,14 +1399,11 @@ const CariApp = (function() {
         `;
 
         // Scroll to now (center "now" in viewport)
-        const gridBody = document.getElementById('epgGridBody');
-        if (gridBody) {
-            const scrollTarget = nowPx - gridBody.clientWidth / 3;
-            gridBody.scrollLeft = Math.max(0, scrollTarget);
+        // epg-grid-container is now the single scroll container
+        if (container) {
+            const scrollTarget = nowPx - container.clientWidth / 3;
+            container.scrollLeft = Math.max(0, scrollTarget);
         }
-
-        // Sync time header scroll with grid body
-        syncEpgScroll();
 
         // Event listeners
         container.querySelectorAll('.epg-channel-col[data-channel-id]').forEach(col => {
@@ -1426,35 +1425,24 @@ const CariApp = (function() {
         });
     }
 
-    function syncEpgScroll() {
-        const gridBody = document.getElementById('epgGridBody');
-        const timeHeader = document.getElementById('epgTimeHeader');
-        if (!gridBody || !timeHeader) return;
-
-        gridBody.addEventListener('scroll', () => {
-            // Sync horizontal scroll of time header with grid body
-            timeHeader.scrollLeft = gridBody.scrollLeft;
-        });
-    }
-
     function setupEpgNavControls() {
         const prevBtn = document.getElementById('epgNavPrev');
         const nextBtn = document.getElementById('epgNavNext');
         const nowBtn = document.getElementById('epgNavNow');
-        const gridBody = document.getElementById('epgGridBody');
+        const scrollContainer = document.getElementById('epgGridContainer');
 
-        if (!gridBody) return;
+        if (!scrollContainer) return;
 
         const scrollAmount = 30 * EPG_PX_PER_MINUTE; // scroll 30 minutes at a time
 
         if (prevBtn) {
             prevBtn.addEventListener('click', () => {
-                gridBody.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+                scrollContainer.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
             });
         }
         if (nextBtn) {
             nextBtn.addEventListener('click', () => {
-                gridBody.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+                scrollContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' });
             });
         }
         if (nowBtn) {
@@ -1462,10 +1450,31 @@ const CariApp = (function() {
                 const nowLine = document.getElementById('epgNowLine');
                 if (nowLine) {
                     const nowLeft = parseFloat(nowLine.style.left.replace(/calc\(var\(--epg-channel-w\) \+ /, '').replace('px)', ''));
-                    gridBody.scrollTo({ left: Math.max(0, nowLeft - gridBody.clientWidth / 3), behavior: 'smooth' });
+                    scrollContainer.scrollTo({ left: Math.max(0, nowLeft - scrollContainer.clientWidth / 3), behavior: 'smooth' });
                 }
             });
         }
+    }
+
+    function setupFullscreenButton() {
+        const btn = document.getElementById('liveFullscreenBtn');
+        const playerContainer = document.getElementById('livePlayerContainer');
+        if (!btn || !playerContainer) return;
+
+        btn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                playerContainer.requestFullscreen().catch(() => {});
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            const icon = btn.querySelector('i');
+            if (icon) {
+                icon.className = document.fullscreenElement ? 'lucide-minimize' : 'lucide-maximize';
+            }
+        });
     }
 
     function updateEpgTimeIndicator() {

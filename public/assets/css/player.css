@@ -1135,20 +1135,74 @@ img { max-width: 100%; display: block; }
     max-width: 50%;
     background: #000;
     display: flex;
-    align-items: center;
+    align-items: stretch;
+    position: relative;
 }
 
 .live-player-container {
     width: 100%;
-    aspect-ratio: 16/9;
+    height: 100%;
     background: #000;
     position: relative;
+    overflow: hidden;
 }
 
 .live-player-container video {
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+/* Fullscreen button */
+.live-player-fullscreen {
+    position: absolute;
+    bottom: 0.625rem;
+    right: 0.625rem;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    border-radius: 6px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    z-index: 15;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    opacity: 0;
+}
+
+.live-player-container:hover .live-player-fullscreen,
+.live-player-fullscreen:focus {
+    opacity: 1;
+}
+
+.live-player-fullscreen:hover {
+    background: rgba(99, 102, 241, 0.8);
+    border-color: var(--p-primary);
+}
+
+/* When in fullscreen mode */
+.live-player-container:fullscreen {
+    max-height: none;
+}
+
+.live-player-container:fullscreen video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.live-player-container:fullscreen .live-player-fullscreen {
+    opacity: 0;
+    bottom: 1rem;
+    right: 1rem;
+}
+
+.live-player-container:fullscreen:hover .live-player-fullscreen {
+    opacity: 1;
 }
 
 /* ---- Info Panel (Right of Player) ---- */
@@ -1397,19 +1451,20 @@ img { max-width: 100%; display: block; }
 
 .epg-grid-container {
     flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    overflow: auto;
     position: relative;
 }
 
 .epg-time-header {
     display: flex;
-    flex-shrink: 0;
     border-bottom: 1px solid var(--p-border);
     background: var(--p-surface);
     height: var(--epg-time-h);
-    overflow: hidden;
+    width: fit-content;
+    min-width: 100%;
+    position: sticky;
+    top: 0;
+    z-index: 8;
 }
 
 .epg-time-header .epg-channel-col {
@@ -1417,6 +1472,10 @@ img { max-width: 100%; display: block; }
     min-width: var(--epg-channel-w);
     flex-shrink: 0;
     border-right: 1px solid var(--p-border);
+    background: var(--p-surface);
+    position: sticky;
+    left: 0;
+    z-index: 9;
 }
 
 .epg-timeline-header {
@@ -1438,8 +1497,6 @@ img { max-width: 100%; display: block; }
 }
 
 .epg-grid-body {
-    flex: 1;
-    overflow: auto;
     position: relative;
 }
 
@@ -1471,6 +1528,8 @@ img { max-width: 100%; display: block; }
     height: var(--epg-row-h);
     border-bottom: 1px solid rgba(42, 42, 64, 0.4);
     transition: background 0.15s ease;
+    width: fit-content;
+    min-width: 100%;
 }
 
 .epg-row:hover {
