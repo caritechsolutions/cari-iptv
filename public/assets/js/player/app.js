@@ -1180,6 +1180,36 @@ const CariApp = (function() {
                         <div class="live-player-container" id="livePlayerContainer">
                             <video id="liveVideo" autoplay></video>
                             <button class="live-player-fullscreen" id="liveFullscreenBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                            <div class="fs-overlay" id="fsOverlay">
+                                <div class="fs-overlay-top">
+                                    <div class="fs-overlay-channel">
+                                        <img class="fs-overlay-logo" id="fsOverlayLogo" src="" alt="" style="display:none">
+                                        <div class="fs-overlay-channel-info">
+                                            <h3 id="fsOverlayChannel">Channel</h3>
+                                            <div class="live-badge">Live</div>
+                                        </div>
+                                    </div>
+                                    <button class="fs-overlay-exit" id="fsOverlayExit" title="Exit fullscreen"><i class="lucide-minimize"></i></button>
+                                </div>
+                                <div class="fs-overlay-bottom">
+                                    <div class="fs-overlay-now">
+                                        <div class="fs-overlay-programme">
+                                            <span class="fs-overlay-label">Now</span>
+                                            <h4 id="fsOverlayTitle">Programme</h4>
+                                            <p class="fs-overlay-time" id="fsOverlayTime"></p>
+                                        </div>
+                                        <div class="fs-overlay-progress" id="fsOverlayProgress">
+                                            <div class="fs-overlay-progress-fill" id="fsOverlayProgressFill"></div>
+                                        </div>
+                                    </div>
+                                    <div class="fs-overlay-next" id="fsOverlayNext"></div>
+                                    <div class="fs-overlay-nav">
+                                        <button class="fs-overlay-nav-btn" id="fsChPrev" title="Previous channel"><i class="lucide-chevron-up"></i></button>
+                                        <span class="fs-overlay-nav-label" id="fsChNumber"></span>
+                                        <button class="fs-overlay-nav-btn" id="fsChNext" title="Next channel"><i class="lucide-chevron-down"></i></button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="live-info-panel" id="liveInfoPanel">
@@ -1453,9 +1483,15 @@ const CariApp = (function() {
         if (nowBtn) nowBtn.onclick = () => scrollEpg('now');
     }
 
+    let fsOverlayTimer = null;
+
     function setupFullscreenButton() {
         const btn = document.getElementById('liveFullscreenBtn');
         const playerContainer = document.getElementById('livePlayerContainer');
+        const overlay = document.getElementById('fsOverlay');
+        const exitBtn = document.getElementById('fsOverlayExit');
+        const chPrevBtn = document.getElementById('fsChPrev');
+        const chNextBtn = document.getElementById('fsChNext');
         if (!btn || !playerContainer) return;
 
         btn.addEventListener('click', () => {
@@ -1466,12 +1502,128 @@ const CariApp = (function() {
             }
         });
 
+        if (exitBtn) {
+            exitBtn.addEventListener('click', () => {
+                if (document.fullscreenElement) document.exitFullscreen();
+            });
+        }
+
+        // Channel up/down in fullscreen
+        if (chPrevBtn) {
+            chPrevBtn.addEventListener('click', () => {
+                switchChannel(-1);
+                showFsOverlay();
+            });
+        }
+        if (chNextBtn) {
+            chNextBtn.addEventListener('click', () => {
+                switchChannel(1);
+                showFsOverlay();
+            });
+        }
+
         document.addEventListener('fullscreenchange', () => {
             const icon = btn.querySelector('i');
-            if (icon) {
-                icon.className = document.fullscreenElement ? 'lucide-minimize' : 'lucide-maximize';
+            if (document.fullscreenElement) {
+                if (icon) icon.className = 'lucide-minimize';
+                updateFsOverlay();
+                showFsOverlay();
+            } else {
+                if (icon) icon.className = 'lucide-maximize';
+                hideFsOverlay();
             }
         });
+
+        // Show overlay on mouse movement in fullscreen
+        playerContainer.addEventListener('mousemove', () => {
+            if (document.fullscreenElement) showFsOverlay();
+        });
+
+        // Keyboard controls in fullscreen
+        document.addEventListener('keydown', (e) => {
+            if (!document.fullscreenElement) return;
+            if (e.key === 'ArrowUp') { switchChannel(-1); showFsOverlay(); }
+            else if (e.key === 'ArrowDown') { switchChannel(1); showFsOverlay(); }
+            else if (e.key === 'Escape') { /* browser handles exit */ }
+        });
+    }
+
+    function showFsOverlay() {
+        const overlay = document.getElementById('fsOverlay');
+        if (!overlay) return;
+        overlay.classList.add('visible');
+        clearTimeout(fsOverlayTimer);
+        fsOverlayTimer = setTimeout(() => {
+            overlay.classList.remove('visible');
+        }, 4000);
+    }
+
+    function hideFsOverlay() {
+        const overlay = document.getElementById('fsOverlay');
+        if (!overlay) return;
+        overlay.classList.remove('visible');
+        clearTimeout(fsOverlayTimer);
+    }
+
+    function updateFsOverlay() {
+        if (!liveActiveChannelId) return;
+        const channel = liveChannels.find(c => c.id === liveActiveChannelId);
+        if (!channel) return;
+
+        const channels = getFilteredChannels();
+        const chIndex = channels.findIndex(c => c.id === liveActiveChannelId);
+
+        const logoEl = document.getElementById('fsOverlayLogo');
+        const channelEl = document.getElementById('fsOverlayChannel');
+        const titleEl = document.getElementById('fsOverlayTitle');
+        const timeEl = document.getElementById('fsOverlayTime');
+        const progressFill = document.getElementById('fsOverlayProgressFill');
+        const nextEl = document.getElementById('fsOverlayNext');
+        const chNumEl = document.getElementById('fsChNumber');
+
+        if (channelEl) channelEl.textContent = channel.name || '';
+        if (logoEl) {
+            const src = channel.logo_url || channel.logo || '';
+            if (src) { logoEl.src = src; logoEl.style.display = ''; }
+            else { logoEl.style.display = 'none'; }
+        }
+        if (chNumEl) chNumEl.textContent = (chIndex + 1) + ' / ' + channels.length;
+
+        const nowPlaying = getNowPlaying(channel.id);
+        if (titleEl) titleEl.textContent = nowPlaying ? nowPlaying.title : 'Live';
+        if (timeEl) timeEl.textContent = nowPlaying ? formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) : '';
+
+        if (progressFill && nowPlaying) {
+            const now = Date.now();
+            const pStart = new Date(nowPlaying.start_time).getTime();
+            const pEnd = new Date(nowPlaying.end_time).getTime();
+            const pct = Math.min(100, ((now - pStart) / (pEnd - pStart)) * 100);
+            progressFill.style.width = pct.toFixed(1) + '%';
+        } else if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+
+        if (nextEl) {
+            const progs = liveEpgData[channel.id] || [];
+            const now = Date.now();
+            const next = progs.find(p => new Date(p.start_time).getTime() > now);
+            if (next) {
+                nextEl.innerHTML = `<span class="fs-overlay-label">Next</span> <span class="fs-overlay-next-title">${CariUI.esc(next.title)}</span> <span class="fs-overlay-next-time">${formatTime(next.start_time)}</span>`;
+                nextEl.style.display = '';
+            } else {
+                nextEl.style.display = 'none';
+            }
+        }
+    }
+
+    function switchChannel(direction) {
+        const channels = getFilteredChannels();
+        if (!channels.length) return;
+        const currentIndex = channels.findIndex(c => c.id === liveActiveChannelId);
+        let newIndex = currentIndex + direction;
+        if (newIndex < 0) newIndex = channels.length - 1;
+        if (newIndex >= channels.length) newIndex = 0;
+        playLiveChannel(channels[newIndex]);
     }
 
     function updateEpgTimeIndicator() {
@@ -1672,6 +1824,9 @@ const CariApp = (function() {
         document.querySelectorAll('.epg-row').forEach(row => {
             row.classList.toggle('epg-row-active', row.dataset.channelId == channel.id);
         });
+
+        // Update fullscreen overlay if active
+        updateFsOverlay();
 
         // Play stream
         const video = document.getElementById('liveVideo');
