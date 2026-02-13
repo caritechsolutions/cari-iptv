@@ -1094,8 +1094,8 @@ const CariApp = (function() {
     let liveActiveChannelId = null;
     let liveEpgTimerInterval = null;
     const REMINDERS_KEY = 'cari_epg_reminders';
-    const EPG_HOURS_VISIBLE = 6;  // wider window for scrolling past & future
-    const EPG_PX_PER_MINUTE = 4;  // pixels per minute for EPG timeline
+    const EPG_HOURS_VISIBLE = 8;  // wider window for scrolling past & future
+    const EPG_PX_PER_MINUTE = 7;  // pixels per minute for EPG timeline
 
     function getLiveReminders() {
         try { return JSON.parse(localStorage.getItem(REMINDERS_KEY) || '{}'); } catch { return {}; }
@@ -1425,35 +1425,32 @@ const CariApp = (function() {
         });
     }
 
+    function scrollEpg(direction) {
+        const scrollContainer = document.getElementById('epgGridContainer');
+        if (!scrollContainer) return;
+        const scrollAmount = 60 * EPG_PX_PER_MINUTE; // scroll 1 hour at a time
+
+        if (direction === 'prev') {
+            scrollContainer.scrollLeft -= scrollAmount;
+        } else if (direction === 'next') {
+            scrollContainer.scrollLeft += scrollAmount;
+        } else if (direction === 'now') {
+            const nowLine = document.getElementById('epgNowLine');
+            if (nowLine) {
+                const nowLeft = parseFloat(nowLine.style.left.replace(/calc\(var\(--epg-channel-w\) \+ /, '').replace('px)', ''));
+                scrollContainer.scrollLeft = Math.max(0, nowLeft - scrollContainer.clientWidth / 3);
+            }
+        }
+    }
+
     function setupEpgNavControls() {
         const prevBtn = document.getElementById('epgNavPrev');
         const nextBtn = document.getElementById('epgNavNext');
         const nowBtn = document.getElementById('epgNavNow');
-        const scrollContainer = document.getElementById('epgGridContainer');
 
-        if (!scrollContainer) return;
-
-        const scrollAmount = 30 * EPG_PX_PER_MINUTE; // scroll 30 minutes at a time
-
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
-                scrollContainer.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
-            });
-        }
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
-                scrollContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-            });
-        }
-        if (nowBtn) {
-            nowBtn.addEventListener('click', () => {
-                const nowLine = document.getElementById('epgNowLine');
-                if (nowLine) {
-                    const nowLeft = parseFloat(nowLine.style.left.replace(/calc\(var\(--epg-channel-w\) \+ /, '').replace('px)', ''));
-                    scrollContainer.scrollTo({ left: Math.max(0, nowLeft - scrollContainer.clientWidth / 3), behavior: 'smooth' });
-                }
-            });
-        }
+        if (prevBtn) prevBtn.onclick = () => scrollEpg('prev');
+        if (nextBtn) nextBtn.onclick = () => scrollEpg('next');
+        if (nowBtn) nowBtn.onclick = () => scrollEpg('now');
     }
 
     function setupFullscreenButton() {

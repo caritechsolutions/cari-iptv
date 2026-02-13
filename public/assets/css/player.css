@@ -1498,6 +1498,8 @@ img { max-width: 100%; display: block; }
 
 .epg-grid-body {
     position: relative;
+    width: fit-content;
+    min-width: 100%;
 }
 
 /* Now indicator line */
