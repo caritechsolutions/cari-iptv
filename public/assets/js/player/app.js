@@ -1094,7 +1094,8 @@ const CariApp = (function() {
     let liveActiveChannelId = null;
     let liveEpgTimerInterval = null;
     const REMINDERS_KEY = 'cari_epg_reminders';
-    const EPG_HOURS_VISIBLE = 2.5;
+    const EPG_HOURS_VISIBLE = 6;  // wider window for scrolling past & future
+    const EPG_PX_PER_MINUTE = 4;  // pixels per minute for EPG timeline
 
     function getLiveReminders() {
         try { return JSON.parse(localStorage.getItem(REMINDERS_KEY) || '{}'); } catch { return {}; }
@@ -1174,26 +1175,43 @@ const CariApp = (function() {
 
         el.innerHTML = `
             <div class="live-page">
-                <div class="live-player-section">
-                    <div class="live-player-container" id="livePlayerContainer">
-                        <video id="liveVideo" autoplay></video>
+                <div class="live-top-section">
+                    <div class="live-player-section">
+                        <div class="live-player-container" id="livePlayerContainer">
+                            <video id="liveVideo" autoplay></video>
+                        </div>
                     </div>
-                    <div class="live-now-info" id="liveNowInfo">
-                        <div class="live-now-left">
-                            <div class="live-badge">Live</div>
-                            <img class="live-now-logo" id="liveNowLogo" src="" alt="" style="display:none">
-                            <div class="live-now-text">
+                    <div class="live-info-panel" id="liveInfoPanel">
+                        <div class="live-info-channel">
+                            <img class="live-info-logo" id="liveNowLogo" src="" alt="" style="display:none">
+                            <div class="live-info-channel-name">
                                 <h3 id="liveChannelTitle">Select a channel</h3>
-                                <p id="liveChannelProgram">Choose from the guide below</p>
+                                <div class="live-badge">Live</div>
                             </div>
                         </div>
-                        <div class="live-now-right" id="liveNowRight"></div>
+                        <div class="live-info-programme" id="liveInfoProgramme">
+                            <div class="live-info-now" id="liveInfoNow">
+                                <span class="live-info-label">Now Playing</span>
+                                <h4 id="liveChannelProgram">Choose from the guide below</h4>
+                                <p class="live-info-time" id="liveInfoTime"></p>
+                                <div class="live-info-progress" id="liveInfoProgress" style="display:none">
+                                    <div class="live-info-progress-fill" id="liveInfoProgressFill"></div>
+                                </div>
+                            </div>
+                            <div class="live-info-desc" id="liveInfoDesc"></div>
+                            <div class="live-info-next" id="liveInfoNext"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="live-guide-section">
                     <div class="live-guide-header">
                         <h2 class="live-guide-title"><i class="lucide-tv"></i> TV Guide</h2>
                         <div class="live-category-filters" id="liveCategoryFilters">${CariUI.loading()}</div>
+                        <div class="epg-nav-controls">
+                            <button class="epg-nav-btn" id="epgNavPrev" title="Scroll back"><i class="lucide-chevron-left"></i></button>
+                            <button class="epg-nav-btn epg-nav-now" id="epgNavNow" title="Jump to now">Now</button>
+                            <button class="epg-nav-btn" id="epgNavNext" title="Scroll forward"><i class="lucide-chevron-right"></i></button>
+                        </div>
                     </div>
                     <div class="epg-grid-container" id="epgGridContainer">
                         ${CariUI.loading()}
@@ -1222,6 +1240,7 @@ const CariApp = (function() {
 
             renderCategoryFilters();
             renderEpgGrid();
+            setupEpgNavControls();
 
             // Auto-play preselected or first channel
             const startChannel = preselectedId
@@ -1272,14 +1291,15 @@ const CariApp = (function() {
         }
 
         const now = new Date();
-        // EPG window: start 30 min ago, show EPG_HOURS_VISIBLE hours
+        // EPG window: start 2 hours ago, show EPG_HOURS_VISIBLE hours total
         const windowStart = new Date(now);
-        windowStart.setMinutes(windowStart.getMinutes() - 30, 0, 0);
-        // Round down to nearest 30 min
+        windowStart.setHours(windowStart.getHours() - 2);
         windowStart.setMinutes(windowStart.getMinutes() < 30 ? 0 : 30, 0, 0);
         const windowEnd = new Date(windowStart);
         windowEnd.setMinutes(windowEnd.getMinutes() + EPG_HOURS_VISIBLE * 60);
         const windowMs = windowEnd.getTime() - windowStart.getTime();
+        const totalMinutes = windowMs / 60000;
+        const timelineWidthPx = totalMinutes * EPG_PX_PER_MINUTE;
 
         // Build time slots (every 30 minutes)
         const timeSlots = [];
@@ -1289,11 +1309,11 @@ const CariApp = (function() {
             slotTime.setMinutes(slotTime.getMinutes() + 30);
         }
 
-        // Time header
-        let timeHeaderHtml = '<div class="epg-time-header"><div class="epg-channel-col"></div><div class="epg-timeline-header">';
+        // Time header — fixed pixel widths for scrolling
+        let timeHeaderHtml = `<div class="epg-time-header" id="epgTimeHeader"><div class="epg-channel-col"></div><div class="epg-timeline-header" style="width:${timelineWidthPx}px;min-width:${timelineWidthPx}px">`;
         timeSlots.forEach(t => {
-            const leftPct = ((t.getTime() - windowStart.getTime()) / windowMs) * 100;
-            timeHeaderHtml += `<div class="epg-time-slot" style="left:${leftPct}%">${formatTime(t.toISOString())}</div>`;
+            const leftPx = ((t.getTime() - windowStart.getTime()) / windowMs) * timelineWidthPx;
+            timeHeaderHtml += `<div class="epg-time-slot" style="left:${leftPx.toFixed(1)}px">${formatTime(t.toISOString())}</div>`;
         });
         timeHeaderHtml += '</div></div>';
 
@@ -1315,10 +1335,10 @@ const CariApp = (function() {
 
                 const clampStart = Math.max(pStart, wStart);
                 const clampEnd = Math.min(pEnd, wEnd);
-                const leftPct = ((clampStart - wStart) / windowMs) * 100;
-                const widthPct = ((clampEnd - clampStart) / windowMs) * 100;
+                const leftPx = ((clampStart - wStart) / windowMs) * timelineWidthPx;
+                const widthPx = ((clampEnd - clampStart) / windowMs) * timelineWidthPx;
 
-                if (widthPct < 0.5) return;
+                if (widthPx < 3) return;
 
                 const isNow = pStart <= now.getTime() && pEnd > now.getTime();
                 const isPast = pEnd <= now.getTime();
@@ -1341,7 +1361,7 @@ const CariApp = (function() {
                 const hasReminder = isFuture && hasLiveReminder(programmeKey);
 
                 progsHtml += `
-                    <div class="${progClass}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%"
+                    <div class="${progClass}" style="left:${leftPx.toFixed(1)}px;width:${widthPx.toFixed(1)}px"
                          data-channel-id="${ch.id}" data-programme='${JSON.stringify({id: p.id, title: p.title, description: p.description || '', start_time: p.start_time, end_time: p.end_time, category: p.category || '', is_placeholder: p.is_placeholder || false}).replace(/'/g, '&#39;')}'
                          title="${CariUI.esc(p.title)} (${formatTime(p.start_time)} - ${formatTime(p.end_time)})">
                         <span class="epg-programme-title">${CariUI.esc(p.title)}</span>
@@ -1358,30 +1378,33 @@ const CariApp = (function() {
                         <img src="${CariUI.esc(ch.logo_url || ch.logo || '')}" alt="" onerror="this.style.display='none'">
                         <div class="epg-channel-name">${CariUI.esc(ch.name)}</div>
                     </div>
-                    <div class="epg-timeline-row">
+                    <div class="epg-timeline-row" style="width:${timelineWidthPx}px;min-width:${timelineWidthPx}px">
                         ${progsHtml}
                     </div>
                 </div>
             `;
         });
 
-        // Now-line position
-        const nowPct = ((now.getTime() - windowStart.getTime()) / windowMs) * 100;
+        // Now-line position (px-based)
+        const nowPx = ((now.getTime() - windowStart.getTime()) / windowMs) * timelineWidthPx;
 
         container.innerHTML = `
             ${timeHeaderHtml}
             <div class="epg-grid-body" id="epgGridBody">
-                <div class="epg-now-line" id="epgNowLine" style="left:calc(var(--epg-channel-w) + (100% - var(--epg-channel-w)) * ${(nowPct / 100).toFixed(6)})"></div>
+                <div class="epg-now-line" id="epgNowLine" style="left:calc(var(--epg-channel-w) + ${nowPx.toFixed(1)}px)"></div>
                 ${rowsHtml}
             </div>
         `;
 
-        // Scroll to now
+        // Scroll to now (center "now" in viewport)
         const gridBody = document.getElementById('epgGridBody');
         if (gridBody) {
-            const scrollTarget = (nowPct / 100) * gridBody.scrollWidth - gridBody.clientWidth / 3;
+            const scrollTarget = nowPx - gridBody.clientWidth / 3;
             gridBody.scrollLeft = Math.max(0, scrollTarget);
         }
+
+        // Sync time header scroll with grid body
+        syncEpgScroll();
 
         // Event listeners
         container.querySelectorAll('.epg-channel-col[data-channel-id]').forEach(col => {
@@ -1403,19 +1426,63 @@ const CariApp = (function() {
         });
     }
 
+    function syncEpgScroll() {
+        const gridBody = document.getElementById('epgGridBody');
+        const timeHeader = document.getElementById('epgTimeHeader');
+        if (!gridBody || !timeHeader) return;
+
+        gridBody.addEventListener('scroll', () => {
+            // Sync horizontal scroll of time header with grid body
+            timeHeader.scrollLeft = gridBody.scrollLeft;
+        });
+    }
+
+    function setupEpgNavControls() {
+        const prevBtn = document.getElementById('epgNavPrev');
+        const nextBtn = document.getElementById('epgNavNext');
+        const nowBtn = document.getElementById('epgNavNow');
+        const gridBody = document.getElementById('epgGridBody');
+
+        if (!gridBody) return;
+
+        const scrollAmount = 30 * EPG_PX_PER_MINUTE; // scroll 30 minutes at a time
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                gridBody.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+            });
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                gridBody.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+            });
+        }
+        if (nowBtn) {
+            nowBtn.addEventListener('click', () => {
+                const nowLine = document.getElementById('epgNowLine');
+                if (nowLine) {
+                    const nowLeft = parseFloat(nowLine.style.left.replace(/calc\(var\(--epg-channel-w\) \+ /, '').replace('px)', ''));
+                    gridBody.scrollTo({ left: Math.max(0, nowLeft - gridBody.clientWidth / 3), behavior: 'smooth' });
+                }
+            });
+        }
+    }
+
     function updateEpgTimeIndicator() {
         const nowLine = document.getElementById('epgNowLine');
         if (!nowLine) return;
-        // Recalculate now position
+        // Recalculate now position (px-based)
         const now = new Date();
         const windowStart = new Date(now);
-        windowStart.setMinutes(windowStart.getMinutes() - 30, 0, 0);
+        windowStart.setHours(windowStart.getHours() - 2);
         windowStart.setMinutes(windowStart.getMinutes() < 30 ? 0 : 30, 0, 0);
         const windowEnd = new Date(windowStart);
         windowEnd.setMinutes(windowEnd.getMinutes() + EPG_HOURS_VISIBLE * 60);
         const windowMs = windowEnd.getTime() - windowStart.getTime();
-        const nowPct = ((now.getTime() - windowStart.getTime()) / windowMs) * 100;
-        nowLine.style.left = `calc(var(--epg-channel-w) + (100% - var(--epg-channel-w)) * ${(nowPct / 100).toFixed(6)})`;
+        const totalMinutes = windowMs / 60000;
+        const timelineWidthPx = totalMinutes * EPG_PX_PER_MINUTE;
+        const nowPx = ((now.getTime() - windowStart.getTime()) / windowMs) * timelineWidthPx;
+        nowLine.style.left = `calc(var(--epg-channel-w) + ${nowPx.toFixed(1)}px)`;
     }
 
     function checkReminders() {
@@ -1539,11 +1606,15 @@ const CariApp = (function() {
     async function playLiveChannel(channel) {
         liveActiveChannelId = channel.id;
 
-        // Update player info
+        // Update channel info in side panel
         const titleEl = document.getElementById('liveChannelTitle');
         const progEl = document.getElementById('liveChannelProgram');
         const logoEl = document.getElementById('liveNowLogo');
-        const rightEl = document.getElementById('liveNowRight');
+        const timeEl = document.getElementById('liveInfoTime');
+        const progressEl = document.getElementById('liveInfoProgress');
+        const progressFillEl = document.getElementById('liveInfoProgressFill');
+        const descEl = document.getElementById('liveInfoDesc');
+        const nextEl = document.getElementById('liveInfoNext');
 
         if (titleEl) titleEl.textContent = channel.name || '';
         if (logoEl) {
@@ -1554,18 +1625,40 @@ const CariApp = (function() {
 
         const nowPlaying = getNowPlaying(channel.id);
         if (progEl) {
-            progEl.textContent = nowPlaying ? nowPlaying.title + ' (' + formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) + ')' : 'Live';
+            progEl.textContent = nowPlaying ? nowPlaying.title : 'Live';
+        }
+        if (timeEl) {
+            timeEl.textContent = nowPlaying ? formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) : '';
+        }
+
+        // Progress bar for current programme
+        if (progressEl && progressFillEl && nowPlaying) {
+            const now = Date.now();
+            const pStart = new Date(nowPlaying.start_time).getTime();
+            const pEnd = new Date(nowPlaying.end_time).getTime();
+            const pct = Math.min(100, ((now - pStart) / (pEnd - pStart)) * 100);
+            progressFillEl.style.width = pct.toFixed(1) + '%';
+            progressEl.style.display = '';
+        } else if (progressEl) {
+            progressEl.style.display = 'none';
+        }
+
+        // Description
+        if (descEl) {
+            descEl.textContent = nowPlaying?.description || '';
+            descEl.style.display = nowPlaying?.description ? '' : 'none';
         }
 
         // Show next up
-        if (rightEl) {
+        if (nextEl) {
             const progs = liveEpgData[channel.id] || [];
             const now = Date.now();
             const next = progs.find(p => new Date(p.start_time).getTime() > now);
             if (next) {
-                rightEl.innerHTML = `<span class="live-next-label">Next:</span> <span class="live-next-title">${CariUI.esc(next.title)}</span> <span class="live-next-time">${formatTime(next.start_time)}</span>`;
+                nextEl.innerHTML = `<div class="live-info-next-header"><span class="live-info-label">Up Next</span><span class="live-info-next-time">${formatTime(next.start_time)}</span></div><span class="live-info-next-title">${CariUI.esc(next.title)}</span>`;
+                nextEl.style.display = '';
             } else {
-                rightEl.innerHTML = '';
+                nextEl.style.display = 'none';
             }
         }
 
