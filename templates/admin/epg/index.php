@@ -980,15 +980,26 @@ function loadMappings(id) {
                 '<th width="30"></th><th>EPG ID</th><th>Service Name</th><th>Progs</th><th>Map To Channel</th>' +
                 '</tr></thead><tbody>';
 
+            // Build set of channel IDs already mapped (to exclude from other dropdowns)
+            const mappedChannelIds = new Set();
+            mappings.forEach(m => {
+                if (m.is_mapped && m.channel_id) mappedChannelIds.add(Number(m.channel_id));
+            });
+
             mappings.forEach(m => {
                 const dot = m.is_mapped
                     ? '<span class="mapping-status mapped"></span>'
                     : '<span class="mapping-status unmapped"></span>';
 
+                const currentChannelId = m.channel_id ? Number(m.channel_id) : null;
                 let options = '<option value="">-- Not Mapped --</option>';
                 channels.forEach(ch => {
-                    const sel = ch.id == m.channel_id ? 'selected' : '';
-                    options += `<option value="${ch.id}" ${sel}>${escapeHtml(ch.name)}</option>`;
+                    const chId = Number(ch.id);
+                    // Show channel if: it's the currently selected one, or it's not mapped elsewhere
+                    if (chId === currentChannelId || !mappedChannelIds.has(chId)) {
+                        const sel = chId === currentChannelId ? 'selected' : '';
+                        options += `<option value="${ch.id}" ${sel}>${escapeHtml(ch.name)}</option>`;
+                    }
                 });
 
                 html += `<tr>
@@ -1024,6 +1035,8 @@ function saveMappingInline(mappingId, channelId) {
     .then(data => {
         if (data.success) {
             showToast('Mapping saved', 'success');
+            // Reload mappings so dropdowns update with the new mapped/unmapped state
+            if (currentMappingsSourceId) loadMappings(currentMappingsSourceId);
         } else {
             showToast(data.message || 'Failed', 'error');
         }
