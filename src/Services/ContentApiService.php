@@ -760,7 +760,8 @@ class ContentApiService
 
     public function getEpg(array $filters = []): array
     {
-        $where = ["p.end_time > NOW()"];
+        // Include programmes from 3 hours ago so the TV guide can show past/current slots
+        $where = ["p.end_time > DATE_SUB(NOW(), INTERVAL 3 HOUR)"];
         $params = [];
 
         if (!empty($filters['channel_id'])) {
@@ -773,7 +774,7 @@ class ContentApiService
             $params[] = $filters['date'];
         }
 
-        // Default: next 24 hours
+        // Default: 3 hours ago to 24 hours ahead
         if (empty($filters['date'])) {
             $where[] = "p.start_time < DATE_ADD(NOW(), INTERVAL 24 HOUR)";
         }
