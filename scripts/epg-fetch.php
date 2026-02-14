@@ -7,15 +7,27 @@
  * Can be run from CLI or triggered by the admin panel.
  *
  * Usage:
- *   php scripts/epg-fetch.php                     # Fetch all active sources
+ *   php scripts/epg-fetch.php                     # Fetch sources due for refresh (auto_refresh enabled)
+ *   php scripts/epg-fetch.php --all               # Fetch ALL active sources regardless of schedule
  *   php scripts/epg-fetch.php --source-id=1       # Fetch specific source
  *   php scripts/epg-fetch.php --type=eit          # Fetch all EIT sources
  *   php scripts/epg-fetch.php --cleanup           # Remove old programme data
  *   php scripts/epg-fetch.php --cleanup-days=3    # Remove programmes older than 3 days
  *
- * Cron example (every hour):
- *   0 * * * * php /var/www/cari-iptv/scripts/epg-fetch.php >> /var/www/cari-iptv/storage/logs/epg.log 2>&1
+ * Cron (runs every 5 min, only fetches sources whose refresh_interval has elapsed):
+ *   See /etc/cron.d/cari-iptv (installed by install.sh / update.sh)
  */
+
+// Prevent overlapping runs via lock file
+$lockFile = sys_get_temp_dir() . '/cari_epg_fetch.lock';
+$lockFp = fopen($lockFile, 'w');
+if (!flock($lockFp, LOCK_EX | LOCK_NB)) {
+    // Another instance is running
+    exit(0);
+}
+
+// Disable time limit for long-running fetches
+set_time_limit(0);
 
 // Bootstrap
 define('BASE_PATH', dirname(__DIR__));
@@ -49,13 +61,14 @@ spl_autoload_register(function ($class) {
 use CariIPTV\Services\EpgService;
 
 // Parse CLI arguments
-$options = getopt('', ['source-id:', 'type:', 'cleanup', 'cleanup-days:', 'help']);
+$options = getopt('', ['source-id:', 'type:', 'all', 'cleanup', 'cleanup-days:', 'help']);
 
 if (isset($options['help'])) {
     echo "CARI-IPTV EPG Fetch Script\n\n";
     echo "Options:\n";
     echo "  --source-id=ID    Fetch a specific source by ID\n";
     echo "  --type=TYPE       Fetch sources of type: eit, xmltv_url\n";
+    echo "  --all             Fetch ALL active sources (ignore schedule)\n";
     echo "  --cleanup         Remove expired programme data\n";
     echo "  --cleanup-days=N  Remove programmes older than N days (default: 1)\n";
     echo "  --help            Show this help\n";
@@ -69,16 +82,22 @@ if (isset($options['cleanup'])) {
     $days = (int) ($options['cleanup-days'] ?? 1);
     $deleted = $service->clearOldProgrammes($days);
     logMsg("Cleanup: removed {$deleted} expired programmes (older than {$days} day(s))");
+    flock($lockFp, LOCK_UN);
+    fclose($lockFp);
     exit(0);
 }
 
 // Determine which sources to fetch
 $filters = ['is_active' => 1];
+$forceAll = isset($options['all']);
+$specificSource = isset($options['source-id']);
 
-if (isset($options['source-id'])) {
+if ($specificSource) {
     $source = $service->getSource((int) $options['source-id']);
     if (!$source) {
         logMsg("ERROR: Source ID {$options['source-id']} not found");
+        flock($lockFp, LOCK_UN);
+        fclose($lockFp);
         exit(1);
     }
     $sources = [$source];
@@ -91,6 +110,39 @@ if (isset($options['source-id'])) {
 
 if (empty($sources)) {
     logMsg("No active EPG sources found");
+    flock($lockFp, LOCK_UN);
+    fclose($lockFp);
+    exit(0);
+}
+
+// Filter sources based on auto_refresh and refresh_interval (unless --all or --source-id)
+if (!$forceAll && !$specificSource) {
+    $dueSources = [];
+    foreach ($sources as $source) {
+        // Skip sources that don't have auto_refresh enabled
+        if (empty($source['auto_refresh'])) {
+            continue;
+        }
+
+        // Check if enough time has passed since last fetch
+        $interval = (int) ($source['refresh_interval'] ?? 1800); // default 30 min
+        if (!empty($source['last_fetch'])) {
+            $lastFetch = strtotime($source['last_fetch']);
+            $elapsed = time() - $lastFetch;
+            if ($elapsed < $interval) {
+                continue; // Not due yet
+            }
+        }
+
+        $dueSources[] = $source;
+    }
+    $sources = $dueSources;
+}
+
+if (empty($sources)) {
+    // No sources due for refresh — this is normal for cron runs, exit silently
+    flock($lockFp, LOCK_UN);
+    fclose($lockFp);
     exit(0);
 }
 
@@ -133,6 +185,10 @@ foreach ($sources as $source) {
 }
 
 logMsg("Finished. Total: {$totalProgrammes} programmes, {$totalChannels} channels, {$errors} error(s)");
+
+// Release lock
+flock($lockFp, LOCK_UN);
+fclose($lockFp);
 
 // ============================================================================
 
