@@ -1132,6 +1132,12 @@ const CariApp = (function() {
                         descEl.textContent = nowPlaying?.description || '';
                         descEl.style.display = nowPlaying?.description ? '' : 'none';
                     }
+
+                    // If video is not playing (stream died, paused, etc.), restart it
+                    const video = document.getElementById('liveVideo');
+                    if (video && (video.paused || video.ended)) {
+                        playLiveChannel(active);
+                    }
                 }
                 updateFsOverlay();
             }
@@ -1898,7 +1904,7 @@ const CariApp = (function() {
             await initShakaPlayer(video, url);
         } else if (url) {
             video.src = url;
-            video.play().catch(() => {});
+            await autoplayWithFallback(video);
         }
     }
 
@@ -2841,6 +2847,47 @@ const CariApp = (function() {
 
     // ---- Shaka Player ----
 
+    /**
+     * Try to autoplay; if browser blocks unmuted autoplay, mute and retry,
+     * then show an unmute button so the user can restore audio with one tap.
+     */
+    async function autoplayWithFallback(videoEl) {
+        try {
+            await videoEl.play();
+        } catch (e) {
+            // Autoplay blocked — mute and retry
+            videoEl.muted = true;
+            try {
+                await videoEl.play();
+                showUnmutePrompt(videoEl);
+            } catch (e2) {
+                console.warn('[CariApp] Autoplay failed even muted:', e2);
+            }
+        }
+    }
+
+    function showUnmutePrompt(videoEl) {
+        // Avoid duplicates
+        const existing = document.getElementById('unmutePrompt');
+        if (existing) existing.remove();
+
+        const container = videoEl.closest('.live-player-container') || videoEl.parentElement;
+        const btn = document.createElement('button');
+        btn.id = 'unmutePrompt';
+        btn.className = 'unmute-prompt';
+        btn.innerHTML = '<i class="lucide-volume-x"></i> Tap to unmute';
+        btn.addEventListener('click', () => {
+            videoEl.muted = false;
+            btn.remove();
+        });
+        container.appendChild(btn);
+
+        // Also remove on any user interaction with the video
+        videoEl.addEventListener('volumechange', () => {
+            if (!videoEl.muted) btn.remove();
+        }, { once: true });
+    }
+
     async function initShakaPlayer(videoEl, url) {
         // Destroy existing instance
         if (shakaPlayer) {
@@ -2850,7 +2897,7 @@ const CariApp = (function() {
 
         if (!window.shaka) {
             videoEl.src = url;
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
             return;
         }
 
@@ -2858,7 +2905,7 @@ const CariApp = (function() {
 
         if (!shaka.Player.isBrowserSupported()) {
             videoEl.src = url;
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
             return;
         }
 
@@ -2879,14 +2926,14 @@ const CariApp = (function() {
 
         try {
             await shakaPlayer.load(url);
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
         } catch (err) {
             console.error('Shaka load error:', err);
             // Fallback to direct source
             try { await shakaPlayer.destroy(); } catch {}
             shakaPlayer = null;
             videoEl.src = url;
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
         }
     }
 
