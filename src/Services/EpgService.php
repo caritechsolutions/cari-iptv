@@ -212,9 +212,11 @@ class EpgService
         $this->updateSourceStatus($source['id'], 'running', 'Capturing EIT data...');
 
         // Extract EIT tables (PID 0x12) - programme data
+        // --pack-all-sections captures all section versions (p/f + schedule segments 0x50-0x5F)
+        // Without it, only the first version of each table is captured, missing most schedule data
         $eitPidDec = $this->pidToDecimal($pid);
         $eitCmd = sprintf(
-            'timeout %d tsp -I ip %s:%d -P tables --pid %d --xml-output %s -O drop 2>&1',
+            'timeout %d tsp -I ip %s:%d -P tables --pid %d --pack-all-sections --xml-output %s -O drop 2>&1',
             $timeout,
             escapeshellarg($address),
             $port,
