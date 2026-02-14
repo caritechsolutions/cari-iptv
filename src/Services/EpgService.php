@@ -267,8 +267,9 @@ class EpgService
         if (file_exists($eitFile)) unlink($eitFile);
 
         if ($result['success']) {
+            $sdtInfo = !empty($serviceNames) ? ' (SDT filter: ' . count($serviceNames) . ' local services)' : '';
             $this->updateSourceStatus($source['id'], 'success',
-                "Imported {$result['programmes']} programmes for {$result['channels']} services");
+                "Imported {$result['programmes']} programmes for {$result['channels']} services" . $sdtInfo);
             $this->db->update('epg_sources', [
                 'programme_count' => $result['programmes'],
                 'channel_count' => $result['channels'],
@@ -352,6 +353,12 @@ class EpgService
 
             $serviceId = (string) ($table['service_id'] ?? '');
             if (empty($serviceId)) continue;
+
+            // Filter EIT to only services present in the local SDT
+            // This excludes cross-carried EIT from other transponders
+            if (!empty($serviceNames) && !isset($serviceNames[$serviceId])) {
+                continue;
+            }
 
             $channelsFound[$serviceId] = true;
 
