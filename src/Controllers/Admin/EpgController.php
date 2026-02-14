@@ -413,12 +413,12 @@ class EpgController
 
         $queued = 0;
         if ($pendingCount == 0) {
-            // Get unique programme titles that don't have metadata yet
+            // Get unique programme titles — queueTitlesForEnrichment handles normalisation
+            // and skips titles that already have a metadata record
             $titles = $this->db->fetchAll(
                 "SELECT DISTINCT p.title FROM epg_programs p
-                 LEFT JOIN epg_programme_metadata m ON m.title_normalised = LOWER(TRIM(p.title))
-                 WHERE m.id IS NULL AND p.title IS NOT NULL AND p.title != ''
-                 LIMIT 500"
+                 WHERE p.title IS NOT NULL AND p.title != ''
+                 LIMIT 1000"
             );
             $titleList = array_column($titles, 'title');
             $queued = $epgMetadata->queueTitlesForEnrichment($titleList);

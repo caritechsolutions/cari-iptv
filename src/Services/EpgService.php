@@ -965,9 +965,9 @@ class EpgService
             $epgMetadata = new EpgMetadataService();
             $queued = $epgMetadata->queueTitlesForEnrichment($titles);
 
-            // Process a small batch immediately (non-blocking for the import)
+            // Process all queued titles during import
             if ($queued > 0) {
-                $epgMetadata->processPending(min($queued, 20));
+                $epgMetadata->processPending($queued);
             }
 
             return $queued;
