@@ -489,19 +489,34 @@ class EpgService
             $channelId = $channelMap[$prog['service_id']] ?? null;
             if (!$channelId) continue;
 
-            $this->db->insert('epg_programs', [
-                'epg_source_id' => $sourceId,
-                'channel_id' => $channelId,
-                'external_event_id' => $prog['event_id'],
-                'title' => $prog['title'],
-                'subtitle' => $prog['subtitle'] ?: null,
-                'description' => $prog['description'] ?: null,
-                'start_time' => $prog['start_time'],
-                'end_time' => $prog['end_time'],
-                'category' => $prog['category'] ?: null,
-                'rating' => $prog['rating'] ?: null,
-                'language' => $prog['language'] ?: null,
-            ]);
+            // Upsert: insert or update if same event already exists (prevents duplicates)
+            $this->db->execute(
+                "INSERT INTO epg_programs
+                    (epg_source_id, channel_id, external_event_id, title, subtitle, description, start_time, end_time, category, rating, language)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    title = VALUES(title),
+                    subtitle = VALUES(subtitle),
+                    description = VALUES(description),
+                    start_time = VALUES(start_time),
+                    end_time = VALUES(end_time),
+                    category = VALUES(category),
+                    rating = VALUES(rating),
+                    language = VALUES(language)",
+                [
+                    $sourceId,
+                    $channelId,
+                    $prog['event_id'],
+                    $prog['title'],
+                    $prog['subtitle'] ?: null,
+                    $prog['description'] ?: null,
+                    $prog['start_time'],
+                    $prog['end_time'],
+                    $prog['category'] ?: null,
+                    $prog['rating'] ?: null,
+                    $prog['language'] ?: null,
+                ]
+            );
 
             $imported++;
 
