@@ -166,10 +166,20 @@ class EpgMetadataService
 
     /**
      * Enrich a single metadata record with TMDB data and download images.
+     * Looks up an EPG description to help AI pick the correct TMDB match.
      */
     private function enrichRecord(array $record): void
     {
-        $result = $this->metadata->searchProgrammeInfo($record['title_display']);
+        // Grab a description from any EPG programme with this title for better AI matching
+        $epgDescription = $this->db->fetch(
+            "SELECT description FROM epg_programs
+             WHERE LOWER(TRIM(title)) = ? AND description IS NOT NULL AND description != ''
+             LIMIT 1",
+            [$record['title_normalised']]
+        );
+        $description = $epgDescription['description'] ?? '';
+
+        $result = $this->metadata->searchProgrammeInfo($record['title_display'], $description);
 
         if (isset($result['error']) || empty($result['match'])) {
             $this->db->execute(

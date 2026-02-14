@@ -97,9 +97,10 @@ class EpgController extends BaseApiController
     }
 
     /**
-     * GET /api/v1/epg/programme-info?title=...
+     * GET /api/v1/epg/programme-info?title=...&description=...
      * Returns cached TMDB metadata for a programme title.
      * Falls back to live TMDB search if no cache hit (and queues for future).
+     * The description helps AI pick the correct TMDB match when multiple candidates exist.
      */
     public function programmeInfo(): void
     {
@@ -109,6 +110,8 @@ class EpgController extends BaseApiController
             return;
         }
 
+        $description = trim($this->query('description', ''));
+
         // Check cache first (fast path — local WebP images)
         $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
         $cached = $epgMetadata->getCachedMetadata($title);
@@ -117,7 +120,7 @@ class EpgController extends BaseApiController
             return;
         }
 
-        // Fall back to live TMDB search
+        // Fall back to live TMDB search (AI uses description to pick best match)
         $metadataService = new \CariIPTV\Services\MetadataService();
 
         if (!$metadataService->isTmdbConfigured()) {
@@ -125,7 +128,7 @@ class EpgController extends BaseApiController
             return;
         }
 
-        $result = $metadataService->searchProgrammeInfo($title);
+        $result = $metadataService->searchProgrammeInfo($title, $description);
 
         if (isset($result['error'])) {
             $this->ok(null, ['message' => $result['error']]);

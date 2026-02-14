@@ -580,10 +580,14 @@ class MetadataService
     }
 
     /**
-     * Search TMDB multi-search (movies + TV shows) and return top result with details.
-     * Used for EPG programme metadata lookup.
+     * Search TMDB multi-search (movies + TV shows) and return the best match.
+     * When an EPG description is provided and AI is available, uses AI to pick
+     * the correct TMDB result instead of blindly taking the top result.
+     *
+     * @param string $title       Programme title from the EPG
+     * @param string $description Optional EPG description to improve matching
      */
-    public function searchProgrammeInfo(string $title): array
+    public function searchProgrammeInfo(string $title, string $description = ''): array
     {
         if (!$this->isTmdbConfigured()) {
             return ['error' => 'TMDB API key not configured'];
@@ -629,13 +633,16 @@ class MetadataService
             }
 
             // Format top 5 results as suggestions
+            $candidates = array_slice($filtered, 0, 5);
             $suggestions = [];
-            foreach (array_slice($filtered, 0, 5) as $item) {
+            foreach ($candidates as $item) {
                 $suggestions[] = $this->formatMultiResult($item);
             }
 
-            // Get detailed info for the top result
-            $top = $filtered[0];
+            // Use AI to pick the best match when we have a description and multiple results
+            $top = $this->pickBestMatch($title, $description, $candidates);
+
+            // Get detailed info for the selected result
             $detail = null;
             if ($top['media_type'] === 'movie') {
                 $detail = $this->getMovieDetails((int)$top['id']);
@@ -651,6 +658,71 @@ class MetadataService
         } catch (\Exception $e) {
             return ['error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Use AI to pick the best TMDB match for an EPG programme.
+     * Falls back to the first result if AI is unavailable or fails.
+     */
+    private function pickBestMatch(string $title, string $description, array $candidates): array
+    {
+        // If only one result or no description, just return the first
+        if (count($candidates) <= 1 || empty(trim($description))) {
+            return $candidates[0];
+        }
+
+        try {
+            $aiService = new AIService();
+            if (!$aiService->isAvailable()) {
+                return $candidates[0];
+            }
+
+            // Build a numbered list of candidates for the AI
+            $candidateList = '';
+            foreach ($candidates as $i => $c) {
+                $isMovie = ($c['media_type'] ?? '') === 'movie';
+                $cTitle = $isMovie ? ($c['title'] ?? '') : ($c['name'] ?? '');
+                $cYear = $isMovie
+                    ? (!empty($c['release_date']) ? substr($c['release_date'], 0, 4) : '?')
+                    : (!empty($c['first_air_date']) ? substr($c['first_air_date'], 0, 4) : '?');
+                $cType = $isMovie ? 'Movie' : 'TV Show';
+                $cOverview = mb_substr($c['overview'] ?? '', 0, 200);
+
+                $candidateList .= ($i + 1) . ". \"{$cTitle}\" ({$cYear}, {$cType}) — {$cOverview}\n";
+            }
+
+            $prompt = <<<PROMPT
+You are matching an EPG (TV guide) programme to the correct TMDB entry.
+
+EPG Programme Title: "{$title}"
+EPG Description: "{$description}"
+
+TMDB Candidates:
+{$candidateList}
+Which candidate number (1-{count}) is the correct match for this EPG programme? If none of them match, reply 0.
+
+Reply with ONLY a single number, nothing else.
+PROMPT;
+
+            $prompt = str_replace('{count}', (string)count($candidates), $prompt);
+
+            $result = $aiService->complete($prompt, [
+                'max_tokens' => 10,
+                'temperature' => 0.1,
+            ]);
+
+            if ($result !== null) {
+                $pick = (int)trim($result);
+                if ($pick >= 1 && $pick <= count($candidates)) {
+                    return $candidates[$pick - 1];
+                }
+                // AI said 0 (no match) — still return top result as best guess
+            }
+        } catch (\Throwable $e) {
+            error_log("[MetadataService] AI match selection failed: " . $e->getMessage());
+        }
+
+        return $candidates[0];
     }
 
     /**
