@@ -10,6 +10,7 @@ const CariApp = (function() {
     let pageLayouts = {}; // page_type → layout_id map from navigation
     let pages = [];
     let shakaPlayer = null;
+    let ccEnabled = localStorage.getItem('cari_cc_enabled') === '1';
     let lastManifest = null;
     let manifestTimer = null;
     let entitlements = null; // { movies: [], series: [], channels: [], packages: [] }
@@ -1306,7 +1307,10 @@ const CariApp = (function() {
                     <div class="live-player-section">
                         <div class="live-player-container" id="livePlayerContainer">
                             <video id="liveVideo" autoplay></video>
-                            <button class="live-player-fullscreen" id="liveFullscreenBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                            <div class="live-player-controls">
+                                <button class="live-player-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="liveCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
+                                <button class="live-player-btn live-player-fullscreen" id="liveFullscreenBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                            </div>
                             <div class="fs-overlay" id="fsOverlay">
                                 <div class="fs-overlay-top">
                                     <div class="fs-overlay-channel">
@@ -1401,6 +1405,10 @@ const CariApp = (function() {
             renderEpgGrid();
             setupEpgNavControls();
             setupFullscreenButton();
+
+            // CC toggle for live TV
+            const liveCCBtn = document.getElementById('liveCCBtn');
+            if (liveCCBtn) liveCCBtn.addEventListener('click', toggleCC);
 
             // Auto-play preselected or first channel
             const startChannel = preselectedId
@@ -1672,6 +1680,7 @@ const CariApp = (function() {
             if (!document.fullscreenElement) return;
             if (e.key === 'ArrowUp') { switchChannel(-1); showFsOverlay(); }
             else if (e.key === 'ArrowDown') { switchChannel(1); showFsOverlay(); }
+            else if (e.key === 'c' || e.key === 'C') { toggleCC(); }
             else if (e.key === 'Escape') { /* browser handles exit */ }
         });
     }
@@ -2931,6 +2940,7 @@ const CariApp = (function() {
             <div class="player-page">
                 <div class="player-container" id="playerContainer">
                     <video id="mainVideo" autoplay controls></video>
+                    <button class="vod-cc-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
                 </div>
                 <div class="player-details" id="playerDetails">${CariUI.loading()}</div>
             </div>
@@ -2993,6 +3003,10 @@ const CariApp = (function() {
                 video.src = streamUrl;
                 video.play().catch(() => {});
             }
+
+            // CC toggle for VOD
+            const vodCCBtn = document.getElementById('vodCCBtn');
+            if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
 
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
@@ -3097,7 +3111,9 @@ const CariApp = (function() {
                 bufferingGoal: 30,
                 rebufferingGoal: 2,
                 retryParameters: { maxAttempts: 3, baseDelay: 1000 },
+                alwaysStreamText: true,
             },
+            preferredTextLanguage: 'en',
         });
 
         shakaPlayer.addEventListener('error', (e) => {
@@ -3107,6 +3123,8 @@ const CariApp = (function() {
         try {
             await shakaPlayer.load(url);
             await autoplayWithFallback(videoEl);
+            // Apply CC state — select first text track if CC is enabled
+            applyCCState();
         } catch (err) {
             console.error('Shaka load error:', err);
             // Fallback to direct source
@@ -3115,6 +3133,46 @@ const CariApp = (function() {
             videoEl.src = url;
             await autoplayWithFallback(videoEl);
         }
+    }
+
+    /**
+     * Apply current CC state to Shaka Player — select CC1 track and show/hide.
+     */
+    function applyCCState() {
+        if (!shakaPlayer) return;
+        try {
+            const tracks = shakaPlayer.getTextTracks();
+            if (tracks.length > 0 && ccEnabled) {
+                // Prefer CC1 / eng, fall back to first available
+                const cc1 = tracks.find(t => (t.label || '').toLowerCase().includes('cc1'))
+                          || tracks.find(t => t.language === 'en')
+                          || tracks[0];
+                shakaPlayer.selectTextTrack(cc1);
+            }
+            shakaPlayer.setTextTrackVisibility(ccEnabled);
+        } catch (e) {
+            console.warn('[CariApp] CC state error:', e);
+        }
+        updateCCButtons();
+    }
+
+    /**
+     * Toggle closed captions on/off.
+     */
+    function toggleCC() {
+        ccEnabled = !ccEnabled;
+        localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
+        applyCCState();
+    }
+
+    /**
+     * Update all CC button icons to reflect current state.
+     */
+    function updateCCButtons() {
+        document.querySelectorAll('.cc-toggle-btn').forEach(btn => {
+            btn.classList.toggle('cc-active', ccEnabled);
+            btn.title = ccEnabled ? 'Captions On' : 'Captions Off';
+        });
     }
 
     function setupProgressTracking(video, contentType, contentId) {
