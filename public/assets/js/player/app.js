@@ -1141,8 +1141,22 @@ const CariApp = (function() {
     function buildEpgMap(channels, epgRaw) {
         const map = {};
         channels.forEach(ch => { map[ch.id] = []; });
-        epgRaw.forEach(p => {
-            if (map[p.channel_id]) map[p.channel_id].push(p);
+        // API returns grouped format: [{channel_id, channel_name, programmes: [...]}, ...]
+        // or flat format: [{channel_id, title, start_time, ...}, ...]
+        epgRaw.forEach(item => {
+            if (item.programmes && Array.isArray(item.programmes)) {
+                // Grouped format
+                const chId = item.channel_id;
+                if (map[chId]) {
+                    item.programmes.forEach(p => {
+                        p.channel_id = chId;
+                        map[chId].push(p);
+                    });
+                }
+            } else if (map[item.channel_id]) {
+                // Flat format
+                map[item.channel_id].push(item);
+            }
         });
         // Fill channels that have no EPG data with placeholders
         channels.forEach(ch => {

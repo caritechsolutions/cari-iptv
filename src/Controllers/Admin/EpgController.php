@@ -76,6 +76,7 @@ class EpgController
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'auto_refresh' => isset($_POST['auto_refresh']) ? 1 : 0,
             'refresh_interval' => (int) ($_POST['refresh_interval'] ?? 3600),
+            'timezone' => trim($_POST['timezone'] ?? '') ?: 'UTC',
         ];
 
         try {
@@ -118,6 +119,7 @@ class EpgController
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'auto_refresh' => isset($_POST['auto_refresh']) ? 1 : 0,
             'refresh_interval' => (int) ($_POST['refresh_interval'] ?? 3600),
+            'timezone' => trim($_POST['timezone'] ?? '') ?: 'UTC',
         ];
 
         try {

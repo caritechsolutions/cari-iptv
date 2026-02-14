@@ -61,6 +61,7 @@ class EpgService
             'is_active' => (int) ($data['is_active'] ?? 1),
             'auto_refresh' => (int) ($data['auto_refresh'] ?? 0),
             'refresh_interval' => (int) ($data['refresh_interval'] ?? 3600),
+            'timezone' => $data['timezone'] ?? 'UTC',
         ]);
     }
 
@@ -68,7 +69,7 @@ class EpgService
     {
         $fields = [];
         $allowed = ['name', 'type', 'source_url', 'source_port', 'eit_pid',
-                     'capture_timeout', 'is_active', 'auto_refresh', 'refresh_interval'];
+                     'capture_timeout', 'is_active', 'auto_refresh', 'refresh_interval', 'timezone'];
 
         foreach ($allowed as $field) {
             if (array_key_exists($field, $data)) {
@@ -251,7 +252,8 @@ class EpgService
 
         // Import the EIT data
         try {
-            $result = $this->importEitXml($source['id'], $eitFile, $serviceNames);
+            $sourceTz = $source['timezone'] ?? 'UTC';
+            $result = $this->importEitXml($source['id'], $eitFile, $serviceNames, $sourceTz);
         } catch (\Exception $e) {
             error_log('EIT import failed: ' . $e->getMessage());
             $this->updateSourceStatus($source['id'], 'error', 'Import failed: ' . $e->getMessage());
@@ -319,10 +321,16 @@ class EpgService
     /**
      * Parse TSDuck EIT XML and import programmes
      */
-    public function importEitXml(int $sourceId, string $filePath, array $serviceNames = []): array
+    public function importEitXml(int $sourceId, string $filePath, array $serviceNames = [], ?string $sourceTz = null): array
     {
         if (!file_exists($filePath)) {
             return ['success' => false, 'message' => 'EIT XML file not found', 'programmes' => 0, 'channels' => 0];
+        }
+
+        // Get source timezone if not provided
+        if ($sourceTz === null) {
+            $source = $this->getSource($sourceId);
+            $sourceTz = $source['timezone'] ?? 'UTC';
         }
 
         try {
@@ -355,7 +363,7 @@ class EpgService
                 if (empty($startTime) || empty($duration)) continue;
 
                 // Parse start time and duration
-                $startDt = $this->parseEitDateTime($startTime);
+                $startDt = $this->parseEitDateTime($startTime, $sourceTz);
                 $endDt = $this->addDuration($startDt, $duration);
 
                 if (!$startDt || !$endDt) continue;
@@ -552,6 +560,10 @@ class EpgService
             return ['success' => false, 'message' => 'XMLTV file not found', 'programmes' => 0, 'channels' => 0];
         }
 
+        // Get source timezone for fallback when XMLTV has no offset
+        $source = $this->getSource($sourceId);
+        $sourceTz = $source['timezone'] ?? 'UTC';
+
         try {
             $xml = simplexml_load_file($filePath);
             if (!$xml) {
@@ -601,8 +613,8 @@ class EpgService
 
             if (empty($startStr) || empty($stopStr)) continue;
 
-            $startTime = $this->parseXmltvDateTime($startStr);
-            $endTime = $this->parseXmltvDateTime($stopStr);
+            $startTime = $this->parseXmltvDateTime($startStr, $sourceTz);
+            $endTime = $this->parseXmltvDateTime($stopStr, $sourceTz);
 
             if (!$startTime || !$endTime) continue;
 
@@ -788,31 +800,45 @@ class EpgService
 
     /**
      * Parse EIT datetime format: "2024-01-15 14:00:00"
+     * EIT/DVB times are typically UTC. The source timezone setting is used as fallback.
+     * All times are converted to UTC for storage.
      */
-    private function parseEitDateTime(string $dateStr): ?string
+    private function parseEitDateTime(string $dateStr, string $sourceTz = 'UTC'): ?string
     {
-        $dt = \DateTime::createFromFormat('Y-m-d H:i:s', trim($dateStr));
+        $tz = new \DateTimeZone($sourceTz);
+        $dt = \DateTime::createFromFormat('Y-m-d H:i:s', trim($dateStr), $tz);
         if (!$dt) {
-            // Try alternate format without seconds
-            $dt = \DateTime::createFromFormat('Y-m-d H:i', trim($dateStr));
+            $dt = \DateTime::createFromFormat('Y-m-d H:i', trim($dateStr), $tz);
         }
-        return $dt ? $dt->format('Y-m-d H:i:s') : null;
+        if (!$dt) return null;
+
+        // Convert to UTC for storage
+        $dt->setTimezone(new \DateTimeZone('UTC'));
+        return $dt->format('Y-m-d H:i:s');
     }
 
     /**
      * Parse XMLTV datetime format: "20240115140000 +0000"
+     * If the XMLTV string has a timezone offset, it is used for conversion.
+     * If no offset is present, the source timezone setting is used as fallback.
+     * All times are converted to UTC for storage.
      */
-    private function parseXmltvDateTime(string $dateStr): ?string
+    private function parseXmltvDateTime(string $dateStr, string $sourceTz = 'UTC'): ?string
     {
         $dateStr = trim($dateStr);
 
-        // Format: YYYYMMDDHHMMSS +HHMM
+        // Format: YYYYMMDDHHMMSS +HHMM (with timezone offset)
         $dt = \DateTime::createFromFormat('YmdHis O', $dateStr);
         if (!$dt) {
-            // Try without timezone
-            $dt = \DateTime::createFromFormat('YmdHis', substr($dateStr, 0, 14));
+            // Try without timezone offset - use source timezone as fallback
+            $tz = new \DateTimeZone($sourceTz);
+            $dt = \DateTime::createFromFormat('YmdHis', substr($dateStr, 0, 14), $tz);
         }
-        return $dt ? $dt->format('Y-m-d H:i:s') : null;
+        if (!$dt) return null;
+
+        // Convert to UTC for storage
+        $dt->setTimezone(new \DateTimeZone('UTC'));
+        return $dt->format('Y-m-d H:i:s');
     }
 
     /**

@@ -290,6 +290,28 @@
                     <option value="86400">Every 24 hours</option>
                 </select>
             </div>
+
+            <div class="form-group">
+                <label class="form-label">Source Timezone</label>
+                <select id="sourceTimezone" class="form-input">
+                    <option value="UTC">UTC (default for EIT/DVB)</option>
+                    <option value="America/Jamaica">America/Jamaica (EST, UTC-5)</option>
+                    <option value="America/New_York">America/New_York (ET)</option>
+                    <option value="America/Chicago">America/Chicago (CT)</option>
+                    <option value="America/Denver">America/Denver (MT)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (PT)</option>
+                    <option value="America/Barbados">America/Barbados (AST, UTC-4)</option>
+                    <option value="America/Puerto_Rico">America/Puerto_Rico (AST, UTC-4)</option>
+                    <option value="America/Trinidad">America/Trinidad (AST, UTC-4)</option>
+                    <option value="America/Curacao">America/Curacao (AST, UTC-4)</option>
+                    <option value="America/Guyana">America/Guyana (GYT, UTC-4)</option>
+                    <option value="America/Suriname">America/Suriname (SRT, UTC-3)</option>
+                    <option value="America/Belize">America/Belize (CST, UTC-6)</option>
+                    <option value="Europe/London">Europe/London (GMT/BST)</option>
+                    <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                </select>
+                <small class="form-hint">Timezone of the EPG data. EIT/DVB streams are always UTC. XMLTV files with timezone offsets are auto-converted. Use this for XMLTV sources without timezone info or if EIT times need adjustment.</small>
+            </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeSourceModal()">Cancel</button>
@@ -607,6 +629,7 @@ function openAddModal() {
     document.getElementById('sourceActive').checked = true;
     document.getElementById('sourceAutoRefresh').checked = false;
     document.getElementById('refreshInterval').value = '3600';
+    document.getElementById('sourceTimezone').value = 'UTC';
     document.getElementById('sourceModalTitle').innerHTML = '<i class="lucide-plus"></i> Add EPG Source';
     toggleTypeFields();
     toggleRefreshInterval();
@@ -623,6 +646,7 @@ function openEditModal(src) {
     document.getElementById('sourceActive').checked = src.is_active == 1;
     document.getElementById('sourceAutoRefresh').checked = src.auto_refresh == 1;
     document.getElementById('refreshInterval').value = src.refresh_interval || '3600';
+    document.getElementById('sourceTimezone').value = src.timezone || 'UTC';
 
     if (src.type === 'eit') {
         document.getElementById('sourceUrl').value = src.source_url || '';
@@ -666,6 +690,7 @@ function saveSource() {
         is_active: document.getElementById('sourceActive').checked ? '1' : '',
         auto_refresh: document.getElementById('sourceAutoRefresh').checked ? '1' : '',
         refresh_interval: document.getElementById('refreshInterval').value,
+        timezone: document.getElementById('sourceTimezone').value,
     });
 
     if (type === 'eit') {
