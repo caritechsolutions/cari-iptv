@@ -1938,8 +1938,9 @@ img { max-width: 100%; display: block; }
     width: 100%;
     height: 200px;
     background: var(--p-bg);
-    background-size: cover;
-    background-position: center;
+    background-size: 100% auto;
+    background-position: center top;
+    background-repeat: no-repeat;
     position: relative;
 }
 
