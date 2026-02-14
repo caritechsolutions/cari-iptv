@@ -318,6 +318,44 @@ ALTER TABLE channels ADD COLUMN new_field VARCHAR(255) DEFAULT NULL;
 CREATE INDEX idx_channels_new_field ON channels(new_field);
 ```
 
+**IMPORTANT — MySQL Compatibility for ALTER TABLE:**
+
+MySQL 8.x does **NOT** support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — that syntax is MariaDB-only. Using it will cause migration failures with `ERROR 1064 (42000)`.
+
+For idempotent column additions (safe to re-run), use the `INFORMATION_SCHEMA` + prepared statement pattern:
+
+```sql
+-- Idempotent ADD COLUMN (MySQL 8.x compatible)
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'your_table'
+    AND COLUMN_NAME = 'your_column');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `your_table` ADD COLUMN `your_column` VARCHAR(50) DEFAULT ''value'' AFTER `existing_column`',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+```
+
+For idempotent index additions:
+
+```sql
+-- Idempotent ADD INDEX (MySQL 8.x compatible)
+SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'your_table'
+    AND INDEX_NAME = 'idx_name');
+SET @s = IF(@idx_exists = 0,
+    'ALTER TABLE `your_table` ADD INDEX `idx_name` (`your_column`)',
+    'SELECT 1');
+PREPARE stmt FROM @s;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+```
+
+**Rule of thumb:** If the migration only adds new tables, `CREATE TABLE IF NOT EXISTS` works fine in MySQL. But for `ALTER TABLE` operations (adding columns, indexes), always use the prepared statement pattern above. Never use `ADD COLUMN IF NOT EXISTS` or `DROP COLUMN IF EXISTS` — these are MariaDB extensions.
+
 ### Creating a New Service
 
 ```php
