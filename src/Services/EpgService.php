@@ -468,8 +468,18 @@ class EpgService
             $channelMap[$m['epg_channel_id']] = (int) $m['channel_id'];
         }
 
-        // Clear old programmes for this source
-        $this->db->execute("DELETE FROM epg_programs WHERE epg_source_id = ?", [$sourceId]);
+        // Replace current/future programmes with fresh data, but keep past programmes
+        // DVB EIT only carries current + future events, so past data would be lost on re-import
+        $this->db->execute(
+            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time > NOW()",
+            [$sourceId]
+        );
+
+        // Clean up very old past programmes (older than 48 hours)
+        $this->db->execute(
+            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time < DATE_SUB(NOW(), INTERVAL 48 HOUR)",
+            [$sourceId]
+        );
 
         // Insert programmes
         $imported = 0;
