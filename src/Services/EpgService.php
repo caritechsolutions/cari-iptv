@@ -475,9 +475,9 @@ class EpgService
             [$sourceId]
         );
 
-        // Clean up very old past programmes (older than 48 hours)
+        // Clean up past programmes older than 7 days
         $this->db->execute(
-            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time < DATE_SUB(NOW(), INTERVAL 48 HOUR)",
+            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time < DATE_SUB(NOW(), INTERVAL 7 DAY)",
             [$sourceId]
         );
 
