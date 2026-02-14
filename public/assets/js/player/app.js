@@ -312,9 +312,9 @@ const CariApp = (function() {
                 }
 
                 // Re-render current page to show fresh content,
-                // but only if user is not watching a video (that would be disruptive)
+                // but only if user is not watching a video or live TV (that would be disruptive)
                 const path = CariRouter.getCurrentPath();
-                if (!path.startsWith('/watch/')) {
+                if (!path.startsWith('/watch/') && !path.startsWith('/live')) {
                     CariRouter.refresh();
                 }
             }
@@ -1777,6 +1777,9 @@ const CariApp = (function() {
 
     async function playLiveChannel(channel) {
         liveActiveChannelId = channel.id;
+
+        // Update URL to preserve channel across refreshes (replaceState to avoid history spam)
+        history.replaceState(null, '', '/live/' + channel.id);
 
         // Update channel info in side panel
         const titleEl = document.getElementById('liveChannelTitle');
