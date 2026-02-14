@@ -110,17 +110,10 @@ class EpgController extends BaseApiController
             return;
         }
 
-        // Only return cached data — no live TMDB lookups on user click
+        // Only return cached data — enrichment happens during EPG import
         $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
         $cached = $epgMetadata->getCachedMetadata($title);
-        if ($cached) {
-            $this->ok($cached, ['source' => 'cache']);
-            return;
-        }
-
-        // Not cached — queue for background enrichment and return immediately
-        $epgMetadata->queueTitlesForEnrichment([$title]);
-        $this->ok(null, ['source' => 'pending', 'message' => 'Queued for enrichment']);
+        $this->ok($cached ?: null, ['source' => $cached ? 'cache' : 'none']);
     }
 
     /**
