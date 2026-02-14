@@ -1020,6 +1020,8 @@ const CariApp = (function() {
                 '<svg xmlns="http://www.w3.org/2000/svg" width="185" height="278" fill="%231e293b"><rect width="185" height="278"/><text x="92" y="150" text-anchor="middle" fill="%235a5f7a" font-family="sans-serif" font-size="48">?</text></svg>'
             );
 
+            const epg = person.epg || [];
+
             el.innerHTML = `
                 <div class="person-page">
                     <div id="personBackNav"></div>
@@ -1031,6 +1033,7 @@ const CariApp = (function() {
                             <div class="person-stats">
                                 ${person.movies.length ? '<span>' + person.movies.length + ' Movie' + (person.movies.length !== 1 ? 's' : '') + '</span>' : ''}
                                 ${person.series.length ? '<span>' + person.series.length + ' TV Show' + (person.series.length !== 1 ? 's' : '') + '</span>' : ''}
+                                ${epg.length ? '<span>' + epg.length + ' Upcoming Airing' + (epg.length !== 1 ? 's' : '') + '</span>' : ''}
                             </div>
                         </div>
                     </div>
@@ -1052,6 +1055,11 @@ const CariApp = (function() {
                         const sourceItem = castSource.item;
                         CariRouter.navigate(castSource.fromPath || '/');
                         CariUI.showDetail(sourceItem, playContent, isContentLocked(sourceItem));
+                    });
+                } else if (castSource.type === 'epg-modal') {
+                    backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to Live TV';
+                    backBtn.addEventListener('click', () => {
+                        CariRouter.navigate(castSource.fromPath || '/live');
                     });
                 } else if (castSource.type === 'page' && castSource.path) {
                     backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to ' + CariUI.esc(castSource.title || 'Previous Page');
@@ -1078,7 +1086,61 @@ const CariApp = (function() {
                 })), 'poster', 'series');
             }
 
-            if (!person.movies.length && !person.series.length) {
+            // EPG Upcoming Airings
+            if (epg.length) {
+                const epgSection = document.createElement('div');
+                epgSection.className = 'person-epg-section';
+                epgSection.innerHTML = `<h2 class="content-row-title"><i class="lucide-tv"></i> Upcoming on TV</h2>`;
+
+                const epgList = document.createElement('div');
+                epgList.className = 'person-epg-list';
+
+                epg.forEach(item => {
+                    const startDate = new Date(item.start_time);
+                    const endDate = new Date(item.end_time);
+                    const now = new Date();
+                    const isLive = startDate <= now && endDate > now;
+                    const dateStr = startDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                    const timeStr = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const endStr = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const durationMin = Math.round((endDate - startDate) / 60000);
+
+                    const card = document.createElement('div');
+                    card.className = 'person-epg-card' + (isLive ? ' is-live' : '');
+                    card.innerHTML = `
+                        <div class="person-epg-channel">
+                            <img src="${CariUI.esc(item.channel_logo || '')}" alt="" class="person-epg-channel-logo" onerror="this.style.display='none'">
+                            <span class="person-epg-channel-name">${CariUI.esc(item.channel_name)}</span>
+                        </div>
+                        <div class="person-epg-details">
+                            <div class="person-epg-title">${CariUI.esc(item.title)}${item.year ? ' <span class="person-epg-year">(' + CariUI.esc(item.year) + ')</span>' : ''}</div>
+                            <div class="person-epg-time">
+                                ${isLive ? '<span class="person-epg-live-badge">LIVE</span>' : ''}
+                                <span>${CariUI.esc(dateStr)}</span>
+                                <span>${CariUI.esc(timeStr)} - ${CariUI.esc(endStr)}</span>
+                                <span>${durationMin} min</span>
+                            </div>
+                        </div>
+                        <button class="person-epg-tune" title="Watch on ${CariUI.esc(item.channel_name)}"><i class="lucide-play"></i></button>
+                    `;
+
+                    // Tune to channel on click
+                    card.querySelector('.person-epg-tune').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        CariRouter.navigate('/live/' + item.channel_id);
+                    });
+                    card.addEventListener('click', () => {
+                        CariRouter.navigate('/live/' + item.channel_id);
+                    });
+
+                    epgList.appendChild(card);
+                });
+
+                epgSection.appendChild(epgList);
+                filmEl.appendChild(epgSection);
+            }
+
+            if (!person.movies.length && !person.series.length && !epg.length) {
                 filmEl.innerHTML = CariUI.emptyState('lucide-film', 'No Content', 'No movies or shows found for this person on our platform.');
             }
         } catch (err) {
@@ -1925,7 +1987,7 @@ const CariApp = (function() {
                     profile_image: c.profile_image || c.profile || c.profile_url || '',
                     tmdb_person_id: c.tmdb_person_id || '',
                 }));
-                CariUI.renderCastRow(castEl, mappedCast, { type: 'epg-modal' });
+                CariUI.renderCastRow(castEl, mappedCast, { type: 'epg-modal', fromPath: CariRouter.getCurrentPath() });
             }
 
             // Directors

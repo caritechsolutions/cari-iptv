@@ -471,21 +471,21 @@ const CariUI = (function() {
             </div>
         `;
 
-        // Make cast cards clickable (navigate to person page) — skip for EPG modal context
-        const sourceType = source?.type || '';
-        if (sourceType !== 'epg-modal') {
-            container.querySelectorAll('.cast-card[data-person-id]').forEach(card => {
-                card.style.cursor = 'pointer';
-                card.addEventListener('click', () => {
-                    const pid = card.dataset.personId;
-                    if (pid) {
-                        _castNavSource = source || null;
-                        hideDetail();
-                        CariRouter.navigate('/person/' + pid);
-                    }
-                });
+        // Make cast cards clickable (navigate to person page)
+        container.querySelectorAll('.cast-card[data-person-id]').forEach(card => {
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', () => {
+                const pid = card.dataset.personId;
+                if (pid) {
+                    _castNavSource = source || null;
+                    // Close EPG modal if inside one, otherwise close detail overlay
+                    const epgOverlay = card.closest('.epg-modal-overlay');
+                    if (epgOverlay) epgOverlay.remove();
+                    else hideDetail();
+                    CariRouter.navigate('/person/' + pid);
+                }
             });
-        }
+        });
     }
 
     function hideDetail() {
