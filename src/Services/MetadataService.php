@@ -580,6 +580,101 @@ class MetadataService
     }
 
     /**
+     * Search TMDB multi-search (movies + TV shows) and return top result with details.
+     * Used for EPG programme metadata lookup.
+     */
+    public function searchProgrammeInfo(string $title): array
+    {
+        if (!$this->isTmdbConfigured()) {
+            return ['error' => 'TMDB API key not configured'];
+        }
+
+        $title = trim($title);
+        if (empty($title)) {
+            return ['error' => 'Title is required'];
+        }
+
+        try {
+            $params = [
+                'api_key' => $this->config['tmdb']['api_key'],
+                'query' => $title,
+                'include_adult' => 'false',
+            ];
+
+            $url = self::TMDB_API . '/search/multi?' . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                return ['error' => 'TMDB API request failed'];
+            }
+
+            $data = json_decode($response, true);
+            $results = $data['results'] ?? [];
+
+            // Filter to only movie and tv results
+            $filtered = array_filter($results, fn($r) => in_array($r['media_type'] ?? '', ['movie', 'tv']));
+            $filtered = array_values($filtered);
+
+            if (empty($filtered)) {
+                return ['match' => null, 'results' => []];
+            }
+
+            // Format top 5 results as suggestions
+            $suggestions = [];
+            foreach (array_slice($filtered, 0, 5) as $item) {
+                $suggestions[] = $this->formatMultiResult($item);
+            }
+
+            // Get detailed info for the top result
+            $top = $filtered[0];
+            $detail = null;
+            if ($top['media_type'] === 'movie') {
+                $detail = $this->getMovieDetails((int)$top['id']);
+            } elseif ($top['media_type'] === 'tv') {
+                $detail = $this->getTVShowDetails((int)$top['id']);
+            }
+
+            return [
+                'match' => $detail ?: $this->formatMultiResult($top),
+                'media_type' => $top['media_type'],
+                'results' => $suggestions,
+            ];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Format a single multi-search result
+     */
+    private function formatMultiResult(array $item): array
+    {
+        $isMovie = ($item['media_type'] ?? '') === 'movie';
+        return [
+            'tmdb_id' => $item['id'],
+            'media_type' => $item['media_type'] ?? 'unknown',
+            'title' => $isMovie ? ($item['title'] ?? '') : ($item['name'] ?? ''),
+            'original_title' => $isMovie ? ($item['original_title'] ?? '') : ($item['original_name'] ?? ''),
+            'year' => $isMovie
+                ? (!empty($item['release_date']) ? substr($item['release_date'], 0, 4) : '')
+                : (!empty($item['first_air_date']) ? substr($item['first_air_date'], 0, 4) : ''),
+            'overview' => $item['overview'] ?? '',
+            'poster' => !empty($item['poster_path']) ? self::TMDB_IMAGE_BASE . '/w342' . $item['poster_path'] : null,
+            'backdrop' => !empty($item['backdrop_path']) ? self::TMDB_IMAGE_BASE . '/w780' . $item['backdrop_path'] : null,
+            'vote_average' => $item['vote_average'] ?? 0,
+        ];
+    }
+
+    /**
      * Format TV search results
      */
     private function formatTVResults(array $results): array

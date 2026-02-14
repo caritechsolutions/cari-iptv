@@ -1295,6 +1295,7 @@ const CariApp = (function() {
                                 </div>
                             </div>
                             <div class="live-info-desc" id="liveInfoDesc"></div>
+                            <button class="live-info-more-btn" id="liveInfoMoreBtn" style="display:none"><i class="lucide-info"></i> More Info</button>
                             <div class="live-info-next" id="liveInfoNext"></div>
                         </div>
                     </div>
@@ -1751,6 +1752,8 @@ const CariApp = (function() {
     }
 
     function showProgrammeInfo(programme, channel) {
+        if (programme.is_placeholder) return;
+
         const now = Date.now();
         const pStart = new Date(programme.start_time).getTime();
         const pEnd = new Date(programme.end_time).getTime();
@@ -1759,35 +1762,54 @@ const CariApp = (function() {
         const programmeKey = (channel?.id || '') + '_' + programme.start_time;
         const hasReminder = hasLiveReminder(programmeKey);
 
+        // Duration in minutes
+        const durationMin = Math.round((pEnd - pStart) / 60000);
+
         let actionsHtml = '';
         if (isNow && channel) {
-            actionsHtml = `<button class="btn btn-primary epg-modal-btn" id="epgModalWatch"><i class="lucide-play"></i> Watch Now</button>`;
-        } else if (isFuture) {
+            actionsHtml += `<button class="btn btn-primary epg-modal-btn" id="epgModalWatch"><i class="lucide-play"></i> Watch Now</button>`;
+        }
+        if (isFuture) {
             if (hasReminder) {
-                actionsHtml = `<button class="btn btn-secondary epg-modal-btn" id="epgModalReminder"><i class="lucide-bell-off"></i> Remove Reminder</button>`;
+                actionsHtml += `<button class="btn btn-secondary epg-modal-btn" id="epgModalReminder"><i class="lucide-bell-off"></i> Remove Reminder</button>`;
             } else {
-                actionsHtml = `<button class="btn btn-primary epg-modal-btn" id="epgModalReminder"><i class="lucide-bell"></i> Set Reminder</button>`;
+                actionsHtml += `<button class="btn btn-primary epg-modal-btn" id="epgModalReminder"><i class="lucide-bell"></i> Set Reminder</button>`;
             }
         }
 
         const overlay = document.createElement('div');
         overlay.className = 'epg-modal-overlay';
         overlay.innerHTML = `
-            <div class="epg-modal">
+            <div class="epg-modal epg-modal-enhanced">
                 <button class="epg-modal-close" id="epgModalClose"><i class="lucide-x"></i></button>
-                <div class="epg-modal-header">
-                    ${channel ? `<img src="${CariUI.esc(channel.logo_url || channel.logo || '')}" alt="" class="epg-modal-logo" onerror="this.style.display='none'">` : ''}
-                    <div>
-                        <h3>${CariUI.esc(programme.title)}</h3>
-                        <div class="epg-modal-meta">
-                            ${channel ? '<span>' + CariUI.esc(channel.name) + '</span>' : ''}
-                            <span>${formatTime(programme.start_time)} - ${formatTime(programme.end_time)}</span>
-                            ${programme.category ? '<span>' + CariUI.esc(programme.category) + '</span>' : ''}
+                <div class="epg-modal-backdrop" id="epgModalBackdrop"></div>
+                <div class="epg-modal-content">
+                    <div class="epg-modal-top">
+                        <div class="epg-modal-poster" id="epgModalPoster"></div>
+                        <div class="epg-modal-info">
+                            <div class="epg-modal-header">
+                                ${channel ? `<img src="${CariUI.esc(channel.logo_url || channel.logo || '')}" alt="" class="epg-modal-logo" onerror="this.style.display='none'">` : ''}
+                                <div>
+                                    <h3>${CariUI.esc(programme.title)}</h3>
+                                    <div class="epg-modal-meta">
+                                        ${channel ? '<span>' + CariUI.esc(channel.name) + '</span>' : ''}
+                                        <span>${formatTime(programme.start_time)} - ${formatTime(programme.end_time)}</span>
+                                        <span>${durationMin} min</span>
+                                        ${programme.category ? '<span>' + CariUI.esc(programme.category) + '</span>' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="epg-modal-tmdb-meta" id="epgModalTmdbMeta"></div>
+                            <p class="epg-modal-desc" id="epgModalDesc">${programme.description ? CariUI.esc(programme.description) : ''}</p>
+                            <div class="epg-modal-actions">${actionsHtml}</div>
                         </div>
                     </div>
+                    <div class="epg-modal-cast" id="epgModalCast"></div>
+                    <div class="epg-modal-loading" id="epgModalLoading">
+                        <div class="epg-modal-spinner"></div>
+                        <span>Fetching programme info...</span>
+                    </div>
                 </div>
-                ${programme.description ? `<p class="epg-modal-desc">${CariUI.esc(programme.description)}</p>` : ''}
-                <div class="epg-modal-actions">${actionsHtml}</div>
             </div>
         `;
 
@@ -1823,6 +1845,93 @@ const CariApp = (function() {
                 overlay.remove();
                 renderEpgGrid();
             });
+        }
+
+        // Fetch TMDB metadata asynchronously
+        fetchProgrammeMetadata(programme.title, overlay);
+    }
+
+    async function fetchProgrammeMetadata(title, overlay) {
+        const loadingEl = overlay.querySelector('#epgModalLoading');
+        const posterEl = overlay.querySelector('#epgModalPoster');
+        const backdropEl = overlay.querySelector('#epgModalBackdrop');
+        const descEl = overlay.querySelector('#epgModalDesc');
+        const tmdbMetaEl = overlay.querySelector('#epgModalTmdbMeta');
+        const castEl = overlay.querySelector('#epgModalCast');
+
+        try {
+            const res = await CariAPI.getProgrammeInfo(title);
+            const match = res?.data?.match;
+
+            if (loadingEl) loadingEl.remove();
+
+            if (!match) return;
+
+            // Backdrop
+            if (match.backdrop && backdropEl) {
+                backdropEl.style.backgroundImage = `url(${match.backdrop})`;
+                backdropEl.classList.add('has-image');
+            }
+
+            // Poster
+            if (match.poster && posterEl) {
+                posterEl.innerHTML = `<img src="${CariUI.esc(match.poster)}" alt="" onerror="this.parentElement.style.display='none'">`;
+                posterEl.classList.add('has-image');
+            }
+
+            // TMDB metadata badges (rating, year, genres)
+            if (tmdbMetaEl) {
+                let metaHtml = '';
+                if (match.vote_average) {
+                    metaHtml += `<span class="epg-modal-rating"><i class="lucide-star"></i> ${Number(match.vote_average).toFixed(1)}</span>`;
+                }
+                if (match.year) {
+                    metaHtml += `<span>${CariUI.esc(match.year)}</span>`;
+                }
+                const mediaType = res?.data?.media_type;
+                if (mediaType) {
+                    metaHtml += `<span class="epg-modal-type">${mediaType === 'movie' ? 'Movie' : 'TV Show'}</span>`;
+                }
+                // Genres from detailed result
+                if (match.genres && Array.isArray(match.genres)) {
+                    const genreNames = match.genres.map(g => typeof g === 'string' ? g : g.name).filter(Boolean);
+                    if (genreNames.length) {
+                        metaHtml += `<span>${CariUI.esc(genreNames.slice(0, 3).join(', '))}</span>`;
+                    }
+                }
+                if (match.number_of_seasons) {
+                    metaHtml += `<span>${match.number_of_seasons} Season${match.number_of_seasons > 1 ? 's' : ''}</span>`;
+                }
+                if (match.runtime) {
+                    metaHtml += `<span>${match.runtime} min</span>`;
+                }
+                tmdbMetaEl.innerHTML = metaHtml;
+            }
+
+            // Overview (prefer TMDB if EPG description is empty or short)
+            const tmdbOverview = match.overview || match.synopsis || '';
+            if (tmdbOverview && descEl) {
+                const currentDesc = descEl.textContent.trim();
+                if (!currentDesc || currentDesc.length < tmdbOverview.length) {
+                    descEl.textContent = tmdbOverview;
+                }
+            }
+
+            // Cast
+            if (match.cast && match.cast.length && castEl) {
+                CariUI.renderCastRow(castEl, match.cast, { type: 'epg-modal' });
+            }
+
+            // Directors
+            if (match.directors && match.directors.length && castEl) {
+                const dirEl = document.createElement('div');
+                dirEl.className = 'epg-modal-directors';
+                dirEl.innerHTML = `<span class="epg-modal-director-label">Director:</span> ${match.directors.map(d => CariUI.esc(typeof d === 'string' ? d : d.name)).join(', ')}`;
+                castEl.insertBefore(dirEl, castEl.firstChild);
+            }
+        } catch (err) {
+            if (loadingEl) loadingEl.remove();
+            console.warn('[CariApp] Programme metadata fetch failed:', err);
         }
     }
 
@@ -1885,6 +1994,17 @@ const CariApp = (function() {
                 nextEl.style.display = '';
             } else {
                 nextEl.style.display = 'none';
+            }
+        }
+
+        // "More Info" button — show when playing a programme with real EPG data
+        const moreBtn = document.getElementById('liveInfoMoreBtn');
+        if (moreBtn) {
+            if (nowPlaying && !nowPlaying.is_placeholder) {
+                moreBtn.style.display = '';
+                moreBtn.onclick = () => showProgrammeInfo(nowPlaying, channel);
+            } else {
+                moreBtn.style.display = 'none';
             }
         }
 

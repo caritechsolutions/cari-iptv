@@ -1909,6 +1909,7 @@ img { max-width: 100%; display: block; }
     opacity: 0;
     transition: opacity 0.2s ease;
     padding: 1rem;
+    overflow-y: auto;
 }
 
 .epg-modal-overlay.show {
@@ -1924,6 +1925,89 @@ img { max-width: 100%; display: block; }
     width: 100%;
     position: relative;
     animation: epgModalIn 0.2s ease;
+}
+
+/* Enhanced modal — wider with backdrop + poster layout */
+.epg-modal.epg-modal-enhanced {
+    max-width: 680px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.epg-modal-backdrop {
+    width: 100%;
+    height: 200px;
+    background: var(--p-bg);
+    background-size: cover;
+    background-position: center;
+    position: relative;
+}
+
+.epg-modal-backdrop.has-image {
+    background-color: #000;
+}
+
+.epg-modal-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, var(--p-surface) 0%, transparent 100%);
+}
+
+.epg-modal-enhanced .epg-modal-close {
+    z-index: 5;
+    background: rgba(0,0,0,0.5);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    top: 0.75rem;
+    right: 0.75rem;
+}
+
+.epg-modal-enhanced .epg-modal-close:hover {
+    background: rgba(0,0,0,0.8);
+}
+
+.epg-modal-content {
+    padding: 0 1.5rem 1.5rem;
+}
+
+.epg-modal-top {
+    display: flex;
+    gap: 1.25rem;
+    margin-top: -60px;
+    position: relative;
+    z-index: 2;
+}
+
+.epg-modal-poster {
+    flex-shrink: 0;
+    width: 120px;
+    display: none;
+}
+
+.epg-modal-poster.has-image {
+    display: block;
+}
+
+.epg-modal-poster img {
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+.epg-modal-info {
+    flex: 1;
+    min-width: 0;
+    padding-top: 60px;
+}
+
+.epg-modal-poster.has-image + .epg-modal-info {
+    padding-top: 0;
 }
 
 @keyframes epgModalIn {
@@ -1951,7 +2035,7 @@ img { max-width: 100%; display: block; }
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
 }
 
 .epg-modal-logo {
@@ -1977,16 +2061,59 @@ img { max-width: 100%; display: block; }
     flex-wrap: wrap;
 }
 
+/* TMDB metadata row (rating, year, type, genres) */
+.epg-modal-tmdb-meta {
+    display: flex;
+    gap: 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--p-text-secondary);
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.epg-modal-tmdb-meta:empty {
+    display: none;
+}
+
+.epg-modal-rating {
+    color: #fbbf24;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.epg-modal-rating i {
+    font-size: 0.75rem;
+}
+
+.epg-modal-type {
+    background: var(--p-primary);
+    color: #fff;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
 .epg-modal-desc {
     font-size: 0.875rem;
     color: var(--p-text-secondary);
     line-height: 1.6;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
+    max-height: 6.4em;
+    overflow-y: auto;
+}
+
+.epg-modal-desc:empty {
+    display: none;
 }
 
 .epg-modal-actions {
     display: flex;
     gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .epg-modal-btn {
@@ -2018,6 +2145,71 @@ img { max-width: 100%; display: block; }
 
 .btn-secondary.epg-modal-btn:hover {
     background: var(--p-border);
+}
+
+/* Cast section inside modal */
+.epg-modal-cast {
+    margin-top: 1rem;
+}
+
+.epg-modal-cast:empty {
+    display: none;
+}
+
+.epg-modal-directors {
+    font-size: 0.8125rem;
+    color: var(--p-text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.epg-modal-director-label {
+    color: var(--p-text-muted);
+    font-weight: 600;
+}
+
+/* Loading spinner */
+.epg-modal-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 0;
+    color: var(--p-text-muted);
+    font-size: 0.8125rem;
+}
+
+.epg-modal-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--p-border);
+    border-top-color: var(--p-primary);
+    border-radius: 50%;
+    animation: epgSpin 0.8s linear infinite;
+}
+
+@keyframes epgSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* "More Info" button in info panel */
+.live-info-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    background: var(--p-surface-hover);
+    color: var(--p-text-secondary);
+    border: 1px solid var(--p-border);
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-top: 0.5rem;
+}
+
+.live-info-more-btn:hover {
+    background: var(--p-primary);
+    color: #fff;
+    border-color: var(--p-primary);
 }
 
 /* ---- Reminder Toast ---- */
@@ -2868,6 +3060,11 @@ img { max-width: 100%; display: block; }
     .epg-programme-title { font-size: 0.625rem; }
     .epg-programme-time { font-size: 0.5rem; }
     .epg-modal { padding: 1.25rem; }
+    .epg-modal.epg-modal-enhanced { max-width: 100%; padding: 0; }
+    .epg-modal-backdrop { height: 140px; }
+    .epg-modal-top { flex-direction: column; gap: 0.75rem; margin-top: -40px; }
+    .epg-modal-poster { width: 80px; }
+    .epg-modal-poster.has-image + .epg-modal-info { padding-top: 0; }
     .epg-reminder-toast { bottom: 4.5rem; right: 1rem; left: 1rem; max-width: none; }
     .epg-nav-controls { order: -1; width: 100%; justify-content: center; }
 

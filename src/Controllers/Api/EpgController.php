@@ -97,6 +97,35 @@ class EpgController extends BaseApiController
     }
 
     /**
+     * GET /api/v1/epg/programme-info?title=...
+     * Searches TMDB for programme metadata based on title.
+     */
+    public function programmeInfo(): void
+    {
+        $title = trim($this->query('title', ''));
+        if (empty($title)) {
+            $this->error('Title parameter is required', 400);
+            return;
+        }
+
+        $metadataService = new \CariIPTV\Services\MetadataService();
+
+        if (!$metadataService->isTmdbConfigured()) {
+            $this->ok(null, ['message' => 'TMDB not configured']);
+            return;
+        }
+
+        $result = $metadataService->searchProgrammeInfo($title);
+
+        if (isset($result['error'])) {
+            $this->ok(null, ['message' => $result['error']]);
+            return;
+        }
+
+        $this->ok($result);
+    }
+
+    /**
      * Convert MySQL DATETIME fields to ISO 8601 UTC format (with Z suffix)
      * so JavaScript correctly interprets them as UTC timestamps.
      */
