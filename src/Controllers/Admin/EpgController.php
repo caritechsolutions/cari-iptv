@@ -394,6 +394,57 @@ class EpgController
         ]);
     }
 
+    /**
+     * POST /admin/epg/process-metadata
+     * Process pending EPG metadata enrichment (TMDB lookup + WebP images).
+     * Can be triggered manually or after imports.
+     */
+    public function processMetadata(): void
+    {
+        $limit = (int)($_POST['limit'] ?? 50);
+        $limit = max(1, min($limit, 200));
+
+        $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
+
+        // If no pending records, try to queue from existing EPG programmes
+        $pendingCount = $this->db->fetch(
+            "SELECT COUNT(*) as cnt FROM epg_programme_metadata WHERE status = 'pending'"
+        )['cnt'] ?? 0;
+
+        $queued = 0;
+        if ($pendingCount == 0) {
+            // Get unique programme titles that don't have metadata yet
+            $titles = $this->db->fetchAll(
+                "SELECT DISTINCT p.title FROM epg_programs p
+                 LEFT JOIN epg_programme_metadata m ON m.title_normalised = LOWER(TRIM(p.title))
+                 WHERE m.id IS NULL AND p.title IS NOT NULL AND p.title != ''
+                 LIMIT 500"
+            );
+            $titleList = array_column($titles, 'title');
+            $queued = $epgMetadata->queueTitlesForEnrichment($titleList);
+        }
+
+        $stats = $epgMetadata->processPending($limit);
+        $stats['newly_queued'] = $queued;
+
+        // Get summary counts
+        $counts = $this->db->fetch(
+            "SELECT
+                COUNT(*) as total,
+                SUM(status = 'pending') as pending,
+                SUM(status = 'complete') as complete,
+                SUM(status = 'not_found') as not_found,
+                SUM(status = 'error') as errors
+             FROM epg_programme_metadata"
+        );
+
+        $this->sendJson([
+            'success' => true,
+            'stats' => $stats,
+            'summary' => $counts,
+        ]);
+    }
+
     // ========================================================================
     // HELPERS
     // ========================================================================

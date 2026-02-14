@@ -98,7 +98,8 @@ class EpgController extends BaseApiController
 
     /**
      * GET /api/v1/epg/programme-info?title=...
-     * Searches TMDB for programme metadata based on title.
+     * Returns cached TMDB metadata for a programme title.
+     * Falls back to live TMDB search if no cache hit (and queues for future).
      */
     public function programmeInfo(): void
     {
@@ -108,6 +109,15 @@ class EpgController extends BaseApiController
             return;
         }
 
+        // Check cache first (fast path — local WebP images)
+        $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
+        $cached = $epgMetadata->getCachedMetadata($title);
+        if ($cached) {
+            $this->ok($cached, ['source' => 'cache']);
+            return;
+        }
+
+        // Fall back to live TMDB search
         $metadataService = new \CariIPTV\Services\MetadataService();
 
         if (!$metadataService->isTmdbConfigured()) {
@@ -122,7 +132,10 @@ class EpgController extends BaseApiController
             return;
         }
 
-        $this->ok($result);
+        // Queue this title for background enrichment (so next time it's cached with WebP)
+        $epgMetadata->queueTitlesForEnrichment([$title]);
+
+        $this->ok($result, ['source' => 'tmdb']);
     }
 
     /**

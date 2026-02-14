@@ -1996,6 +1996,8 @@ img { max-width: 100%; display: block; }
 
 .epg-modal-poster img {
     width: 100%;
+    aspect-ratio: 2/3;
+    object-fit: cover;
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.4);
 }

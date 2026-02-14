@@ -544,12 +544,19 @@ class EpgService
             );
         }
 
+        // Queue unique programme titles for TMDB metadata enrichment
+        $metadataQueued = 0;
+        if ($imported > 0) {
+            $metadataQueued = $this->queueMetadataEnrichment($programmes);
+        }
+
         return [
             'success' => true,
             'programmes' => $imported,
             'channels' => count($serviceStats),
             'total_found' => count($programmes),
             'unmapped' => count($programmes) - $imported,
+            'metadata_queued' => $metadataQueued,
         ];
     }
 
@@ -636,6 +643,7 @@ class EpgService
         // Parse programmes
         $imported = 0;
         $serviceStats = [];
+        $programmeTitles = [];
 
         foreach ($xml->programme as $prog) {
             $channelRef = (string) ($prog['channel'] ?? '');
@@ -686,6 +694,7 @@ class EpgService
             ]);
 
             $imported++;
+            $programmeTitles[] = $title;
 
             if (!isset($serviceStats[$channelRef])) {
                 $serviceStats[$channelRef] = 0;
@@ -717,12 +726,19 @@ class EpgService
             );
         }
 
+        // Queue unique programme titles for TMDB metadata enrichment
+        $metadataQueued = 0;
+        if ($imported > 0 && !empty($programmeTitles)) {
+            $metadataQueued = $this->queueMetadataEnrichment($programmeTitles);
+        }
+
         return [
             'success' => true,
             'programmes' => $imported,
             'channels' => count($serviceStats),
             'total_xmltv_channels' => count($xmltvChannels),
             'unmapped' => count($xmltvChannels) - count($channelMap),
+            'metadata_queued' => $metadataQueued,
         ];
     }
 
@@ -922,5 +938,42 @@ class EpgService
             0xB => 'Lifestyle',
             default => null,
         };
+    }
+
+    // ========================================================================
+    // METADATA ENRICHMENT
+    // ========================================================================
+
+    /**
+     * Queue unique programme titles for TMDB metadata enrichment.
+     * Runs enrichment immediately for a small batch; queues the rest.
+     */
+    private function queueMetadataEnrichment(array $programmes): int
+    {
+        // Extract unique titles
+        $titles = [];
+        foreach ($programmes as $prog) {
+            $title = is_array($prog) ? ($prog['title'] ?? '') : (string)$prog;
+            if (!empty($title)) {
+                $titles[] = $title;
+            }
+        }
+
+        if (empty($titles)) return 0;
+
+        try {
+            $epgMetadata = new EpgMetadataService();
+            $queued = $epgMetadata->queueTitlesForEnrichment($titles);
+
+            // Process a small batch immediately (non-blocking for the import)
+            if ($queued > 0) {
+                $epgMetadata->processPending(min($queued, 20));
+            }
+
+            return $queued;
+        } catch (\Throwable $e) {
+            error_log("[EpgService] Metadata enrichment error: " . $e->getMessage());
+            return 0;
+        }
     }
 }

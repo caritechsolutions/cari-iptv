@@ -1917,9 +1917,15 @@ const CariApp = (function() {
                 }
             }
 
-            // Cast
+            // Cast — map TMDB field names to what renderCastRow expects
             if (match.cast && match.cast.length && castEl) {
-                CariUI.renderCastRow(castEl, match.cast, { type: 'epg-modal' });
+                const mappedCast = match.cast.map(c => ({
+                    name: c.name,
+                    character_name: c.character_name || c.character || '',
+                    profile_image: c.profile_image || c.profile || c.profile_url || '',
+                    tmdb_person_id: c.tmdb_person_id || '',
+                }));
+                CariUI.renderCastRow(castEl, mappedCast, { type: 'epg-modal' });
             }
 
             // Directors
