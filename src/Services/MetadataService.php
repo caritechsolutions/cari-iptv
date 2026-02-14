@@ -584,10 +584,11 @@ class MetadataService
      * When an EPG description is provided and AI is available, uses AI to pick
      * the correct TMDB result instead of blindly taking the top result.
      *
-     * @param string $title       Programme title from the EPG
-     * @param string $description Optional EPG description to improve matching
+     * @param string $title          Programme title from the EPG
+     * @param string $description    Optional EPG description to improve matching
+     * @param array  $channelContext Optional channel info ['name' => '...', 'description' => '...']
      */
-    public function searchProgrammeInfo(string $title, string $description = ''): array
+    public function searchProgrammeInfo(string $title, string $description = '', array $channelContext = []): array
     {
         if (!$this->isTmdbConfigured()) {
             return ['error' => 'TMDB API key not configured'];
@@ -639,8 +640,13 @@ class MetadataService
                 $suggestions[] = $this->formatMultiResult($item);
             }
 
-            // Use AI to pick the best match when we have a description and multiple results
-            $top = $this->pickBestMatch($title, $description, $candidates);
+            // Use AI to pick the best match (with channel context for disambiguation)
+            $top = $this->pickBestMatch($title, $description, $candidates, $channelContext);
+
+            // AI determined no candidates match this programme
+            if (!empty($top['_no_match'])) {
+                return ['match' => null, 'results' => $suggestions];
+            }
 
             // Get detailed info for the selected result
             $detail = null;
@@ -662,12 +668,15 @@ class MetadataService
 
     /**
      * Use AI to pick the best TMDB match for an EPG programme.
+     * Considers channel context (name + description) to disambiguate.
      * Falls back to the first result if AI is unavailable or fails.
      */
-    private function pickBestMatch(string $title, string $description, array $candidates): array
+    private function pickBestMatch(string $title, string $description, array $candidates, array $channelContext = []): array
     {
-        // If only one result or no description, just return the first
-        if (count($candidates) <= 1 || empty(trim($description))) {
+        $hasContext = !empty(trim($description)) || !empty(trim($channelContext['name'] ?? ''));
+
+        // Only skip AI if we have no context at all to disambiguate
+        if (!$hasContext) {
             return $candidates[0];
         }
 
@@ -675,6 +684,24 @@ class MetadataService
             $aiService = new AIService();
             if (!$aiService->isAvailable()) {
                 return $candidates[0];
+            }
+
+            // Build channel context section
+            $channelSection = '';
+            $channelName = trim($channelContext['name'] ?? '');
+            $channelDesc = trim($channelContext['description'] ?? '');
+            if ($channelName) {
+                $channelSection = "Channel: \"{$channelName}\"";
+                if ($channelDesc) {
+                    $channelSection .= " — {$channelDesc}";
+                }
+                $channelSection .= "\n";
+            }
+
+            // Build description section
+            $descSection = '';
+            if (!empty(trim($description))) {
+                $descSection = "EPG Description: \"{$description}\"\n";
             }
 
             // Build a numbered list of candidates for the AI
@@ -687,24 +714,28 @@ class MetadataService
                     : (!empty($c['first_air_date']) ? substr($c['first_air_date'], 0, 4) : '?');
                 $cType = $isMovie ? 'Movie' : 'TV Show';
                 $cOverview = mb_substr($c['overview'] ?? '', 0, 200);
+                $cGenres = '';
+                if (!empty($c['genre_ids'])) {
+                    $cGenres = ' [genres: ' . implode(',', $c['genre_ids']) . ']';
+                }
 
-                $candidateList .= ($i + 1) . ". \"{$cTitle}\" ({$cYear}, {$cType}) — {$cOverview}\n";
+                $candidateList .= ($i + 1) . ". \"{$cTitle}\" ({$cYear}, {$cType}){$cGenres} — {$cOverview}\n";
             }
 
+            $count = count($candidates);
             $prompt = <<<PROMPT
 You are matching an EPG (TV guide) programme to the correct TMDB entry.
 
 EPG Programme Title: "{$title}"
-EPG Description: "{$description}"
-
+{$channelSection}{$descSection}
 TMDB Candidates:
 {$candidateList}
-Which candidate number (1-{count}) is the correct match for this EPG programme? If none of them match, reply 0.
+IMPORTANT: Consider the channel context carefully. A programme on a home improvement channel (e.g. HGTV) is likely a reality/lifestyle show, not a horror movie. A programme on a kids channel is likely a children's show. The EPG description should match the TMDB overview in theme and content.
+
+Which candidate number (1-{$count}) is the correct match? If NONE of them are a plausible match for this programme on this channel, reply 0.
 
 Reply with ONLY a single number, nothing else.
 PROMPT;
-
-            $prompt = str_replace('{count}', (string)count($candidates), $prompt);
 
             $result = $aiService->complete($prompt, [
                 'max_tokens' => 10,
@@ -713,10 +744,13 @@ PROMPT;
 
             if ($result !== null) {
                 $pick = (int)trim($result);
-                if ($pick >= 1 && $pick <= count($candidates)) {
+                if ($pick >= 1 && $pick <= $count) {
                     return $candidates[$pick - 1];
                 }
-                // AI said 0 (no match) — still return top result as best guess
+                if ($pick === 0) {
+                    // AI says no match — return null to signal no match
+                    return ['_no_match' => true, 'media_type' => null];
+                }
             }
         } catch (\Throwable $e) {
             error_log("[MetadataService] AI match selection failed: " . $e->getMessage());

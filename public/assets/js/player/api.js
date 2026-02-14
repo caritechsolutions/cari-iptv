@@ -184,8 +184,11 @@ const CariAPI = (function() {
         return get(channelId ? '/epg/' + channelId : '/epg');
     }
 
-    function getProgrammeInfo(title) {
-        return get('/epg/programme-info?title=' + encodeURIComponent(title));
+    function getProgrammeInfo(title, description, channelId) {
+        let url = '/epg/programme-info?title=' + encodeURIComponent(title);
+        if (description) url += '&description=' + encodeURIComponent(description);
+        if (channelId) url += '&channel_id=' + encodeURIComponent(channelId);
+        return get(url);
     }
 
     // User actions

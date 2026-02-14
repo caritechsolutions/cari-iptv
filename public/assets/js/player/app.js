@@ -1909,11 +1909,11 @@ const CariApp = (function() {
             });
         }
 
-        // Fetch TMDB metadata asynchronously
-        fetchProgrammeMetadata(programme.title, overlay);
+        // Fetch TMDB metadata asynchronously (with channel + description context)
+        fetchProgrammeMetadata(programme.title, overlay, programme.description, channel?.id);
     }
 
-    async function fetchProgrammeMetadata(title, overlay) {
+    async function fetchProgrammeMetadata(title, overlay, description, channelId) {
         const loadingEl = overlay.querySelector('#epgModalLoading');
         const posterEl = overlay.querySelector('#epgModalPoster');
         const backdropEl = overlay.querySelector('#epgModalBackdrop');
@@ -1922,7 +1922,7 @@ const CariApp = (function() {
         const castEl = overlay.querySelector('#epgModalCast');
 
         try {
-            const res = await CariAPI.getProgrammeInfo(title);
+            const res = await CariAPI.getProgrammeInfo(title, description, channelId);
             const match = res?.data?.match;
 
             if (loadingEl) loadingEl.remove();

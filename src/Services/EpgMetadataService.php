@@ -166,20 +166,43 @@ class EpgMetadataService
 
     /**
      * Enrich a single metadata record with TMDB data and download images.
-     * Looks up an EPG description to help AI pick the correct TMDB match.
+     * Looks up EPG description + channel context to help AI pick the correct TMDB match.
      */
     private function enrichRecord(array $record): void
     {
-        // Grab a description from any EPG programme with this title for better AI matching
-        $epgDescription = $this->db->fetch(
-            "SELECT description FROM epg_programs
-             WHERE LOWER(TRIM(title)) = ? AND description IS NOT NULL AND description != ''
+        // Grab description AND channel info from any EPG programme with this title
+        // Use LIKE match since title_normalised may have stripped suffixes
+        $epgContext = $this->db->fetch(
+            "SELECT p.description, c.name AS channel_name, c.description AS channel_description
+             FROM epg_programs p
+             LEFT JOIN channels c ON p.channel_id = c.id
+             WHERE LOWER(TRIM(p.title)) LIKE CONCAT(?, '%')
+               AND p.description IS NOT NULL AND p.description != ''
+             ORDER BY p.start_time DESC
              LIMIT 1",
             [$record['title_normalised']]
         );
-        $description = $epgDescription['description'] ?? '';
 
-        $result = $this->metadata->searchProgrammeInfo($record['title_display'], $description);
+        // Fallback: try without description requirement to at least get channel context
+        if (!$epgContext) {
+            $epgContext = $this->db->fetch(
+                "SELECT p.description, c.name AS channel_name, c.description AS channel_description
+                 FROM epg_programs p
+                 LEFT JOIN channels c ON p.channel_id = c.id
+                 WHERE LOWER(TRIM(p.title)) LIKE CONCAT(?, '%')
+                 ORDER BY p.start_time DESC
+                 LIMIT 1",
+                [$record['title_normalised']]
+            );
+        }
+
+        $description = $epgContext['description'] ?? '';
+        $channelContext = [
+            'name' => $epgContext['channel_name'] ?? '',
+            'description' => $epgContext['channel_description'] ?? '',
+        ];
+
+        $result = $this->metadata->searchProgrammeInfo($record['title_display'], $description, $channelContext);
 
         if (isset($result['error']) || empty($result['match'])) {
             $this->db->execute(

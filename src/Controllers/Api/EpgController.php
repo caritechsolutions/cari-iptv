@@ -97,10 +97,10 @@ class EpgController extends BaseApiController
     }
 
     /**
-     * GET /api/v1/epg/programme-info?title=...&description=...
+     * GET /api/v1/epg/programme-info?title=...&description=...&channel_id=...
      * Returns cached TMDB metadata for a programme title.
      * Falls back to live TMDB search if no cache hit (and queues for future).
-     * The description helps AI pick the correct TMDB match when multiple candidates exist.
+     * Channel context + description help AI pick the correct TMDB match.
      */
     public function programmeInfo(): void
     {
@@ -111,6 +111,7 @@ class EpgController extends BaseApiController
         }
 
         $description = trim($this->query('description', ''));
+        $channelId = (int) $this->query('channel_id', 0);
 
         // Check cache first (fast path — local WebP images)
         $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
@@ -120,7 +121,7 @@ class EpgController extends BaseApiController
             return;
         }
 
-        // Fall back to live TMDB search (AI uses description to pick best match)
+        // Fall back to live TMDB search (AI uses description + channel to pick best match)
         $metadataService = new \CariIPTV\Services\MetadataService();
 
         if (!$metadataService->isTmdbConfigured()) {
@@ -128,7 +129,17 @@ class EpgController extends BaseApiController
             return;
         }
 
-        $result = $metadataService->searchProgrammeInfo($title, $description);
+        // Build channel context if we have a channel_id
+        $channelContext = [];
+        if ($channelId) {
+            $db = \CariIPTV\Core\Database::getInstance();
+            $ch = $db->fetch("SELECT name, description FROM channels WHERE id = ?", [$channelId]);
+            if ($ch) {
+                $channelContext = ['name' => $ch['name'] ?? '', 'description' => $ch['description'] ?? ''];
+            }
+        }
+
+        $result = $metadataService->searchProgrammeInfo($title, $description, $channelContext);
 
         if (isset($result['error'])) {
             $this->ok(null, ['message' => $result['error']]);
