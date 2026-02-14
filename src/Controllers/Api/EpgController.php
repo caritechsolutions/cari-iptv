@@ -99,8 +99,8 @@ class EpgController extends BaseApiController
     /**
      * GET /api/v1/epg/programme-info?title=...&description=...&channel_id=...
      * Returns cached TMDB metadata for a programme title.
-     * Falls back to live TMDB search if no cache hit (and queues for future).
-     * Channel context + description help AI pick the correct TMDB match.
+     * If not cached, returns null immediately and queues for background enrichment.
+     * Channel context + description help AI pick the correct TMDB match during enrichment.
      */
     public function programmeInfo(): void
     {
@@ -110,10 +110,7 @@ class EpgController extends BaseApiController
             return;
         }
 
-        $description = trim($this->query('description', ''));
-        $channelId = (int) $this->query('channel_id', 0);
-
-        // Check cache first (fast path — local WebP images)
+        // Only return cached data — no live TMDB lookups on user click
         $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
         $cached = $epgMetadata->getCachedMetadata($title);
         if ($cached) {
@@ -121,35 +118,9 @@ class EpgController extends BaseApiController
             return;
         }
 
-        // Fall back to live TMDB search (AI uses description + channel to pick best match)
-        $metadataService = new \CariIPTV\Services\MetadataService();
-
-        if (!$metadataService->isTmdbConfigured()) {
-            $this->ok(null, ['message' => 'TMDB not configured']);
-            return;
-        }
-
-        // Build channel context if we have a channel_id
-        $channelContext = [];
-        if ($channelId) {
-            $db = \CariIPTV\Core\Database::getInstance();
-            $ch = $db->fetch("SELECT name, description FROM channels WHERE id = ?", [$channelId]);
-            if ($ch) {
-                $channelContext = ['name' => $ch['name'] ?? '', 'description' => $ch['description'] ?? ''];
-            }
-        }
-
-        $result = $metadataService->searchProgrammeInfo($title, $description, $channelContext);
-
-        if (isset($result['error'])) {
-            $this->ok(null, ['message' => $result['error']]);
-            return;
-        }
-
-        // Queue this title for background enrichment (so next time it's cached with WebP)
+        // Not cached — queue for background enrichment and return immediately
         $epgMetadata->queueTitlesForEnrichment([$title]);
-
-        $this->ok($result, ['source' => 'tmdb']);
+        $this->ok(null, ['source' => 'pending', 'message' => 'Queued for enrichment']);
     }
 
     /**

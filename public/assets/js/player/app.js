@@ -1867,10 +1867,6 @@ const CariApp = (function() {
                         </div>
                     </div>
                     <div class="epg-modal-cast" id="epgModalCast"></div>
-                    <div class="epg-modal-loading" id="epgModalLoading">
-                        <div class="epg-modal-spinner"></div>
-                        <span>Fetching programme info...</span>
-                    </div>
                 </div>
             </div>
         `;
@@ -1914,7 +1910,6 @@ const CariApp = (function() {
     }
 
     async function fetchProgrammeMetadata(title, overlay, description, channelId) {
-        const loadingEl = overlay.querySelector('#epgModalLoading');
         const posterEl = overlay.querySelector('#epgModalPoster');
         const backdropEl = overlay.querySelector('#epgModalBackdrop');
         const descEl = overlay.querySelector('#epgModalDesc');
@@ -1924,8 +1919,6 @@ const CariApp = (function() {
         try {
             const res = await CariAPI.getProgrammeInfo(title, description, channelId);
             const match = res?.data?.match;
-
-            if (loadingEl) loadingEl.remove();
 
             if (!match) return;
 
@@ -1998,7 +1991,6 @@ const CariApp = (function() {
                 castEl.insertBefore(dirEl, castEl.firstChild);
             }
         } catch (err) {
-            if (loadingEl) loadingEl.remove();
             console.warn('[CariApp] Programme metadata fetch failed:', err);
         }
     }
