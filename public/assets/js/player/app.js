@@ -312,9 +312,12 @@ const CariApp = (function() {
                 }
 
                 // Re-render current page to show fresh content,
-                // but only if user is not watching a video or live TV (that would be disruptive)
+                // but not if user is watching video or live TV (that would be disruptive)
                 const path = CariRouter.getCurrentPath();
-                if (!path.startsWith('/watch/') && !path.startsWith('/live')) {
+                if (path.startsWith('/live')) {
+                    // Soft-refresh: update EPG/channel data without disrupting playback
+                    refreshLiveData();
+                } else if (!path.startsWith('/watch/')) {
                     CariRouter.refresh();
                 }
             }
@@ -1096,6 +1099,48 @@ const CariApp = (function() {
     const REMINDERS_KEY = 'cari_epg_reminders';
     const EPG_HOURS_VISIBLE = 8;  // wider window for scrolling past & future
     const EPG_PX_PER_MINUTE = 7;  // pixels per minute for EPG timeline
+
+    /** Soft-refresh: re-fetch channels + EPG and re-render guide without disrupting video playback */
+    async function refreshLiveData() {
+        try {
+            const [channelsRes, catRes, epgRes] = await Promise.all([
+                CariAPI.getChannels({ limit: 200 }),
+                CariAPI.getCategories({ type: 'live' }),
+                CariAPI.getEpg()
+            ]);
+
+            liveChannels = channelsRes?.data || [];
+            liveCategories = catRes?.data || [];
+            const epgRaw = epgRes?.data || [];
+            liveEpgData = buildEpgMap(liveChannels, epgRaw);
+
+            // Re-render guide and category filters (leaves video player untouched)
+            renderCategoryFilters();
+            renderEpgGrid();
+
+            // Update the now-playing info panel for the active channel
+            if (liveActiveChannelId) {
+                const active = liveChannels.find(ch => ch.id === liveActiveChannelId);
+                if (active) {
+                    const nowPlaying = getNowPlaying(active.id);
+                    const progEl = document.getElementById('liveChannelProgram');
+                    const timeEl = document.getElementById('liveInfoTime');
+                    const descEl = document.getElementById('liveInfoDesc');
+                    if (progEl) progEl.textContent = nowPlaying ? nowPlaying.title : 'Live';
+                    if (timeEl) timeEl.textContent = nowPlaying ? formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) : '';
+                    if (descEl) {
+                        descEl.textContent = nowPlaying?.description || '';
+                        descEl.style.display = nowPlaying?.description ? '' : 'none';
+                    }
+                }
+                updateFsOverlay();
+            }
+
+            console.log('[CariApp] Live TV data refreshed (soft)');
+        } catch (err) {
+            console.error('[CariApp] Live TV soft refresh failed:', err);
+        }
+    }
 
     function getLiveReminders() {
         try { return JSON.parse(localStorage.getItem(REMINDERS_KEY) || '{}'); } catch { return {}; }
