@@ -401,15 +401,12 @@ class EpgController
      */
     public function processMetadata(): void
     {
-        $limit = (int)($_POST['limit'] ?? 50);
-        $limit = max(1, min($limit, 200));
-
         $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
 
         // If no pending records, try to queue from existing EPG programmes
-        $pendingCount = $this->db->fetch(
+        $pendingCount = (int)($this->db->fetch(
             "SELECT COUNT(*) as cnt FROM epg_programme_metadata WHERE status = 'pending'"
-        )['cnt'] ?? 0;
+        )['cnt'] ?? 0);
 
         $queued = 0;
         if ($pendingCount == 0) {
@@ -424,7 +421,7 @@ class EpgController
             $queued = $epgMetadata->queueTitlesForEnrichment($titleList);
         }
 
-        $stats = $epgMetadata->processPending($limit);
+        $stats = $epgMetadata->processAllPending();
         $stats['newly_queued'] = $queued;
 
         // Get summary counts
