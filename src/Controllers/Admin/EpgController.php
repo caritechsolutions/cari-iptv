@@ -32,10 +32,22 @@ class EpgController
         $sources = $this->epgService->getSources();
         $stats = $this->epgService->getStatistics();
 
+        // Metadata enrichment stats
+        $metadataStats = $this->db->fetch(
+            "SELECT
+                COUNT(*) as total,
+                SUM(status = 'pending') as pending,
+                SUM(status = 'complete') as complete,
+                SUM(status = 'not_found') as not_found,
+                SUM(status = 'error') as errors
+             FROM epg_programme_metadata"
+        ) ?: ['total' => 0, 'pending' => 0, 'complete' => 0, 'not_found' => 0, 'errors' => 0];
+
         Response::view('admin/epg/index', [
             'pageTitle' => 'EPG',
             'sources' => $sources,
             'stats' => $stats,
+            'metadataStats' => $metadataStats,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');

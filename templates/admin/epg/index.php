@@ -9,6 +9,9 @@
         <button type="button" class="btn btn-secondary" onclick="cleanupProgrammes()">
             <i class="lucide-trash-2"></i> Cleanup Old
         </button>
+        <button type="button" class="btn btn-info" onclick="processMetadata()" id="processMetadataBtn">
+            <i class="lucide-sparkles"></i> Process Metadata
+        </button>
         <button type="button" class="btn btn-primary" onclick="openAddModal()">
             <i class="lucide-plus"></i> Add Source
         </button>
@@ -46,6 +49,38 @@
         </div>
     </div>
 </div>
+
+<!-- Metadata Enrichment -->
+<?php if (($metadataStats['total'] ?? 0) > 0): ?>
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="lucide-sparkles"></i> Programme Metadata (TMDB)</h3>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <?php if (($metadataStats['pending'] ?? 0) > 0): ?>
+                <span class="badge badge-warning"><?= (int)$metadataStats['pending'] ?> pending</span>
+            <?php endif; ?>
+            <span class="badge badge-success"><?= (int)$metadataStats['complete'] ?> enriched</span>
+            <?php if (($metadataStats['not_found'] ?? 0) > 0): ?>
+                <span class="badge badge-secondary"><?= (int)$metadataStats['not_found'] ?> not found</span>
+            <?php endif; ?>
+            <?php if (($metadataStats['errors'] ?? 0) > 0): ?>
+                <span class="badge badge-danger"><?= (int)$metadataStats['errors'] ?> errors</span>
+            <?php endif; ?>
+            <span style="color: #64748b; font-size: 12px;"><?= (int)$metadataStats['total'] ?> total titles</span>
+        </div>
+    </div>
+    <div id="metadataProgress" style="display: none; padding: 1rem 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div class="fetch-spinner"></div>
+            <span id="metadataPhaseText" style="font-weight: 500; color: #e2e8f0;">Processing metadata...</span>
+        </div>
+        <div class="fetch-progress-track">
+            <div class="fetch-progress-bar" id="metadataProgressBar" style="width: 30%; animation: metadataPulse 2s ease-in-out infinite;"></div>
+        </div>
+        <div style="margin-top: 6px; font-size: 12px; color: #64748b;" id="metadataStepInfo">Looking up titles on TMDB and downloading images...</div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Sources -->
 <div class="card">
@@ -605,6 +640,11 @@
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+@keyframes metadataPulse {
+    0%, 100% { width: 20%; opacity: 0.7; }
+    50% { width: 60%; opacity: 1; }
 }
 </style>
 
@@ -1237,6 +1277,50 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ========================================================================
+// METADATA PROCESSING
+// ========================================================================
+
+function processMetadata() {
+    const btn = document.getElementById('processMetadataBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader"></i> Processing...';
+
+    const progressEl = document.getElementById('metadataProgress');
+    if (progressEl) progressEl.style.display = 'block';
+
+    fetch('/admin/epg/process-metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ _token: csrfToken }).toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+        if (progressEl) progressEl.style.display = 'none';
+
+        if (data.success) {
+            const s = data.stats || {};
+            let msg = `Processed ${s.processed || 0} titles`;
+            if (s.found) msg += `, ${s.found} enriched`;
+            if (s.not_found) msg += `, ${s.not_found} not found`;
+            if (s.errors) msg += `, ${s.errors} errors`;
+            if (s.newly_queued) msg += ` (${s.newly_queued} newly queued)`;
+            showToast(msg, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.message || 'Processing failed', 'error');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+        if (progressEl) progressEl.style.display = 'none';
+        showToast('Network error during metadata processing', 'error');
+    });
 }
 
 // Close modals on overlay click
