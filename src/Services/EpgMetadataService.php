@@ -124,15 +124,17 @@ class EpgMetadataService
      * @param int $limit Max records to process per run (to avoid timeout)
      * @return array Stats about the processing run
      */
-    public function processAllPending(): array
+    public function processAllPending(int $batchSize = 10): array
     {
         $count = (int)($this->db->fetch(
             "SELECT COUNT(*) as cnt FROM epg_programme_metadata WHERE status = 'pending'"
         )['cnt'] ?? 0);
 
-        if ($count === 0) return ['processed' => 0, 'found' => 0, 'not_found' => 0, 'errors' => 0];
+        if ($count === 0) return ['processed' => 0, 'found' => 0, 'not_found' => 0, 'errors' => 0, 'remaining' => 0];
 
-        return $this->processPending($count);
+        $stats = $this->processPending($batchSize);
+        $stats['remaining'] = max(0, $count - $stats['processed']);
+        return $stats;
     }
 
     public function processPending(int $limit = 50): array
@@ -306,18 +308,12 @@ class EpgMetadataService
             ]
         );
 
-        // Save cast
+        // Save cast (store TMDB URLs only — skip image download to reduce CPU)
         if (!empty($match['cast'])) {
-            // Clear existing cast first
             $this->db->execute("DELETE FROM epg_programme_cast WHERE metadata_id = ?", [$record['id']]);
 
             foreach (array_slice($match['cast'], 0, 10) as $i => $castMember) {
                 $profileUrl = $castMember['profile'] ?? $castMember['profile_url'] ?? null;
-                $profileLocal = null;
-
-                if ($profileUrl) {
-                    $profileLocal = $this->processImage($profileUrl, 'cast', $record['id'] . '_' . $i, 'profile');
-                }
 
                 $this->db->execute(
                     "INSERT INTO epg_programme_cast (metadata_id, name, character_name, tmdb_person_id, profile_url, profile_image, sort_order)
@@ -328,7 +324,7 @@ class EpgMetadataService
                         $castMember['character'] ?? $castMember['character_name'] ?? null,
                         $castMember['tmdb_person_id'] ?? null,
                         $profileUrl,
-                        $profileLocal,
+                        null,
                         $i,
                     ]
                 );

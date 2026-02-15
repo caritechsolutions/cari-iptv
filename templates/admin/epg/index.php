@@ -1283,6 +1283,9 @@ function escapeHtml(text) {
 // METADATA PROCESSING
 // ========================================================================
 
+let metadataTotalProcessed = 0;
+let metadataTotalFound = 0;
+
 function processMetadata() {
     const btn = document.getElementById('processMetadataBtn');
     btn.disabled = true;
@@ -1291,6 +1294,21 @@ function processMetadata() {
     const progressEl = document.getElementById('metadataProgress');
     if (progressEl) progressEl.style.display = 'block';
 
+    metadataTotalProcessed = 0;
+    metadataTotalFound = 0;
+    processMetadataBatch();
+}
+
+function processMetadataBatch() {
+    const btn = document.getElementById('processMetadataBtn');
+    const progressEl = document.getElementById('metadataProgress');
+    const phaseText = document.getElementById('metadataPhaseText');
+    const stepInfo = document.getElementById('metadataStepInfo');
+
+    if (phaseText) phaseText.textContent = metadataTotalProcessed > 0
+        ? `Processing batch... (${metadataTotalProcessed} done so far)`
+        : 'Processing metadata...';
+
     fetch('/admin/epg/process-metadata', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1298,20 +1316,32 @@ function processMetadata() {
     })
     .then(r => r.json())
     .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
-        if (progressEl) progressEl.style.display = 'none';
-
         if (data.success) {
             const s = data.stats || {};
-            let msg = `Processed ${s.processed || 0} titles`;
-            if (s.found) msg += `, ${s.found} enriched`;
-            if (s.not_found) msg += `, ${s.not_found} not found`;
-            if (s.errors) msg += `, ${s.errors} errors`;
+            metadataTotalProcessed += (s.processed || 0);
+            metadataTotalFound += (s.found || 0);
+            const remaining = s.remaining || 0;
+
+            if (remaining > 0) {
+                if (stepInfo) stepInfo.textContent = `${metadataTotalProcessed} processed, ${remaining} remaining...`;
+                // Continue with next batch after a short pause
+                setTimeout(() => processMetadataBatch(), 500);
+                return;
+            }
+
+            // All done
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+            if (progressEl) progressEl.style.display = 'none';
+
+            let msg = `Processed ${metadataTotalProcessed} titles, ${metadataTotalFound} enriched`;
             if (s.newly_queued) msg += ` (${s.newly_queued} newly queued)`;
             showToast(msg, 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+            if (progressEl) progressEl.style.display = 'none';
             showToast(data.message || 'Processing failed', 'error');
         }
     })
