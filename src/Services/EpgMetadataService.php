@@ -124,6 +124,17 @@ class EpgMetadataService
      * @param int $limit Max records to process per run (to avoid timeout)
      * @return array Stats about the processing run
      */
+    public function processAllPending(): array
+    {
+        $count = (int)($this->db->fetch(
+            "SELECT COUNT(*) as cnt FROM epg_programme_metadata WHERE status = 'pending'"
+        )['cnt'] ?? 0);
+
+        if ($count === 0) return ['processed' => 0, 'found' => 0, 'not_found' => 0, 'errors' => 0];
+
+        return $this->processPending($count);
+    }
+
     public function processPending(int $limit = 50): array
     {
         if (!$this->metadata->isTmdbConfigured()) {
