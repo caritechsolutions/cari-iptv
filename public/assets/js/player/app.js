@@ -10,6 +10,7 @@ const CariApp = (function() {
     let pageLayouts = {}; // page_type → layout_id map from navigation
     let pages = [];
     let shakaPlayer = null;
+    let ccEnabled = localStorage.getItem('cari_cc_enabled') === '1';
     let lastManifest = null;
     let manifestTimer = null;
     let entitlements = null; // { movies: [], series: [], channels: [], packages: [] }
@@ -312,9 +313,12 @@ const CariApp = (function() {
                 }
 
                 // Re-render current page to show fresh content,
-                // but only if user is not watching a video (that would be disruptive)
+                // but not if user is watching video or live TV (that would be disruptive)
                 const path = CariRouter.getCurrentPath();
-                if (!path.startsWith('/watch/')) {
+                if (path.startsWith('/live')) {
+                    // Soft-refresh: update EPG/channel data without disrupting playback
+                    refreshLiveData();
+                } else if (!path.startsWith('/watch/')) {
                     CariRouter.refresh();
                 }
             }
@@ -330,6 +334,11 @@ const CariApp = (function() {
             // Bust API cache on every navigation so content is always fresh
             CariAPI.bustAllCaches();
             updateActiveNav(path);
+            // Clean up live TV timer when navigating away
+            if (liveEpgTimerInterval) {
+                clearInterval(liveEpgTimerInterval);
+                liveEpgTimerInterval = null;
+            }
             return true;
         });
 
@@ -338,6 +347,7 @@ const CariApp = (function() {
         CariRouter.addRoute('/movies', pageMovies);
         CariRouter.addRoute('/series', pageSeries);
         CariRouter.addRoute('/live', pageLive);
+        CariRouter.addRoute('/live/:channelId', pageLive);
         CariRouter.addRoute('/search', pageSearch);
         CariRouter.addRoute('/my-list', pageWatchlist);
         CariRouter.addRoute('/series/:id', pageSeriesDetail);
@@ -501,7 +511,7 @@ const CariApp = (function() {
                 if (isContentLocked(item)) {
                     CariRouter.navigate('/subscribe');
                 } else {
-                    CariRouter.navigate('/watch/channel/' + item.id);
+                    CariRouter.navigate('/live/' + item.id);
                 }
             } else {
                 CariUI.showDetail(item, playContent, isContentLocked(item));
@@ -1011,6 +1021,8 @@ const CariApp = (function() {
                 '<svg xmlns="http://www.w3.org/2000/svg" width="185" height="278" fill="%231e293b"><rect width="185" height="278"/><text x="92" y="150" text-anchor="middle" fill="%235a5f7a" font-family="sans-serif" font-size="48">?</text></svg>'
             );
 
+            const epg = person.epg || [];
+
             el.innerHTML = `
                 <div class="person-page">
                     <div id="personBackNav"></div>
@@ -1022,6 +1034,7 @@ const CariApp = (function() {
                             <div class="person-stats">
                                 ${person.movies.length ? '<span>' + person.movies.length + ' Movie' + (person.movies.length !== 1 ? 's' : '') + '</span>' : ''}
                                 ${person.series.length ? '<span>' + person.series.length + ' TV Show' + (person.series.length !== 1 ? 's' : '') + '</span>' : ''}
+                                ${epg.length ? '<span>' + epg.length + ' Upcoming Airing' + (epg.length !== 1 ? 's' : '') + '</span>' : ''}
                             </div>
                         </div>
                     </div>
@@ -1043,6 +1056,11 @@ const CariApp = (function() {
                         const sourceItem = castSource.item;
                         CariRouter.navigate(castSource.fromPath || '/');
                         CariUI.showDetail(sourceItem, playContent, isContentLocked(sourceItem));
+                    });
+                } else if (castSource.type === 'epg-modal') {
+                    backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to Live TV';
+                    backBtn.addEventListener('click', () => {
+                        CariRouter.navigate(castSource.fromPath || '/live');
                     });
                 } else if (castSource.type === 'page' && castSource.path) {
                     backBtn.innerHTML = '<i class="lucide-arrow-left"></i> Back to ' + CariUI.esc(castSource.title || 'Previous Page');
@@ -1069,7 +1087,61 @@ const CariApp = (function() {
                 })), 'poster', 'series');
             }
 
-            if (!person.movies.length && !person.series.length) {
+            // EPG Upcoming Airings
+            if (epg.length) {
+                const epgSection = document.createElement('div');
+                epgSection.className = 'person-epg-section';
+                epgSection.innerHTML = `<h2 class="content-row-title"><i class="lucide-tv"></i> Upcoming on TV</h2>`;
+
+                const epgList = document.createElement('div');
+                epgList.className = 'person-epg-list';
+
+                epg.forEach(item => {
+                    const startDate = new Date(item.start_time);
+                    const endDate = new Date(item.end_time);
+                    const now = new Date();
+                    const isLive = startDate <= now && endDate > now;
+                    const dateStr = startDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                    const timeStr = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const endStr = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const durationMin = Math.round((endDate - startDate) / 60000);
+
+                    const card = document.createElement('div');
+                    card.className = 'person-epg-card' + (isLive ? ' is-live' : '');
+                    card.innerHTML = `
+                        <div class="person-epg-channel">
+                            <img src="${CariUI.esc(item.channel_logo || '')}" alt="" class="person-epg-channel-logo" onerror="this.style.display='none'">
+                            <span class="person-epg-channel-name">${CariUI.esc(item.channel_name)}</span>
+                        </div>
+                        <div class="person-epg-details">
+                            <div class="person-epg-title">${CariUI.esc(item.title)}${item.year ? ' <span class="person-epg-year">(' + CariUI.esc(item.year) + ')</span>' : ''}</div>
+                            <div class="person-epg-time">
+                                ${isLive ? '<span class="person-epg-live-badge">LIVE</span>' : ''}
+                                <span>${CariUI.esc(dateStr)}</span>
+                                <span>${CariUI.esc(timeStr)} - ${CariUI.esc(endStr)}</span>
+                                <span>${durationMin} min</span>
+                            </div>
+                        </div>
+                        <button class="person-epg-tune" title="Watch on ${CariUI.esc(item.channel_name)}"><i class="lucide-play"></i></button>
+                    `;
+
+                    // Tune to channel on click
+                    card.querySelector('.person-epg-tune').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        CariRouter.navigate('/live/' + item.channel_id);
+                    });
+                    card.addEventListener('click', () => {
+                        CariRouter.navigate('/live/' + item.channel_id);
+                    });
+
+                    epgList.appendChild(card);
+                });
+
+                epgSection.appendChild(epgList);
+                filmEl.appendChild(epgSection);
+            }
+
+            if (!person.movies.length && !person.series.length && !epg.length) {
                 filmEl.innerHTML = CariUI.emptyState('lucide-film', 'No Content', 'No movies or shows found for this person on our platform.');
             }
         } catch (err) {
@@ -1080,68 +1152,938 @@ const CariApp = (function() {
 
     // ---- PAGE: Live TV ----
 
-    async function pageLive() {
+    // ---- Live TV State ----
+    let liveChannels = [];
+    let liveEpgData = {};      // channelId -> [{title, start_time, end_time, ...}]
+    let liveCategories = [];
+    let liveActiveCategory = 'all';
+    let liveActiveChannelId = null;
+    let liveEpgTimerInterval = null;
+    const REMINDERS_KEY = 'cari_epg_reminders';
+    const EPG_HOURS_VISIBLE = 8;  // wider window for scrolling past & future
+    const EPG_PX_PER_MINUTE = 7;  // pixels per minute for EPG timeline
+
+    /** Soft-refresh: re-fetch channels + EPG and re-render guide without disrupting video playback */
+    async function refreshLiveData() {
+        try {
+            const [channelsRes, catRes, epgRes] = await Promise.all([
+                CariAPI.getChannels({ limit: 200 }),
+                CariAPI.getCategories({ type: 'live' }),
+                CariAPI.getEpg()
+            ]);
+
+            liveChannels = channelsRes?.data || [];
+            liveCategories = catRes?.data || [];
+            const epgRaw = epgRes?.data || [];
+            liveEpgData = buildEpgMap(liveChannels, epgRaw);
+
+            // Re-render guide and category filters (leaves video player untouched)
+            renderCategoryFilters();
+            renderEpgGrid();
+
+            // Update the now-playing info panel for the active channel
+            if (liveActiveChannelId) {
+                const active = liveChannels.find(ch => ch.id === liveActiveChannelId);
+                if (active) {
+                    const nowPlaying = getNowPlaying(active.id);
+                    const progEl = document.getElementById('liveChannelProgram');
+                    const timeEl = document.getElementById('liveInfoTime');
+                    const descEl = document.getElementById('liveInfoDesc');
+                    if (progEl) progEl.textContent = nowPlaying ? nowPlaying.title : 'Live';
+                    if (timeEl) timeEl.textContent = nowPlaying ? formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) : '';
+                    if (descEl) {
+                        descEl.textContent = nowPlaying?.description || '';
+                        descEl.style.display = nowPlaying?.description ? '' : 'none';
+                    }
+
+                    // If video is not playing (stream died, paused, etc.), restart it
+                    const video = document.getElementById('liveVideo');
+                    if (video && (video.paused || video.ended)) {
+                        playLiveChannel(active);
+                    }
+                }
+                updateFsOverlay();
+            }
+
+            console.log('[CariApp] Live TV data refreshed (soft)');
+        } catch (err) {
+            console.error('[CariApp] Live TV soft refresh failed:', err);
+        }
+    }
+
+    function getLiveReminders() {
+        try { return JSON.parse(localStorage.getItem(REMINDERS_KEY) || '{}'); } catch { return {}; }
+    }
+    function saveLiveReminder(programmeKey, data) {
+        const r = getLiveReminders();
+        r[programmeKey] = data;
+        localStorage.setItem(REMINDERS_KEY, JSON.stringify(r));
+    }
+    function removeLiveReminder(programmeKey) {
+        const r = getLiveReminders();
+        delete r[programmeKey];
+        localStorage.setItem(REMINDERS_KEY, JSON.stringify(r));
+    }
+    function hasLiveReminder(programmeKey) {
+        return !!getLiveReminders()[programmeKey];
+    }
+
+    function generatePlaceholderEpg(channel) {
+        const programmes = [];
+        const now = new Date();
+        const startHour = new Date(now);
+        startHour.setHours(startHour.getHours() - 3, 0, 0, 0);
+        for (let h = 0; h < 27; h++) {
+            const start = new Date(startHour);
+            start.setHours(start.getHours() + h);
+            const end = new Date(start);
+            end.setHours(end.getHours() + 1);
+            programmes.push({
+                id: 'placeholder_' + channel.id + '_' + h,
+                channel_id: channel.id,
+                title: (channel.name || 'Channel') + ' Content',
+                description: 'Regular programming on ' + (channel.name || 'this channel'),
+                start_time: start.toISOString(),
+                end_time: end.toISOString(),
+                category: channel.category_name || 'General',
+                is_placeholder: true
+            });
+        }
+        return programmes;
+    }
+
+    function buildEpgMap(channels, epgRaw) {
+        const map = {};
+        channels.forEach(ch => { map[ch.id] = []; });
+        // API returns grouped format: [{channel_id, channel_name, programmes: [...]}, ...]
+        // or flat format: [{channel_id, title, start_time, ...}, ...]
+        epgRaw.forEach(item => {
+            if (item.programmes && Array.isArray(item.programmes)) {
+                // Grouped format
+                const chId = item.channel_id;
+                if (map[chId]) {
+                    item.programmes.forEach(p => {
+                        p.channel_id = chId;
+                        map[chId].push(p);
+                    });
+                }
+            } else if (map[item.channel_id]) {
+                // Flat format
+                map[item.channel_id].push(item);
+            }
+        });
+        // Fill channels that have no EPG data with placeholders
+        channels.forEach(ch => {
+            if (!map[ch.id] || map[ch.id].length === 0) {
+                map[ch.id] = generatePlaceholderEpg(ch);
+            }
+        });
+        return map;
+    }
+
+    function getFilteredChannels() {
+        if (liveActiveCategory === 'all') return liveChannels;
+        return liveChannels.filter(ch => String(ch.category_id) === String(liveActiveCategory));
+    }
+
+    function formatTime(dateStr) {
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    function getNowPlaying(channelId) {
+        const progs = liveEpgData[channelId] || [];
+        const now = Date.now();
+        return progs.find(p => new Date(p.start_time).getTime() <= now && new Date(p.end_time).getTime() > now);
+    }
+
+    async function pageLive(params) {
         const el = content();
+        const preselectedId = params?.channelId;
+
         el.innerHTML = `
-            <div class="live-layout">
-                <div class="live-player-area">
-                    <div class="live-player-container" id="livePlayerContainer">
-                        <video id="liveVideo" autoplay></video>
+            <div class="live-page">
+                <div class="live-top-section">
+                    <div class="live-player-section">
+                        <div class="live-player-container" id="livePlayerContainer">
+                            <video id="liveVideo" autoplay></video>
+                            <div class="live-player-controls">
+                                <button class="live-player-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="liveCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
+                                <button class="live-player-btn live-player-fullscreen" id="liveFullscreenBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                            </div>
+                            <div class="fs-overlay" id="fsOverlay">
+                                <div class="fs-overlay-top">
+                                    <div class="fs-overlay-channel">
+                                        <img class="fs-overlay-logo" id="fsOverlayLogo" src="" alt="" style="display:none">
+                                        <div class="fs-overlay-channel-info">
+                                            <h3 id="fsOverlayChannel">Channel</h3>
+                                            <div class="live-badge">Live</div>
+                                        </div>
+                                    </div>
+                                    <button class="fs-overlay-exit" id="fsOverlayExit" title="Exit fullscreen"><i class="lucide-minimize"></i></button>
+                                </div>
+                                <div class="fs-overlay-bottom">
+                                    <div class="fs-overlay-now">
+                                        <div class="fs-overlay-programme">
+                                            <span class="fs-overlay-label">Now</span>
+                                            <h4 id="fsOverlayTitle">Programme</h4>
+                                            <p class="fs-overlay-time" id="fsOverlayTime"></p>
+                                        </div>
+                                        <div class="fs-overlay-progress" id="fsOverlayProgress">
+                                            <div class="fs-overlay-progress-fill" id="fsOverlayProgressFill"></div>
+                                        </div>
+                                    </div>
+                                    <div class="fs-overlay-next" id="fsOverlayNext"></div>
+                                    <div class="fs-overlay-nav">
+                                        <button class="fs-overlay-nav-btn" id="fsChPrev" title="Previous channel"><i class="lucide-chevron-up"></i></button>
+                                        <span class="fs-overlay-nav-label" id="fsChNumber"></span>
+                                        <button class="fs-overlay-nav-btn" id="fsChNext" title="Next channel"><i class="lucide-chevron-down"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="live-channel-info">
-                        <div class="live-badge">Live</div>
-                        <h3 class="live-channel-title" id="liveChannelTitle">Select a channel</h3>
-                        <p class="live-channel-program" id="liveChannelProgram">Choose from the list to start watching</p>
+                    <div class="live-info-panel" id="liveInfoPanel">
+                        <div class="live-info-channel">
+                            <img class="live-info-logo" id="liveNowLogo" src="" alt="" style="display:none">
+                            <div class="live-info-channel-name">
+                                <h3 id="liveChannelTitle">Select a channel</h3>
+                                <div class="live-badge">Live</div>
+                            </div>
+                        </div>
+                        <div class="live-info-programme" id="liveInfoProgramme">
+                            <div class="live-info-now" id="liveInfoNow">
+                                <span class="live-info-label">Now Playing</span>
+                                <h4 id="liveChannelProgram">Choose from the guide below</h4>
+                                <p class="live-info-time" id="liveInfoTime"></p>
+                                <div class="live-info-progress" id="liveInfoProgress" style="display:none">
+                                    <div class="live-info-progress-fill" id="liveInfoProgressFill"></div>
+                                </div>
+                            </div>
+                            <div class="live-info-desc" id="liveInfoDesc"></div>
+                            <button class="live-info-more-btn" id="liveInfoMoreBtn" style="display:none"><i class="lucide-info"></i> More Info</button>
+                            <div class="live-info-next" id="liveInfoNext"></div>
+                        </div>
                     </div>
                 </div>
-                <div class="live-channel-list">
-                    <div class="live-channel-list-header">Channels</div>
-                    <div id="liveChannelItems">${CariUI.loading()}</div>
+                <div class="live-guide-section">
+                    <div class="live-guide-header">
+                        <h2 class="live-guide-title"><i class="lucide-tv"></i> TV Guide</h2>
+                        <div class="live-category-filters" id="liveCategoryFilters">${CariUI.loading()}</div>
+                        <div class="epg-nav-controls">
+                            <button class="epg-nav-btn" id="epgNavPrev" title="Scroll back"><i class="lucide-chevron-left"></i></button>
+                            <button class="epg-nav-btn epg-nav-now" id="epgNavNow" title="Jump to now">Now</button>
+                            <button class="epg-nav-btn" id="epgNavNext" title="Scroll forward"><i class="lucide-chevron-right"></i></button>
+                        </div>
+                    </div>
+                    <div class="epg-grid-container" id="epgGridContainer">
+                        ${CariUI.loading()}
+                    </div>
                 </div>
             </div>
         `;
 
         try {
-            const res = await CariAPI.getChannels({ limit: 200 });
-            const channels = res?.data || [];
-            const list = document.getElementById('liveChannelItems');
+            const [channelsRes, catRes, epgRes] = await Promise.all([
+                CariAPI.getChannels({ limit: 200 }),
+                CariAPI.getCategories({ type: 'live' }),
+                CariAPI.getEpg()
+            ]);
 
-            if (!channels.length) {
-                list.innerHTML = CariUI.emptyState('lucide-tv', 'No Channels', 'No live channels available.');
+            liveChannels = channelsRes?.data || [];
+            liveCategories = catRes?.data || [];
+            const epgRaw = epgRes?.data || [];
+            liveEpgData = buildEpgMap(liveChannels, epgRaw);
+
+            if (!liveChannels.length) {
+                document.getElementById('epgGridContainer').innerHTML =
+                    CariUI.emptyState('lucide-tv', 'No Channels', 'No live channels available.');
                 return;
             }
 
-            list.innerHTML = '';
-            channels.forEach(ch => {
-                const item = document.createElement('div');
-                item.className = 'live-channel-item';
-                item.dataset.id = ch.id;
-                item.innerHTML = `
-                    <img src="${CariUI.esc(ch.logo_url || ch.logo || '')}" alt="" onerror="this.style.display='none'">
-                    <div class="live-channel-item-info">
-                        <div class="live-channel-item-name">${CariUI.esc(ch.name)}</div>
-                        <div class="live-channel-item-program">${CariUI.esc(ch.category_name || '')}</div>
-                    </div>
-                `;
-                item.addEventListener('click', () => playLiveChannel(ch, channels));
-                list.appendChild(item);
-            });
+            renderCategoryFilters();
+            renderEpgGrid();
+            setupEpgNavControls();
+            setupFullscreenButton();
 
-            // Auto-play first channel
-            if (channels[0]) playLiveChannel(channels[0], channels);
-        } catch {
-            document.getElementById('liveChannelItems').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load channels.');
+            // CC toggle for live TV
+            const liveCCBtn = document.getElementById('liveCCBtn');
+            if (liveCCBtn) liveCCBtn.addEventListener('click', toggleCC);
+
+            // Auto-play preselected or first channel
+            const startChannel = preselectedId
+                ? liveChannels.find(ch => String(ch.id) === String(preselectedId))
+                : liveChannels[0];
+            if (startChannel) playLiveChannel(startChannel);
+
+            // Update time indicator periodically
+            if (liveEpgTimerInterval) clearInterval(liveEpgTimerInterval);
+            liveEpgTimerInterval = setInterval(() => {
+                updateEpgTimeIndicator();
+                checkReminders();
+            }, 30000);
+
+        } catch (err) {
+            document.getElementById('epgGridContainer').innerHTML =
+                CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load live TV data.');
         }
     }
 
-    async function playLiveChannel(channel, allChannels) {
-        document.getElementById('liveChannelTitle').textContent = channel.name || '';
-        document.getElementById('liveChannelProgram').textContent = channel.category_name || 'Live';
+    function renderCategoryFilters() {
+        const container = document.getElementById('liveCategoryFilters');
+        if (!container) return;
 
-        // Update active state
-        document.querySelectorAll('.live-channel-item').forEach(el => {
-            el.classList.toggle('active', el.dataset.id == channel.id);
+        let html = `<button class="filter-chip ${liveActiveCategory === 'all' ? 'active' : ''}" data-cat="all">All</button>`;
+        liveCategories.forEach(cat => {
+            html += `<button class="filter-chip ${String(liveActiveCategory) === String(cat.id) ? 'active' : ''}" data-cat="${cat.id}">${CariUI.esc(cat.name)}</button>`;
         });
+        container.innerHTML = html;
+
+        container.querySelectorAll('.filter-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                liveActiveCategory = btn.dataset.cat;
+                renderCategoryFilters();
+                renderEpgGrid();
+            });
+        });
+    }
+
+    function renderEpgGrid() {
+        const container = document.getElementById('epgGridContainer');
+        if (!container) return;
+
+        const channels = getFilteredChannels();
+        if (!channels.length) {
+            container.innerHTML = CariUI.emptyState('lucide-tv', 'No Channels', 'No channels in this category.');
+            return;
+        }
+
+        const now = new Date();
+        // EPG window: start 2 hours ago, show EPG_HOURS_VISIBLE hours total
+        const windowStart = new Date(now);
+        windowStart.setHours(windowStart.getHours() - 2);
+        windowStart.setMinutes(windowStart.getMinutes() < 30 ? 0 : 30, 0, 0);
+        const windowEnd = new Date(windowStart);
+        windowEnd.setMinutes(windowEnd.getMinutes() + EPG_HOURS_VISIBLE * 60);
+        const windowMs = windowEnd.getTime() - windowStart.getTime();
+        const totalMinutes = windowMs / 60000;
+        const timelineWidthPx = totalMinutes * EPG_PX_PER_MINUTE;
+
+        // Build time slots (every 30 minutes)
+        const timeSlots = [];
+        const slotTime = new Date(windowStart);
+        while (slotTime < windowEnd) {
+            timeSlots.push(new Date(slotTime));
+            slotTime.setMinutes(slotTime.getMinutes() + 30);
+        }
+
+        // Time header — fixed pixel widths for scrolling
+        let timeHeaderHtml = `<div class="epg-time-header" id="epgTimeHeader"><div class="epg-channel-col"></div><div class="epg-timeline-header" style="width:${timelineWidthPx}px;min-width:${timelineWidthPx}px">`;
+        timeSlots.forEach(t => {
+            const leftPx = ((t.getTime() - windowStart.getTime()) / windowMs) * timelineWidthPx;
+            timeHeaderHtml += `<div class="epg-time-slot" style="left:${leftPx.toFixed(1)}px">${formatTime(t.toISOString())}</div>`;
+        });
+        timeHeaderHtml += '</div></div>';
+
+        // Channel rows
+        let rowsHtml = '';
+        channels.forEach(ch => {
+            const progs = liveEpgData[ch.id] || [];
+            const isActive = ch.id === liveActiveChannelId;
+
+            let progsHtml = '';
+            progs.forEach(p => {
+                const pStart = new Date(p.start_time).getTime();
+                const pEnd = new Date(p.end_time).getTime();
+                const wStart = windowStart.getTime();
+                const wEnd = windowEnd.getTime();
+
+                // Skip programmes outside the window
+                if (pEnd <= wStart || pStart >= wEnd) return;
+
+                const clampStart = Math.max(pStart, wStart);
+                const clampEnd = Math.min(pEnd, wEnd);
+                const leftPx = ((clampStart - wStart) / windowMs) * timelineWidthPx;
+                const widthPx = ((clampEnd - clampStart) / windowMs) * timelineWidthPx;
+
+                if (widthPx < 3) return;
+
+                const isNow = pStart <= now.getTime() && pEnd > now.getTime();
+                const isPast = pEnd <= now.getTime();
+                const isFuture = pStart > now.getTime();
+                let progClass = 'epg-programme';
+                if (isNow) progClass += ' epg-programme-now';
+                if (isPast) progClass += ' epg-programme-past';
+                if (isFuture) progClass += ' epg-programme-future';
+
+                // Progress bar for current programme
+                let progressHtml = '';
+                if (isNow) {
+                    const elapsed = now.getTime() - pStart;
+                    const duration = pEnd - pStart;
+                    const pct = Math.min(100, (elapsed / duration) * 100);
+                    progressHtml = `<div class="epg-progress"><div class="epg-progress-fill" style="width:${pct.toFixed(1)}%"></div></div>`;
+                }
+
+                const programmeKey = ch.id + '_' + p.start_time;
+                const hasReminder = isFuture && hasLiveReminder(programmeKey);
+
+                progsHtml += `
+                    <div class="${progClass}" style="left:${leftPx.toFixed(1)}px;width:${widthPx.toFixed(1)}px"
+                         data-channel-id="${ch.id}" data-programme='${JSON.stringify({id: p.id, title: p.title, description: p.description || '', start_time: p.start_time, end_time: p.end_time, category: p.category || '', is_placeholder: p.is_placeholder || false}).replace(/'/g, '&#39;')}'
+                         title="${CariUI.esc(p.title)} (${formatTime(p.start_time)} - ${formatTime(p.end_time)})">
+                        <span class="epg-programme-title">${CariUI.esc(p.title)}</span>
+                        <span class="epg-programme-time">${formatTime(p.start_time)}</span>
+                        ${hasReminder ? '<i class="lucide-bell epg-reminder-icon"></i>' : ''}
+                        ${progressHtml}
+                    </div>
+                `;
+            });
+
+            rowsHtml += `
+                <div class="epg-row ${isActive ? 'epg-row-active' : ''}" data-channel-id="${ch.id}">
+                    <div class="epg-channel-col" data-channel-id="${ch.id}">
+                        <img src="${CariUI.esc(ch.logo_url || ch.logo || '')}" alt="" onerror="this.style.display='none'">
+                        <div class="epg-channel-name">${CariUI.esc(ch.name)}</div>
+                    </div>
+                    <div class="epg-timeline-row" style="width:${timelineWidthPx}px;min-width:${timelineWidthPx}px">
+                        ${progsHtml}
+                    </div>
+                </div>
+            `;
+        });
+
+        // Now-line position (px-based)
+        const nowPx = ((now.getTime() - windowStart.getTime()) / windowMs) * timelineWidthPx;
+
+        container.innerHTML = `
+            ${timeHeaderHtml}
+            <div class="epg-grid-body" id="epgGridBody">
+                <div class="epg-now-line" id="epgNowLine" style="left:calc(var(--epg-channel-w) + ${nowPx.toFixed(1)}px)"></div>
+                ${rowsHtml}
+            </div>
+        `;
+
+        // Scroll to now (center "now" in viewport)
+        // epg-grid-container is now the single scroll container
+        if (container) {
+            const scrollTarget = nowPx - container.clientWidth / 3;
+            container.scrollLeft = Math.max(0, scrollTarget);
+        }
+
+        // Event listeners
+        container.querySelectorAll('.epg-channel-col[data-channel-id]').forEach(col => {
+            col.addEventListener('click', () => {
+                const chId = parseInt(col.dataset.channelId);
+                const ch = liveChannels.find(c => c.id === chId);
+                if (ch) playLiveChannel(ch);
+            });
+        });
+
+        container.querySelectorAll('.epg-programme').forEach(prog => {
+            prog.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const data = JSON.parse(prog.dataset.programme);
+                const chId = parseInt(prog.dataset.channelId);
+                const ch = liveChannels.find(c => c.id === chId);
+                showProgrammeInfo(data, ch);
+            });
+        });
+    }
+
+    function scrollEpg(direction) {
+        const scrollContainer = document.getElementById('epgGridContainer');
+        if (!scrollContainer) return;
+        const scrollAmount = 60 * EPG_PX_PER_MINUTE; // scroll 1 hour at a time
+
+        if (direction === 'prev') {
+            scrollContainer.scrollLeft -= scrollAmount;
+        } else if (direction === 'next') {
+            scrollContainer.scrollLeft += scrollAmount;
+        } else if (direction === 'now') {
+            const nowLine = document.getElementById('epgNowLine');
+            if (nowLine) {
+                const nowLeft = parseFloat(nowLine.style.left.replace(/calc\(var\(--epg-channel-w\) \+ /, '').replace('px)', ''));
+                scrollContainer.scrollLeft = Math.max(0, nowLeft - scrollContainer.clientWidth / 3);
+            }
+        }
+    }
+
+    function setupEpgNavControls() {
+        const prevBtn = document.getElementById('epgNavPrev');
+        const nextBtn = document.getElementById('epgNavNext');
+        const nowBtn = document.getElementById('epgNavNow');
+
+        if (prevBtn) prevBtn.onclick = () => scrollEpg('prev');
+        if (nextBtn) nextBtn.onclick = () => scrollEpg('next');
+        if (nowBtn) nowBtn.onclick = () => scrollEpg('now');
+    }
+
+    let fsOverlayTimer = null;
+
+    function setupFullscreenButton() {
+        const btn = document.getElementById('liveFullscreenBtn');
+        const playerContainer = document.getElementById('livePlayerContainer');
+        const overlay = document.getElementById('fsOverlay');
+        const exitBtn = document.getElementById('fsOverlayExit');
+        const chPrevBtn = document.getElementById('fsChPrev');
+        const chNextBtn = document.getElementById('fsChNext');
+        if (!btn || !playerContainer) return;
+
+        btn.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                playerContainer.requestFullscreen().catch(() => {});
+            }
+        });
+
+        if (exitBtn) {
+            exitBtn.addEventListener('click', () => {
+                if (document.fullscreenElement) document.exitFullscreen();
+            });
+        }
+
+        // Channel up/down in fullscreen
+        if (chPrevBtn) {
+            chPrevBtn.addEventListener('click', () => {
+                switchChannel(-1);
+                showFsOverlay();
+            });
+        }
+        if (chNextBtn) {
+            chNextBtn.addEventListener('click', () => {
+                switchChannel(1);
+                showFsOverlay();
+            });
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            const icon = btn.querySelector('i');
+            if (document.fullscreenElement) {
+                if (icon) icon.className = 'lucide-minimize';
+                updateFsOverlay();
+                showFsOverlay();
+            } else {
+                if (icon) icon.className = 'lucide-maximize';
+                hideFsOverlay();
+            }
+        });
+
+        // Show overlay on mouse movement in fullscreen
+        playerContainer.addEventListener('mousemove', () => {
+            if (document.fullscreenElement) showFsOverlay();
+        });
+
+        // Keyboard controls in fullscreen
+        document.addEventListener('keydown', (e) => {
+            if (!document.fullscreenElement) return;
+            if (e.key === 'ArrowUp') { switchChannel(-1); showFsOverlay(); }
+            else if (e.key === 'ArrowDown') { switchChannel(1); showFsOverlay(); }
+            else if (e.key === 'c' || e.key === 'C') { toggleCC(); }
+            else if (e.key === 'Escape') { /* browser handles exit */ }
+        });
+    }
+
+    function showFsOverlay() {
+        const overlay = document.getElementById('fsOverlay');
+        if (!overlay) return;
+        overlay.classList.add('visible');
+        clearTimeout(fsOverlayTimer);
+        fsOverlayTimer = setTimeout(() => {
+            overlay.classList.remove('visible');
+        }, 4000);
+    }
+
+    function hideFsOverlay() {
+        const overlay = document.getElementById('fsOverlay');
+        if (!overlay) return;
+        overlay.classList.remove('visible');
+        clearTimeout(fsOverlayTimer);
+    }
+
+    function updateFsOverlay() {
+        if (!liveActiveChannelId) return;
+        const channel = liveChannels.find(c => c.id === liveActiveChannelId);
+        if (!channel) return;
+
+        const channels = getFilteredChannels();
+        const chIndex = channels.findIndex(c => c.id === liveActiveChannelId);
+
+        const logoEl = document.getElementById('fsOverlayLogo');
+        const channelEl = document.getElementById('fsOverlayChannel');
+        const titleEl = document.getElementById('fsOverlayTitle');
+        const timeEl = document.getElementById('fsOverlayTime');
+        const progressFill = document.getElementById('fsOverlayProgressFill');
+        const nextEl = document.getElementById('fsOverlayNext');
+        const chNumEl = document.getElementById('fsChNumber');
+
+        if (channelEl) channelEl.textContent = channel.name || '';
+        if (logoEl) {
+            const src = channel.logo_url || channel.logo || '';
+            if (src) { logoEl.src = src; logoEl.style.display = ''; }
+            else { logoEl.style.display = 'none'; }
+        }
+        if (chNumEl) chNumEl.textContent = (chIndex + 1) + ' / ' + channels.length;
+
+        const nowPlaying = getNowPlaying(channel.id);
+        if (titleEl) titleEl.textContent = nowPlaying ? nowPlaying.title : 'Live';
+        if (timeEl) timeEl.textContent = nowPlaying ? formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) : '';
+
+        if (progressFill && nowPlaying) {
+            const now = Date.now();
+            const pStart = new Date(nowPlaying.start_time).getTime();
+            const pEnd = new Date(nowPlaying.end_time).getTime();
+            const pct = Math.min(100, ((now - pStart) / (pEnd - pStart)) * 100);
+            progressFill.style.width = pct.toFixed(1) + '%';
+        } else if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+
+        if (nextEl) {
+            const progs = liveEpgData[channel.id] || [];
+            const now = Date.now();
+            const next = progs.find(p => new Date(p.start_time).getTime() > now);
+            if (next) {
+                nextEl.innerHTML = `<span class="fs-overlay-label">Next</span> <span class="fs-overlay-next-title">${CariUI.esc(next.title)}</span> <span class="fs-overlay-next-time">${formatTime(next.start_time)}</span>`;
+                nextEl.style.display = '';
+            } else {
+                nextEl.style.display = 'none';
+            }
+        }
+    }
+
+    function switchChannel(direction) {
+        const channels = getFilteredChannels();
+        if (!channels.length) return;
+        const currentIndex = channels.findIndex(c => c.id === liveActiveChannelId);
+        let newIndex = currentIndex + direction;
+        if (newIndex < 0) newIndex = channels.length - 1;
+        if (newIndex >= channels.length) newIndex = 0;
+        playLiveChannel(channels[newIndex]);
+    }
+
+    function updateEpgTimeIndicator() {
+        const nowLine = document.getElementById('epgNowLine');
+        if (!nowLine) return;
+        // Recalculate now position (px-based)
+        const now = new Date();
+        const windowStart = new Date(now);
+        windowStart.setHours(windowStart.getHours() - 2);
+        windowStart.setMinutes(windowStart.getMinutes() < 30 ? 0 : 30, 0, 0);
+        const windowEnd = new Date(windowStart);
+        windowEnd.setMinutes(windowEnd.getMinutes() + EPG_HOURS_VISIBLE * 60);
+        const windowMs = windowEnd.getTime() - windowStart.getTime();
+        const totalMinutes = windowMs / 60000;
+        const timelineWidthPx = totalMinutes * EPG_PX_PER_MINUTE;
+        const nowPx = ((now.getTime() - windowStart.getTime()) / windowMs) * timelineWidthPx;
+        nowLine.style.left = `calc(var(--epg-channel-w) + ${nowPx.toFixed(1)}px)`;
+    }
+
+    function checkReminders() {
+        const reminders = getLiveReminders();
+        const now = Date.now();
+        Object.entries(reminders).forEach(([key, data]) => {
+            const startTime = new Date(data.start_time).getTime();
+            // Notify 1 minute before
+            if (startTime - now <= 60000 && startTime - now > 0) {
+                showReminderNotification(data);
+                removeLiveReminder(key);
+                renderEpgGrid();
+            }
+            // Clean up past reminders
+            if (startTime < now - 60000) {
+                removeLiveReminder(key);
+            }
+        });
+    }
+
+    function showReminderNotification(data) {
+        const toast = document.createElement('div');
+        toast.className = 'epg-reminder-toast';
+        toast.innerHTML = `
+            <i class="lucide-bell"></i>
+            <div>
+                <strong>${CariUI.esc(data.title)}</strong> is starting now
+                <div class="epg-reminder-toast-channel">${CariUI.esc(data.channel_name || '')}</div>
+            </div>
+            <button class="epg-reminder-toast-tune" data-channel-id="${data.channel_id}">Watch</button>
+            <button class="epg-reminder-toast-close">&times;</button>
+        `;
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => toast.classList.add('show'));
+
+        toast.querySelector('.epg-reminder-toast-tune').addEventListener('click', () => {
+            const ch = liveChannels.find(c => c.id === data.channel_id);
+            if (ch) playLiveChannel(ch);
+            toast.remove();
+        });
+        toast.querySelector('.epg-reminder-toast-close').addEventListener('click', () => toast.remove());
+        setTimeout(() => toast.remove(), 15000);
+    }
+
+    function showProgrammeInfo(programme, channel) {
+        if (programme.is_placeholder) return;
+
+        const now = Date.now();
+        const pStart = new Date(programme.start_time).getTime();
+        const pEnd = new Date(programme.end_time).getTime();
+        const isNow = pStart <= now && pEnd > now;
+        const isFuture = pStart > now;
+        const programmeKey = (channel?.id || '') + '_' + programme.start_time;
+        const hasReminder = hasLiveReminder(programmeKey);
+
+        // Duration in minutes
+        const durationMin = Math.round((pEnd - pStart) / 60000);
+
+        let actionsHtml = '';
+        if (isNow && channel) {
+            actionsHtml += `<button class="btn btn-primary epg-modal-btn" id="epgModalWatch"><i class="lucide-play"></i> Watch Now</button>`;
+        }
+        if (isFuture) {
+            if (hasReminder) {
+                actionsHtml += `<button class="btn btn-secondary epg-modal-btn" id="epgModalReminder"><i class="lucide-bell-off"></i> Remove Reminder</button>`;
+            } else {
+                actionsHtml += `<button class="btn btn-primary epg-modal-btn" id="epgModalReminder"><i class="lucide-bell"></i> Set Reminder</button>`;
+            }
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'epg-modal-overlay';
+        overlay.innerHTML = `
+            <div class="epg-modal epg-modal-enhanced">
+                <button class="epg-modal-close" id="epgModalClose"><i class="lucide-x"></i></button>
+                <div class="epg-modal-backdrop" id="epgModalBackdrop"></div>
+                <div class="epg-modal-content">
+                    <div class="epg-modal-top">
+                        <div class="epg-modal-poster" id="epgModalPoster"></div>
+                        <div class="epg-modal-info">
+                            <div class="epg-modal-header">
+                                ${channel ? `<img src="${CariUI.esc(channel.logo_url || channel.logo || '')}" alt="" class="epg-modal-logo" onerror="this.style.display='none'">` : ''}
+                                <div>
+                                    <h3>${CariUI.esc(programme.title)}</h3>
+                                    <div class="epg-modal-meta">
+                                        ${channel ? '<span>' + CariUI.esc(channel.name) + '</span>' : ''}
+                                        <span>${formatTime(programme.start_time)} - ${formatTime(programme.end_time)}</span>
+                                        <span>${durationMin} min</span>
+                                        ${programme.category ? '<span>' + CariUI.esc(programme.category) + '</span>' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="epg-modal-tmdb-meta" id="epgModalTmdbMeta"></div>
+                            <p class="epg-modal-desc" id="epgModalDesc">${programme.description ? CariUI.esc(programme.description) : ''}</p>
+                            <div class="epg-modal-actions">${actionsHtml}</div>
+                        </div>
+                    </div>
+                    <div class="epg-modal-cast" id="epgModalCast"></div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('show'));
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+        document.getElementById('epgModalClose').addEventListener('click', () => overlay.remove());
+
+        const watchBtn = document.getElementById('epgModalWatch');
+        if (watchBtn && channel) {
+            watchBtn.addEventListener('click', () => {
+                playLiveChannel(channel);
+                overlay.remove();
+            });
+        }
+
+        const reminderBtn = document.getElementById('epgModalReminder');
+        if (reminderBtn) {
+            reminderBtn.addEventListener('click', () => {
+                if (hasReminder) {
+                    removeLiveReminder(programmeKey);
+                } else {
+                    saveLiveReminder(programmeKey, {
+                        title: programme.title,
+                        start_time: programme.start_time,
+                        channel_id: channel?.id,
+                        channel_name: channel?.name
+                    });
+                }
+                overlay.remove();
+                renderEpgGrid();
+            });
+        }
+
+        // Fetch TMDB metadata asynchronously (with channel + description context)
+        fetchProgrammeMetadata(programme.title, overlay, programme.description, channel?.id);
+    }
+
+    async function fetchProgrammeMetadata(title, overlay, description, channelId) {
+        const posterEl = overlay.querySelector('#epgModalPoster');
+        const backdropEl = overlay.querySelector('#epgModalBackdrop');
+        const descEl = overlay.querySelector('#epgModalDesc');
+        const tmdbMetaEl = overlay.querySelector('#epgModalTmdbMeta');
+        const castEl = overlay.querySelector('#epgModalCast');
+
+        try {
+            const res = await CariAPI.getProgrammeInfo(title, description, channelId);
+            const match = res?.data?.match;
+
+            if (!match) return;
+
+            // Backdrop
+            if (match.backdrop && backdropEl) {
+                backdropEl.style.backgroundImage = `url(${match.backdrop})`;
+                backdropEl.classList.add('has-image');
+            }
+
+            // Poster
+            if (match.poster && posterEl) {
+                posterEl.innerHTML = `<img src="${CariUI.esc(match.poster)}" alt="" onerror="this.parentElement.style.display='none'">`;
+                posterEl.classList.add('has-image');
+            }
+
+            // TMDB metadata badges (rating, year, genres)
+            if (tmdbMetaEl) {
+                let metaHtml = '';
+                if (match.vote_average) {
+                    metaHtml += `<span class="epg-modal-rating"><i class="lucide-star"></i> ${Number(match.vote_average).toFixed(1)}</span>`;
+                }
+                if (match.year) {
+                    metaHtml += `<span>${CariUI.esc(match.year)}</span>`;
+                }
+                const mediaType = res?.data?.media_type;
+                if (mediaType) {
+                    metaHtml += `<span class="epg-modal-type">${mediaType === 'movie' ? 'Movie' : 'TV Show'}</span>`;
+                }
+                // Genres from detailed result
+                if (match.genres && Array.isArray(match.genres)) {
+                    const genreNames = match.genres.map(g => typeof g === 'string' ? g : g.name).filter(Boolean);
+                    if (genreNames.length) {
+                        metaHtml += `<span>${CariUI.esc(genreNames.slice(0, 3).join(', '))}</span>`;
+                    }
+                }
+                if (match.number_of_seasons) {
+                    metaHtml += `<span>${match.number_of_seasons} Season${match.number_of_seasons > 1 ? 's' : ''}</span>`;
+                }
+                if (match.runtime) {
+                    metaHtml += `<span>${match.runtime} min</span>`;
+                }
+                tmdbMetaEl.innerHTML = metaHtml;
+            }
+
+            // Overview (prefer TMDB if EPG description is empty or short)
+            const tmdbOverview = match.overview || match.synopsis || '';
+            if (tmdbOverview && descEl) {
+                const currentDesc = descEl.textContent.trim();
+                if (!currentDesc || currentDesc.length < tmdbOverview.length) {
+                    descEl.textContent = tmdbOverview;
+                }
+            }
+
+            // Cast — map TMDB field names to what renderCastRow expects
+            if (match.cast && match.cast.length && castEl) {
+                const mappedCast = match.cast.map(c => ({
+                    name: c.name,
+                    character_name: c.character_name || c.character || '',
+                    profile_image: c.profile_image || c.profile || c.profile_url || '',
+                    tmdb_person_id: c.tmdb_person_id || '',
+                }));
+                CariUI.renderCastRow(castEl, mappedCast, { type: 'epg-modal', fromPath: CariRouter.getCurrentPath() });
+            }
+
+            // Directors
+            if (match.directors && match.directors.length && castEl) {
+                const dirEl = document.createElement('div');
+                dirEl.className = 'epg-modal-directors';
+                dirEl.innerHTML = `<span class="epg-modal-director-label">Director:</span> ${match.directors.map(d => CariUI.esc(typeof d === 'string' ? d : d.name)).join(', ')}`;
+                castEl.insertBefore(dirEl, castEl.firstChild);
+            }
+        } catch (err) {
+            console.warn('[CariApp] Programme metadata fetch failed:', err);
+        }
+    }
+
+    async function playLiveChannel(channel) {
+        liveActiveChannelId = channel.id;
+
+        // Update URL to preserve channel across refreshes (replaceState to avoid history spam)
+        history.replaceState(null, '', '/live/' + channel.id);
+
+        // Update channel info in side panel
+        const titleEl = document.getElementById('liveChannelTitle');
+        const progEl = document.getElementById('liveChannelProgram');
+        const logoEl = document.getElementById('liveNowLogo');
+        const timeEl = document.getElementById('liveInfoTime');
+        const progressEl = document.getElementById('liveInfoProgress');
+        const progressFillEl = document.getElementById('liveInfoProgressFill');
+        const descEl = document.getElementById('liveInfoDesc');
+        const nextEl = document.getElementById('liveInfoNext');
+
+        if (titleEl) titleEl.textContent = channel.name || '';
+        if (logoEl) {
+            const src = channel.logo_url || channel.logo || '';
+            if (src) { logoEl.src = src; logoEl.style.display = ''; }
+            else { logoEl.style.display = 'none'; }
+        }
+
+        const nowPlaying = getNowPlaying(channel.id);
+        if (progEl) {
+            progEl.textContent = nowPlaying ? nowPlaying.title : 'Live';
+        }
+        if (timeEl) {
+            timeEl.textContent = nowPlaying ? formatTime(nowPlaying.start_time) + ' - ' + formatTime(nowPlaying.end_time) : '';
+        }
+
+        // Progress bar for current programme
+        if (progressEl && progressFillEl && nowPlaying) {
+            const now = Date.now();
+            const pStart = new Date(nowPlaying.start_time).getTime();
+            const pEnd = new Date(nowPlaying.end_time).getTime();
+            const pct = Math.min(100, ((now - pStart) / (pEnd - pStart)) * 100);
+            progressFillEl.style.width = pct.toFixed(1) + '%';
+            progressEl.style.display = '';
+        } else if (progressEl) {
+            progressEl.style.display = 'none';
+        }
+
+        // Description
+        if (descEl) {
+            descEl.textContent = nowPlaying?.description || '';
+            descEl.style.display = nowPlaying?.description ? '' : 'none';
+        }
+
+        // Show next up
+        if (nextEl) {
+            const progs = liveEpgData[channel.id] || [];
+            const now = Date.now();
+            const next = progs.find(p => new Date(p.start_time).getTime() > now);
+            if (next) {
+                nextEl.innerHTML = `<div class="live-info-next-header"><span class="live-info-label">Up Next</span><span class="live-info-next-time">${formatTime(next.start_time)}</span></div><span class="live-info-next-title">${CariUI.esc(next.title)}</span>`;
+                nextEl.style.display = '';
+            } else {
+                nextEl.style.display = 'none';
+            }
+        }
+
+        // "More Info" button — show when playing a programme with real EPG data
+        const moreBtn = document.getElementById('liveInfoMoreBtn');
+        if (moreBtn) {
+            if (nowPlaying && !nowPlaying.is_placeholder) {
+                moreBtn.style.display = '';
+                moreBtn.onclick = () => showProgrammeInfo(nowPlaying, channel);
+            } else {
+                moreBtn.style.display = 'none';
+            }
+        }
+
+        // Highlight active row in EPG
+        document.querySelectorAll('.epg-row').forEach(row => {
+            row.classList.toggle('epg-row-active', row.dataset.channelId == channel.id);
+        });
+
+        // Update fullscreen overlay if active
+        updateFsOverlay();
 
         // Play stream
         const video = document.getElementById('liveVideo');
@@ -1151,7 +2093,7 @@ const CariApp = (function() {
             await initShakaPlayer(video, url);
         } else if (url) {
             video.src = url;
-            video.play().catch(() => {});
+            await autoplayWithFallback(video);
         }
     }
 
@@ -1998,6 +2940,7 @@ const CariApp = (function() {
             <div class="player-page">
                 <div class="player-container" id="playerContainer">
                     <video id="mainVideo" autoplay controls></video>
+                    <button class="vod-cc-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
                 </div>
                 <div class="player-details" id="playerDetails">${CariUI.loading()}</div>
             </div>
@@ -2008,8 +2951,9 @@ const CariApp = (function() {
             let displayTitle = '';
             let displayMeta = '';
             if (type === 'channel') {
-                const res = await CariAPI.getChannel(id);
-                item = res?.data;
+                // Redirect channels to the live TV page
+                CariRouter.navigate('/live/' + id);
+                return;
             } else if (type === 'episode') {
                 const res = await CariAPI.getEpisode(id);
                 item = res?.data;
@@ -2060,6 +3004,10 @@ const CariApp = (function() {
                 video.play().catch(() => {});
             }
 
+            // CC toggle for VOD
+            const vodCCBtn = document.getElementById('vodCCBtn');
+            if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
+
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
                 setupProgressTracking(video, type === 'episode' ? 'episode' : 'movie', item.id);
@@ -2093,6 +3041,47 @@ const CariApp = (function() {
 
     // ---- Shaka Player ----
 
+    /**
+     * Try to autoplay; if browser blocks unmuted autoplay, mute and retry,
+     * then show an unmute button so the user can restore audio with one tap.
+     */
+    async function autoplayWithFallback(videoEl) {
+        try {
+            await videoEl.play();
+        } catch (e) {
+            // Autoplay blocked — mute and retry
+            videoEl.muted = true;
+            try {
+                await videoEl.play();
+                showUnmutePrompt(videoEl);
+            } catch (e2) {
+                console.warn('[CariApp] Autoplay failed even muted:', e2);
+            }
+        }
+    }
+
+    function showUnmutePrompt(videoEl) {
+        // Avoid duplicates
+        const existing = document.getElementById('unmutePrompt');
+        if (existing) existing.remove();
+
+        const container = videoEl.closest('.live-player-container') || videoEl.parentElement;
+        const btn = document.createElement('button');
+        btn.id = 'unmutePrompt';
+        btn.className = 'unmute-prompt';
+        btn.innerHTML = '<i class="lucide-volume-x"></i> Tap to unmute';
+        btn.addEventListener('click', () => {
+            videoEl.muted = false;
+            btn.remove();
+        });
+        container.appendChild(btn);
+
+        // Also remove on any user interaction with the video
+        videoEl.addEventListener('volumechange', () => {
+            if (!videoEl.muted) btn.remove();
+        }, { once: true });
+    }
+
     async function initShakaPlayer(videoEl, url) {
         // Destroy existing instance
         if (shakaPlayer) {
@@ -2102,7 +3091,7 @@ const CariApp = (function() {
 
         if (!window.shaka) {
             videoEl.src = url;
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
             return;
         }
 
@@ -2110,7 +3099,7 @@ const CariApp = (function() {
 
         if (!shaka.Player.isBrowserSupported()) {
             videoEl.src = url;
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
             return;
         }
 
@@ -2122,7 +3111,9 @@ const CariApp = (function() {
                 bufferingGoal: 30,
                 rebufferingGoal: 2,
                 retryParameters: { maxAttempts: 3, baseDelay: 1000 },
+                alwaysStreamText: true,
             },
+            preferredTextLanguage: 'en',
         });
 
         shakaPlayer.addEventListener('error', (e) => {
@@ -2131,15 +3122,57 @@ const CariApp = (function() {
 
         try {
             await shakaPlayer.load(url);
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
+            // Apply CC state — select first text track if CC is enabled
+            applyCCState();
         } catch (err) {
             console.error('Shaka load error:', err);
             // Fallback to direct source
             try { await shakaPlayer.destroy(); } catch {}
             shakaPlayer = null;
             videoEl.src = url;
-            videoEl.play().catch(() => {});
+            await autoplayWithFallback(videoEl);
         }
+    }
+
+    /**
+     * Apply current CC state to Shaka Player — select CC1 track and show/hide.
+     */
+    function applyCCState() {
+        if (!shakaPlayer) return;
+        try {
+            const tracks = shakaPlayer.getTextTracks();
+            if (tracks.length > 0 && ccEnabled) {
+                // Prefer CC1 / eng, fall back to first available
+                const cc1 = tracks.find(t => (t.label || '').toLowerCase().includes('cc1'))
+                          || tracks.find(t => t.language === 'en')
+                          || tracks[0];
+                shakaPlayer.selectTextTrack(cc1);
+            }
+            shakaPlayer.setTextTrackVisibility(ccEnabled);
+        } catch (e) {
+            console.warn('[CariApp] CC state error:', e);
+        }
+        updateCCButtons();
+    }
+
+    /**
+     * Toggle closed captions on/off.
+     */
+    function toggleCC() {
+        ccEnabled = !ccEnabled;
+        localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
+        applyCCState();
+    }
+
+    /**
+     * Update all CC button icons to reflect current state.
+     */
+    function updateCCButtons() {
+        document.querySelectorAll('.cc-toggle-btn').forEach(btn => {
+            btn.classList.toggle('cc-active', ccEnabled);
+            btn.title = ccEnabled ? 'Captions On' : 'Captions Off';
+        });
     }
 
     function setupProgressTracking(video, contentType, contentId) {

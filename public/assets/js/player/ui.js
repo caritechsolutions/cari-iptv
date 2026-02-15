@@ -478,7 +478,10 @@ const CariUI = (function() {
                 const pid = card.dataset.personId;
                 if (pid) {
                     _castNavSource = source || null;
-                    hideDetail();
+                    // Close EPG modal if inside one, otherwise close detail overlay
+                    const epgOverlay = card.closest('.epg-modal-overlay');
+                    if (epgOverlay) epgOverlay.remove();
+                    else hideDetail();
                     CariRouter.navigate('/person/' + pid);
                 }
             });

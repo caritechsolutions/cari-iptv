@@ -580,6 +580,221 @@ class MetadataService
     }
 
     /**
+     * Search TMDB multi-search (movies + TV shows) and return the best match.
+     * When an EPG description is provided and AI is available, uses AI to pick
+     * the correct TMDB result instead of blindly taking the top result.
+     *
+     * @param string $title          Programme title from the EPG
+     * @param string $description    Optional EPG description to improve matching
+     * @param array  $channelContext Optional channel info ['name' => '...', 'description' => '...']
+     */
+    public function searchProgrammeInfo(string $title, string $description = '', array $channelContext = []): array
+    {
+        if (!$this->isTmdbConfigured()) {
+            return ['error' => 'TMDB API key not configured'];
+        }
+
+        $title = trim($title);
+        if (empty($title)) {
+            return ['error' => 'Title is required'];
+        }
+
+        try {
+            $params = [
+                'api_key' => $this->config['tmdb']['api_key'],
+                'query' => $title,
+                'include_adult' => 'false',
+            ];
+
+            $url = self::TMDB_API . '/search/multi?' . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                return ['error' => 'TMDB API request failed'];
+            }
+
+            $data = json_decode($response, true);
+            $results = $data['results'] ?? [];
+
+            // Filter to only movie and tv results
+            $filtered = array_filter($results, fn($r) => in_array($r['media_type'] ?? '', ['movie', 'tv']));
+            $filtered = array_values($filtered);
+
+            error_log("[MetadataService] [{$title}] TMDB search: " . count($results) . " raw results, " . count($filtered) . " movie/tv after filter");
+
+            if (empty($filtered)) {
+                error_log("[MetadataService] [{$title}] No movie/tv results from TMDB");
+                return ['match' => null, 'results' => []];
+            }
+
+            // Format top 5 results as suggestions
+            $candidates = array_slice($filtered, 0, 5);
+            $suggestions = [];
+            foreach ($candidates as $item) {
+                $suggestions[] = $this->formatMultiResult($item);
+            }
+
+            // Use AI to pick the best match (with channel context for disambiguation)
+            $top = $this->pickBestMatch($title, $description, $candidates, $channelContext);
+
+            // AI determined no candidates match this programme
+            if (!empty($top['_no_match'])) {
+                return ['match' => null, 'results' => $suggestions];
+            }
+
+            // Get detailed info for the selected result
+            $detail = null;
+            if ($top['media_type'] === 'movie') {
+                $detail = $this->getMovieDetails((int)$top['id']);
+            } elseif ($top['media_type'] === 'tv') {
+                $detail = $this->getTVShowDetails((int)$top['id']);
+            }
+
+            return [
+                'match' => $detail ?: $this->formatMultiResult($top),
+                'media_type' => $top['media_type'],
+                'results' => $suggestions,
+            ];
+        } catch (\Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Use AI to pick the best TMDB match for an EPG programme.
+     * Considers channel context (name + description) to disambiguate.
+     * Falls back to the first result if AI is unavailable or fails.
+     */
+    private function pickBestMatch(string $title, string $description, array $candidates, array $channelContext = []): array
+    {
+        $logTag = "[MetadataService] [{$title}]";
+        $hasContext = !empty(trim($description)) || !empty(trim($channelContext['name'] ?? ''));
+
+        // Only skip AI if we have no context at all to disambiguate
+        if (!$hasContext) {
+            error_log("{$logTag} No context — auto-accepting first candidate");
+            return $candidates[0];
+        }
+
+        try {
+            $aiService = new AIService();
+            if (!$aiService->isAvailable()) {
+                error_log("{$logTag} AI not available — auto-accepting first candidate");
+                return $candidates[0];
+            }
+
+            // Build channel context section
+            $channelSection = '';
+            $channelName = trim($channelContext['name'] ?? '');
+            $channelDesc = trim($channelContext['description'] ?? '');
+            if ($channelName) {
+                $channelSection = "Channel: \"{$channelName}\"";
+                if ($channelDesc) {
+                    $channelSection .= " — {$channelDesc}";
+                }
+                $channelSection .= "\n";
+            }
+
+            // Build description section
+            $descSection = '';
+            if (!empty(trim($description))) {
+                $descSection = "EPG Description: \"{$description}\"\n";
+            }
+
+            // Build a numbered list of candidates for the AI
+            $candidateList = '';
+            foreach ($candidates as $i => $c) {
+                $isMovie = ($c['media_type'] ?? '') === 'movie';
+                $cTitle = $isMovie ? ($c['title'] ?? '') : ($c['name'] ?? '');
+                $cYear = $isMovie
+                    ? (!empty($c['release_date']) ? substr($c['release_date'], 0, 4) : '?')
+                    : (!empty($c['first_air_date']) ? substr($c['first_air_date'], 0, 4) : '?');
+                $cType = $isMovie ? 'Movie' : 'TV Show';
+                $cOverview = mb_substr($c['overview'] ?? '', 0, 200);
+                $cGenres = '';
+                if (!empty($c['genre_ids'])) {
+                    $cGenres = ' [genres: ' . implode(',', $c['genre_ids']) . ']';
+                }
+
+                $candidateList .= ($i + 1) . ". \"{$cTitle}\" ({$cYear}, {$cType}){$cGenres} — {$cOverview}\n";
+            }
+
+            $count = count($candidates);
+            $prompt = <<<PROMPT
+You are matching an EPG (TV guide) programme to the correct TMDB entry.
+
+EPG Programme Title: "{$title}"
+{$channelSection}{$descSection}
+TMDB Candidates:
+{$candidateList}
+IMPORTANT: Consider the channel context carefully. A programme on a home improvement channel (e.g. HGTV) is likely a reality/lifestyle show, not a horror movie. A programme on a kids channel is likely a children's show. The EPG description should match the TMDB overview in theme and content.
+
+Which candidate number (1-{$count}) is the correct match? If NONE of them are a plausible match for this programme on this channel, reply 0.
+
+Reply with ONLY a single number, nothing else.
+PROMPT;
+
+            $result = $aiService->complete($prompt, [
+                'max_tokens' => 10,
+                'temperature' => 0.1,
+            ]);
+
+            if ($result !== null) {
+                $raw = trim($result);
+                $pick = (int)$raw;
+                error_log("{$logTag} AI responded: '{$raw}' (parsed={$pick}, candidates={$count})");
+                if ($pick >= 1 && $pick <= $count) {
+                    $chosen = $candidates[$pick - 1];
+                    $chosenTitle = ($chosen['media_type'] ?? '') === 'movie' ? ($chosen['title'] ?? '') : ($chosen['name'] ?? '');
+                    error_log("{$logTag} AI picked #{$pick}: \"{$chosenTitle}\"");
+                    return $chosen;
+                }
+                if ($pick === 0) {
+                    error_log("{$logTag} AI says NO match (0) for {$count} candidates");
+                    return ['_no_match' => true, 'media_type' => null];
+                }
+                error_log("{$logTag} AI returned unexpected value '{$raw}' — falling back to first candidate");
+            } else {
+                error_log("{$logTag} AI returned null — falling back to first candidate");
+            }
+        } catch (\Throwable $e) {
+            error_log("{$logTag} AI match selection failed: " . $e->getMessage());
+        }
+
+        return $candidates[0];
+    }
+
+    /**
+     * Format a single multi-search result
+     */
+    private function formatMultiResult(array $item): array
+    {
+        $isMovie = ($item['media_type'] ?? '') === 'movie';
+        return [
+            'tmdb_id' => $item['id'],
+            'media_type' => $item['media_type'] ?? 'unknown',
+            'title' => $isMovie ? ($item['title'] ?? '') : ($item['name'] ?? ''),
+            'original_title' => $isMovie ? ($item['original_title'] ?? '') : ($item['original_name'] ?? ''),
+            'year' => $isMovie
+                ? (!empty($item['release_date']) ? substr($item['release_date'], 0, 4) : '')
+                : (!empty($item['first_air_date']) ? substr($item['first_air_date'], 0, 4) : ''),
+            'overview' => $item['overview'] ?? '',
+            'poster' => !empty($item['poster_path']) ? self::TMDB_IMAGE_BASE . '/w342' . $item['poster_path'] : null,
+            'backdrop' => !empty($item['backdrop_path']) ? self::TMDB_IMAGE_BASE . '/w780' . $item['backdrop_path'] : null,
+            'vote_average' => $item['vote_average'] ?? 0,
+        ];
+    }
+
+    /**
      * Format TV search results
      */
     private function formatTVResults(array $results): array

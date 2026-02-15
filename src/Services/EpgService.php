@@ -61,6 +61,7 @@ class EpgService
             'is_active' => (int) ($data['is_active'] ?? 1),
             'auto_refresh' => (int) ($data['auto_refresh'] ?? 0),
             'refresh_interval' => (int) ($data['refresh_interval'] ?? 3600),
+            'timezone' => $data['timezone'] ?? 'UTC',
         ]);
     }
 
@@ -68,7 +69,7 @@ class EpgService
     {
         $fields = [];
         $allowed = ['name', 'type', 'source_url', 'source_port', 'eit_pid',
-                     'capture_timeout', 'is_active', 'auto_refresh', 'refresh_interval'];
+                     'capture_timeout', 'is_active', 'auto_refresh', 'refresh_interval', 'timezone'];
 
         foreach ($allowed as $field) {
             if (array_key_exists($field, $data)) {
@@ -211,9 +212,11 @@ class EpgService
         $this->updateSourceStatus($source['id'], 'running', 'Capturing EIT data...');
 
         // Extract EIT tables (PID 0x12) - programme data
+        // --pack-all-sections captures all section versions (p/f + schedule segments 0x50-0x5F)
+        // Without it, only the first version of each table is captured, missing most schedule data
         $eitPidDec = $this->pidToDecimal($pid);
         $eitCmd = sprintf(
-            'timeout %d tsp -I ip %s:%d -P tables --pid %d --xml-output %s -O drop 2>&1',
+            'timeout %d tsp -I ip %s:%d -P tables --pid %d --pack-all-sections --xml-output %s -O drop 2>&1',
             $timeout,
             escapeshellarg($address),
             $port,
@@ -251,7 +254,8 @@ class EpgService
 
         // Import the EIT data
         try {
-            $result = $this->importEitXml($source['id'], $eitFile, $serviceNames);
+            $sourceTz = $source['timezone'] ?? 'UTC';
+            $result = $this->importEitXml($source['id'], $eitFile, $serviceNames, $sourceTz);
         } catch (\Exception $e) {
             error_log('EIT import failed: ' . $e->getMessage());
             $this->updateSourceStatus($source['id'], 'error', 'Import failed: ' . $e->getMessage());
@@ -263,8 +267,9 @@ class EpgService
         if (file_exists($eitFile)) unlink($eitFile);
 
         if ($result['success']) {
+            $sdtInfo = !empty($serviceNames) ? ' (SDT filter: ' . count($serviceNames) . ' local services)' : '';
             $this->updateSourceStatus($source['id'], 'success',
-                "Imported {$result['programmes']} programmes for {$result['channels']} services");
+                "Imported {$result['programmes']} programmes for {$result['channels']} services" . $sdtInfo);
             $this->db->update('epg_sources', [
                 'programme_count' => $result['programmes'],
                 'channel_count' => $result['channels'],
@@ -319,10 +324,16 @@ class EpgService
     /**
      * Parse TSDuck EIT XML and import programmes
      */
-    public function importEitXml(int $sourceId, string $filePath, array $serviceNames = []): array
+    public function importEitXml(int $sourceId, string $filePath, array $serviceNames = [], ?string $sourceTz = null): array
     {
         if (!file_exists($filePath)) {
             return ['success' => false, 'message' => 'EIT XML file not found', 'programmes' => 0, 'channels' => 0];
+        }
+
+        // Get source timezone if not provided
+        if ($sourceTz === null) {
+            $source = $this->getSource($sourceId);
+            $sourceTz = $source['timezone'] ?? 'UTC';
         }
 
         try {
@@ -343,6 +354,12 @@ class EpgService
             $serviceId = (string) ($table['service_id'] ?? '');
             if (empty($serviceId)) continue;
 
+            // Filter EIT to only services present in the local SDT
+            // This excludes cross-carried EIT from other transponders
+            if (!empty($serviceNames) && !isset($serviceNames[$serviceId])) {
+                continue;
+            }
+
             $channelsFound[$serviceId] = true;
 
             foreach ($table->children() as $event) {
@@ -355,7 +372,7 @@ class EpgService
                 if (empty($startTime) || empty($duration)) continue;
 
                 // Parse start time and duration
-                $startDt = $this->parseEitDateTime($startTime);
+                $startDt = $this->parseEitDateTime($startTime, $sourceTz);
                 $endDt = $this->addDuration($startDt, $duration);
 
                 if (!$startDt || !$endDt) continue;
@@ -451,8 +468,18 @@ class EpgService
             $channelMap[$m['epg_channel_id']] = (int) $m['channel_id'];
         }
 
-        // Clear old programmes for this source
-        $this->db->execute("DELETE FROM epg_programs WHERE epg_source_id = ?", [$sourceId]);
+        // Replace current/future programmes with fresh data, but keep past programmes
+        // DVB EIT only carries current + future events, so past data would be lost on re-import
+        $this->db->execute(
+            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time > NOW()",
+            [$sourceId]
+        );
+
+        // Clean up past programmes older than 7 days
+        $this->db->execute(
+            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time < DATE_SUB(NOW(), INTERVAL 7 DAY)",
+            [$sourceId]
+        );
 
         // Insert programmes
         $imported = 0;
@@ -462,19 +489,34 @@ class EpgService
             $channelId = $channelMap[$prog['service_id']] ?? null;
             if (!$channelId) continue;
 
-            $this->db->insert('epg_programs', [
-                'epg_source_id' => $sourceId,
-                'channel_id' => $channelId,
-                'external_event_id' => $prog['event_id'],
-                'title' => $prog['title'],
-                'subtitle' => $prog['subtitle'] ?: null,
-                'description' => $prog['description'] ?: null,
-                'start_time' => $prog['start_time'],
-                'end_time' => $prog['end_time'],
-                'category' => $prog['category'] ?: null,
-                'rating' => $prog['rating'] ?: null,
-                'language' => $prog['language'] ?: null,
-            ]);
+            // Upsert: insert or update if same event already exists (prevents duplicates)
+            $this->db->execute(
+                "INSERT INTO epg_programs
+                    (epg_source_id, channel_id, external_event_id, title, subtitle, description, start_time, end_time, category, rating, language)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    title = VALUES(title),
+                    subtitle = VALUES(subtitle),
+                    description = VALUES(description),
+                    start_time = VALUES(start_time),
+                    end_time = VALUES(end_time),
+                    category = VALUES(category),
+                    rating = VALUES(rating),
+                    language = VALUES(language)",
+                [
+                    $sourceId,
+                    $channelId,
+                    $prog['event_id'],
+                    $prog['title'],
+                    $prog['subtitle'] ?: null,
+                    $prog['description'] ?: null,
+                    $prog['start_time'],
+                    $prog['end_time'],
+                    $prog['category'] ?: null,
+                    $prog['rating'] ?: null,
+                    $prog['language'] ?: null,
+                ]
+            );
 
             $imported++;
 
@@ -502,12 +544,19 @@ class EpgService
             );
         }
 
+        // Queue unique programme titles for TMDB metadata enrichment
+        $metadataQueued = 0;
+        if ($imported > 0) {
+            $metadataQueued = $this->queueMetadataEnrichment($programmes);
+        }
+
         return [
             'success' => true,
             'programmes' => $imported,
             'channels' => count($serviceStats),
             'total_found' => count($programmes),
             'unmapped' => count($programmes) - $imported,
+            'metadata_queued' => $metadataQueued,
         ];
     }
 
@@ -552,6 +601,10 @@ class EpgService
             return ['success' => false, 'message' => 'XMLTV file not found', 'programmes' => 0, 'channels' => 0];
         }
 
+        // Get source timezone for fallback when XMLTV has no offset
+        $source = $this->getSource($sourceId);
+        $sourceTz = $source['timezone'] ?? 'UTC';
+
         try {
             $xml = simplexml_load_file($filePath);
             if (!$xml) {
@@ -590,6 +643,7 @@ class EpgService
         // Parse programmes
         $imported = 0;
         $serviceStats = [];
+        $programmeTitles = [];
 
         foreach ($xml->programme as $prog) {
             $channelRef = (string) ($prog['channel'] ?? '');
@@ -601,8 +655,8 @@ class EpgService
 
             if (empty($startStr) || empty($stopStr)) continue;
 
-            $startTime = $this->parseXmltvDateTime($startStr);
-            $endTime = $this->parseXmltvDateTime($stopStr);
+            $startTime = $this->parseXmltvDateTime($startStr, $sourceTz);
+            $endTime = $this->parseXmltvDateTime($stopStr, $sourceTz);
 
             if (!$startTime || !$endTime) continue;
 
@@ -640,6 +694,7 @@ class EpgService
             ]);
 
             $imported++;
+            $programmeTitles[] = $title;
 
             if (!isset($serviceStats[$channelRef])) {
                 $serviceStats[$channelRef] = 0;
@@ -671,12 +726,19 @@ class EpgService
             );
         }
 
+        // Queue unique programme titles for TMDB metadata enrichment
+        $metadataQueued = 0;
+        if ($imported > 0 && !empty($programmeTitles)) {
+            $metadataQueued = $this->queueMetadataEnrichment($programmeTitles);
+        }
+
         return [
             'success' => true,
             'programmes' => $imported,
             'channels' => count($serviceStats),
             'total_xmltv_channels' => count($xmltvChannels),
             'unmapped' => count($xmltvChannels) - count($channelMap),
+            'metadata_queued' => $metadataQueued,
         ];
     }
 
@@ -788,31 +850,45 @@ class EpgService
 
     /**
      * Parse EIT datetime format: "2024-01-15 14:00:00"
+     * EIT/DVB times are typically UTC. The source timezone setting is used as fallback.
+     * All times are converted to UTC for storage.
      */
-    private function parseEitDateTime(string $dateStr): ?string
+    private function parseEitDateTime(string $dateStr, string $sourceTz = 'UTC'): ?string
     {
-        $dt = \DateTime::createFromFormat('Y-m-d H:i:s', trim($dateStr));
+        $tz = new \DateTimeZone($sourceTz);
+        $dt = \DateTime::createFromFormat('Y-m-d H:i:s', trim($dateStr), $tz);
         if (!$dt) {
-            // Try alternate format without seconds
-            $dt = \DateTime::createFromFormat('Y-m-d H:i', trim($dateStr));
+            $dt = \DateTime::createFromFormat('Y-m-d H:i', trim($dateStr), $tz);
         }
-        return $dt ? $dt->format('Y-m-d H:i:s') : null;
+        if (!$dt) return null;
+
+        // Convert to UTC for storage
+        $dt->setTimezone(new \DateTimeZone('UTC'));
+        return $dt->format('Y-m-d H:i:s');
     }
 
     /**
      * Parse XMLTV datetime format: "20240115140000 +0000"
+     * If the XMLTV string has a timezone offset, it is used for conversion.
+     * If no offset is present, the source timezone setting is used as fallback.
+     * All times are converted to UTC for storage.
      */
-    private function parseXmltvDateTime(string $dateStr): ?string
+    private function parseXmltvDateTime(string $dateStr, string $sourceTz = 'UTC'): ?string
     {
         $dateStr = trim($dateStr);
 
-        // Format: YYYYMMDDHHMMSS +HHMM
+        // Format: YYYYMMDDHHMMSS +HHMM (with timezone offset)
         $dt = \DateTime::createFromFormat('YmdHis O', $dateStr);
         if (!$dt) {
-            // Try without timezone
-            $dt = \DateTime::createFromFormat('YmdHis', substr($dateStr, 0, 14));
+            // Try without timezone offset - use source timezone as fallback
+            $tz = new \DateTimeZone($sourceTz);
+            $dt = \DateTime::createFromFormat('YmdHis', substr($dateStr, 0, 14), $tz);
         }
-        return $dt ? $dt->format('Y-m-d H:i:s') : null;
+        if (!$dt) return null;
+
+        // Convert to UTC for storage
+        $dt->setTimezone(new \DateTimeZone('UTC'));
+        return $dt->format('Y-m-d H:i:s');
     }
 
     /**
@@ -862,5 +938,40 @@ class EpgService
             0xB => 'Lifestyle',
             default => null,
         };
+    }
+
+    // ========================================================================
+    // METADATA ENRICHMENT
+    // ========================================================================
+
+    /**
+     * Queue unique programme titles for TMDB metadata enrichment.
+     * Runs enrichment immediately for a small batch; queues the rest.
+     */
+    private function queueMetadataEnrichment(array $programmes): int
+    {
+        // Extract unique titles
+        $titles = [];
+        foreach ($programmes as $prog) {
+            $title = is_array($prog) ? ($prog['title'] ?? '') : (string)$prog;
+            if (!empty($title)) {
+                $titles[] = $title;
+            }
+        }
+
+        if (empty($titles)) return 0;
+
+        try {
+            $epgMetadata = new EpgMetadataService();
+            $queued = $epgMetadata->queueTitlesForEnrichment($titles);
+
+            // Process ALL pending titles (not just newly queued — older pending may still exist)
+            $epgMetadata->processAllPending();
+
+            return $queued;
+        } catch (\Throwable $e) {
+            error_log("[EpgService] Metadata enrichment error: " . $e->getMessage());
+            return 0;
+        }
     }
 }

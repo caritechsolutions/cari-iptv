@@ -45,6 +45,10 @@ class ImageService
             'thumb' => ['width' => 80, 'height' => 120],
             'medium' => ['width' => 185, 'height' => 278],
         ],
+        'epg' => [
+            'poster' => ['width' => 342, 'height' => 513],
+            'backdrop' => ['width' => 780, 'height' => 439],
+        ],
     ];
 
     private int $quality = 85;

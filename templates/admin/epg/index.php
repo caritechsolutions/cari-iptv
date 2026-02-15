@@ -9,6 +9,9 @@
         <button type="button" class="btn btn-secondary" onclick="cleanupProgrammes()">
             <i class="lucide-trash-2"></i> Cleanup Old
         </button>
+        <button type="button" class="btn btn-info" onclick="processMetadata()" id="processMetadataBtn">
+            <i class="lucide-sparkles"></i> Process Metadata
+        </button>
         <button type="button" class="btn btn-primary" onclick="openAddModal()">
             <i class="lucide-plus"></i> Add Source
         </button>
@@ -46,6 +49,38 @@
         </div>
     </div>
 </div>
+
+<!-- Metadata Enrichment -->
+<?php if (($metadataStats['total'] ?? 0) > 0): ?>
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="lucide-sparkles"></i> Programme Metadata (TMDB)</h3>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <?php if (($metadataStats['pending'] ?? 0) > 0): ?>
+                <span class="badge badge-warning"><?= (int)$metadataStats['pending'] ?> pending</span>
+            <?php endif; ?>
+            <span class="badge badge-success"><?= (int)$metadataStats['complete'] ?> enriched</span>
+            <?php if (($metadataStats['not_found'] ?? 0) > 0): ?>
+                <span class="badge badge-secondary"><?= (int)$metadataStats['not_found'] ?> not found</span>
+            <?php endif; ?>
+            <?php if (($metadataStats['errors'] ?? 0) > 0): ?>
+                <span class="badge badge-danger"><?= (int)$metadataStats['errors'] ?> errors</span>
+            <?php endif; ?>
+            <span style="color: #64748b; font-size: 12px;"><?= (int)$metadataStats['total'] ?> total titles</span>
+        </div>
+    </div>
+    <div id="metadataProgress" style="display: none; padding: 1rem 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div class="fetch-spinner"></div>
+            <span id="metadataPhaseText" style="font-weight: 500; color: #e2e8f0;">Processing metadata...</span>
+        </div>
+        <div class="fetch-progress-track">
+            <div class="fetch-progress-bar" id="metadataProgressBar" style="width: 30%; animation: metadataPulse 2s ease-in-out infinite;"></div>
+        </div>
+        <div style="margin-top: 6px; font-size: 12px; color: #64748b;" id="metadataStepInfo">Looking up titles on TMDB and downloading images...</div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Sources -->
 <div class="card">
@@ -289,6 +324,28 @@
                     <option value="43200">Every 12 hours</option>
                     <option value="86400">Every 24 hours</option>
                 </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Source Timezone</label>
+                <select id="sourceTimezone" class="form-input">
+                    <option value="UTC">UTC (default for EIT/DVB)</option>
+                    <option value="America/Jamaica">America/Jamaica (EST, UTC-5)</option>
+                    <option value="America/New_York">America/New_York (ET)</option>
+                    <option value="America/Chicago">America/Chicago (CT)</option>
+                    <option value="America/Denver">America/Denver (MT)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (PT)</option>
+                    <option value="America/Barbados">America/Barbados (AST, UTC-4)</option>
+                    <option value="America/Puerto_Rico">America/Puerto_Rico (AST, UTC-4)</option>
+                    <option value="America/Trinidad">America/Trinidad (AST, UTC-4)</option>
+                    <option value="America/Curacao">America/Curacao (AST, UTC-4)</option>
+                    <option value="America/Guyana">America/Guyana (GYT, UTC-4)</option>
+                    <option value="America/Suriname">America/Suriname (SRT, UTC-3)</option>
+                    <option value="America/Belize">America/Belize (CST, UTC-6)</option>
+                    <option value="Europe/London">Europe/London (GMT/BST)</option>
+                    <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                </select>
+                <small class="form-hint">Timezone of the EPG data. EIT/DVB streams are always UTC. XMLTV files with timezone offsets are auto-converted. Use this for XMLTV sources without timezone info or if EIT times need adjustment.</small>
             </div>
         </div>
         <div class="modal-footer">
@@ -584,6 +641,11 @@
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+@keyframes metadataPulse {
+    0%, 100% { width: 20%; opacity: 0.7; }
+    50% { width: 60%; opacity: 1; }
+}
 </style>
 
 <script>
@@ -607,6 +669,7 @@ function openAddModal() {
     document.getElementById('sourceActive').checked = true;
     document.getElementById('sourceAutoRefresh').checked = false;
     document.getElementById('refreshInterval').value = '3600';
+    document.getElementById('sourceTimezone').value = 'UTC';
     document.getElementById('sourceModalTitle').innerHTML = '<i class="lucide-plus"></i> Add EPG Source';
     toggleTypeFields();
     toggleRefreshInterval();
@@ -623,6 +686,7 @@ function openEditModal(src) {
     document.getElementById('sourceActive').checked = src.is_active == 1;
     document.getElementById('sourceAutoRefresh').checked = src.auto_refresh == 1;
     document.getElementById('refreshInterval').value = src.refresh_interval || '3600';
+    document.getElementById('sourceTimezone').value = src.timezone || 'UTC';
 
     if (src.type === 'eit') {
         document.getElementById('sourceUrl').value = src.source_url || '';
@@ -666,6 +730,7 @@ function saveSource() {
         is_active: document.getElementById('sourceActive').checked ? '1' : '',
         auto_refresh: document.getElementById('sourceAutoRefresh').checked ? '1' : '',
         refresh_interval: document.getElementById('refreshInterval').value,
+        timezone: document.getElementById('sourceTimezone').value,
     });
 
     if (type === 'eit') {
@@ -955,15 +1020,26 @@ function loadMappings(id) {
                 '<th width="30"></th><th>EPG ID</th><th>Service Name</th><th>Progs</th><th>Map To Channel</th>' +
                 '</tr></thead><tbody>';
 
+            // Build set of channel IDs already mapped (to exclude from other dropdowns)
+            const mappedChannelIds = new Set();
+            mappings.forEach(m => {
+                if (m.is_mapped && m.channel_id) mappedChannelIds.add(Number(m.channel_id));
+            });
+
             mappings.forEach(m => {
                 const dot = m.is_mapped
                     ? '<span class="mapping-status mapped"></span>'
                     : '<span class="mapping-status unmapped"></span>';
 
+                const currentChannelId = m.channel_id ? Number(m.channel_id) : null;
                 let options = '<option value="">-- Not Mapped --</option>';
                 channels.forEach(ch => {
-                    const sel = ch.id == m.channel_id ? 'selected' : '';
-                    options += `<option value="${ch.id}" ${sel}>${escapeHtml(ch.name)}</option>`;
+                    const chId = Number(ch.id);
+                    // Show channel if: it's the currently selected one, or it's not mapped elsewhere
+                    if (chId === currentChannelId || !mappedChannelIds.has(chId)) {
+                        const sel = chId === currentChannelId ? 'selected' : '';
+                        options += `<option value="${ch.id}" ${sel}>${escapeHtml(ch.name)}</option>`;
+                    }
                 });
 
                 html += `<tr>
@@ -999,6 +1075,8 @@ function saveMappingInline(mappingId, channelId) {
     .then(data => {
         if (data.success) {
             showToast('Mapping saved', 'success');
+            // Reload mappings so dropdowns update with the new mapped/unmapped state
+            if (currentMappingsSourceId) loadMappings(currentMappingsSourceId);
         } else {
             showToast(data.message || 'Failed', 'error');
         }
@@ -1199,6 +1277,80 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ========================================================================
+// METADATA PROCESSING
+// ========================================================================
+
+let metadataTotalProcessed = 0;
+let metadataTotalFound = 0;
+
+function processMetadata() {
+    const btn = document.getElementById('processMetadataBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader"></i> Processing...';
+
+    const progressEl = document.getElementById('metadataProgress');
+    if (progressEl) progressEl.style.display = 'block';
+
+    metadataTotalProcessed = 0;
+    metadataTotalFound = 0;
+    processMetadataBatch();
+}
+
+function processMetadataBatch() {
+    const btn = document.getElementById('processMetadataBtn');
+    const progressEl = document.getElementById('metadataProgress');
+    const phaseText = document.getElementById('metadataPhaseText');
+    const stepInfo = document.getElementById('metadataStepInfo');
+
+    if (phaseText) phaseText.textContent = metadataTotalProcessed > 0
+        ? `Processing batch... (${metadataTotalProcessed} done so far)`
+        : 'Processing metadata...';
+
+    fetch('/admin/epg/process-metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ _token: csrfToken }).toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const s = data.stats || {};
+            metadataTotalProcessed += (s.processed || 0);
+            metadataTotalFound += (s.found || 0);
+            const remaining = s.remaining || 0;
+
+            if (remaining > 0) {
+                if (stepInfo) stepInfo.textContent = `${metadataTotalProcessed} processed, ${remaining} remaining...`;
+                // Continue with next batch after a short pause
+                setTimeout(() => processMetadataBatch(), 500);
+                return;
+            }
+
+            // All done
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+            if (progressEl) progressEl.style.display = 'none';
+
+            let msg = `Processed ${metadataTotalProcessed} titles, ${metadataTotalFound} enriched`;
+            if (s.newly_queued) msg += ` (${s.newly_queued} newly queued)`;
+            showToast(msg, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+            if (progressEl) progressEl.style.display = 'none';
+            showToast(data.message || 'Processing failed', 'error');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="lucide-sparkles"></i> Process Metadata';
+        if (progressEl) progressEl.style.display = 'none';
+        showToast('Network error during metadata processing', 'error');
+    });
 }
 
 // Close modals on overlay click

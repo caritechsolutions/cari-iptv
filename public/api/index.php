@@ -138,6 +138,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
 
     // EPG (Electronic Programme Guide)
     $router->get('/epg', [EpgController::class, 'index'], ['api_auth']);
+    $router->get('/epg/programme-info', [EpgController::class, 'programmeInfo'], ['api_auth']);
     $router->get('/epg/{channelId}', [EpgController::class, 'channel'], ['api_auth']);
 
     // App Configuration (layouts, navigation, pages)

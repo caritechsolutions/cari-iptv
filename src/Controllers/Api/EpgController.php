@@ -37,6 +37,9 @@ class EpgController extends BaseApiController
             return;
         }
 
+        // Convert datetime fields to ISO 8601 UTC format
+        $programmes = array_map([$this, 'formatEpgTimestamps'], $programmes);
+
         // Group by channel if no specific channel requested
         if (empty($filters['channel_id'])) {
             $grouped = [];
@@ -58,6 +61,7 @@ class EpgController extends BaseApiController
         $this->ok($programmes, [
             'total' => count($programmes),
             'date' => $filters['date'] ?? date('Y-m-d'),
+            'timezone' => 'UTC',
         ]);
     }
 
@@ -81,10 +85,49 @@ class EpgController extends BaseApiController
             return;
         }
 
+        // Convert datetime fields to ISO 8601 UTC format
+        $programmes = array_map([$this, 'formatEpgTimestamps'], $programmes);
+
         $this->ok($programmes, [
             'channel_id' => (int)$channelId,
             'total' => count($programmes),
             'date' => $filters['date'] ?? date('Y-m-d'),
+            'timezone' => 'UTC',
         ]);
+    }
+
+    /**
+     * GET /api/v1/epg/programme-info?title=...&description=...&channel_id=...
+     * Returns cached TMDB metadata for a programme title.
+     * If not cached, returns null immediately and queues for background enrichment.
+     * Channel context + description help AI pick the correct TMDB match during enrichment.
+     */
+    public function programmeInfo(): void
+    {
+        $title = trim($this->query('title', ''));
+        if (empty($title)) {
+            $this->error('Title parameter is required', 400);
+            return;
+        }
+
+        // Only return cached data — enrichment happens during EPG import
+        $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
+        $cached = $epgMetadata->getCachedMetadata($title);
+        $this->ok($cached ?: null, ['source' => $cached ? 'cache' : 'none']);
+    }
+
+    /**
+     * Convert MySQL DATETIME fields to ISO 8601 UTC format (with Z suffix)
+     * so JavaScript correctly interprets them as UTC timestamps.
+     */
+    private function formatEpgTimestamps(array $programme): array
+    {
+        foreach (['start_time', 'end_time'] as $field) {
+            if (!empty($programme[$field])) {
+                // Convert "2025-01-15 14:00:00" to "2025-01-15T14:00:00Z"
+                $programme[$field] = str_replace(' ', 'T', $programme[$field]) . 'Z';
+            }
+        }
+        return $programme;
     }
 }

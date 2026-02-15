@@ -32,10 +32,22 @@ class EpgController
         $sources = $this->epgService->getSources();
         $stats = $this->epgService->getStatistics();
 
+        // Metadata enrichment stats
+        $metadataStats = $this->db->fetch(
+            "SELECT
+                COUNT(*) as total,
+                SUM(status = 'pending') as pending,
+                SUM(status = 'complete') as complete,
+                SUM(status = 'not_found') as not_found,
+                SUM(status = 'error') as errors
+             FROM epg_programme_metadata"
+        ) ?: ['total' => 0, 'pending' => 0, 'complete' => 0, 'not_found' => 0, 'errors' => 0];
+
         Response::view('admin/epg/index', [
             'pageTitle' => 'EPG',
             'sources' => $sources,
             'stats' => $stats,
+            'metadataStats' => $metadataStats,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -76,6 +88,7 @@ class EpgController
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'auto_refresh' => isset($_POST['auto_refresh']) ? 1 : 0,
             'refresh_interval' => (int) ($_POST['refresh_interval'] ?? 3600),
+            'timezone' => trim($_POST['timezone'] ?? '') ?: 'UTC',
         ];
 
         try {
@@ -118,6 +131,7 @@ class EpgController
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'auto_refresh' => isset($_POST['auto_refresh']) ? 1 : 0,
             'refresh_interval' => (int) ($_POST['refresh_interval'] ?? 3600),
+            'timezone' => trim($_POST['timezone'] ?? '') ?: 'UTC',
         ];
 
         try {
@@ -389,6 +403,54 @@ class EpgController
             'total_pages' => $result['total_pages'],
             'channels' => $channels,
             'sources' => $sources,
+        ]);
+    }
+
+    /**
+     * POST /admin/epg/process-metadata
+     * Process pending EPG metadata enrichment (TMDB lookup + WebP images).
+     * Can be triggered manually or after imports.
+     */
+    public function processMetadata(): void
+    {
+        $epgMetadata = new \CariIPTV\Services\EpgMetadataService();
+
+        // If no pending records, try to queue from existing EPG programmes
+        $pendingCount = (int)($this->db->fetch(
+            "SELECT COUNT(*) as cnt FROM epg_programme_metadata WHERE status = 'pending'"
+        )['cnt'] ?? 0);
+
+        $queued = 0;
+        if ($pendingCount == 0) {
+            // Get unique programme titles — queueTitlesForEnrichment handles normalisation
+            // and skips titles that already have a metadata record
+            $titles = $this->db->fetchAll(
+                "SELECT DISTINCT p.title FROM epg_programs p
+                 WHERE p.title IS NOT NULL AND p.title != ''
+                 LIMIT 1000"
+            );
+            $titleList = array_column($titles, 'title');
+            $queued = $epgMetadata->queueTitlesForEnrichment($titleList);
+        }
+
+        $stats = $epgMetadata->processAllPending();
+        $stats['newly_queued'] = $queued;
+
+        // Get summary counts
+        $counts = $this->db->fetch(
+            "SELECT
+                COUNT(*) as total,
+                SUM(status = 'pending') as pending,
+                SUM(status = 'complete') as complete,
+                SUM(status = 'not_found') as not_found,
+                SUM(status = 'error') as errors
+             FROM epg_programme_metadata"
+        );
+
+        $this->sendJson([
+            'success' => true,
+            'stats' => $stats,
+            'summary' => $counts,
         ]);
     }
 

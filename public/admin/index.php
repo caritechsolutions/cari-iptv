@@ -232,6 +232,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/epg/save-mapping', [EpgController::class, 'saveMapping']);
     $router->post('/epg/{id}/auto-map', [EpgController::class, 'autoMap']);
     $router->post('/epg/cleanup', [EpgController::class, 'cleanup']);
+    $router->post('/epg/process-metadata', [EpgController::class, 'processMetadata']);
 
     // App Layout Management
     $router->get('/app-layout', [AppLayoutController::class, 'index']);

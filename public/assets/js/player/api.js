@@ -184,6 +184,13 @@ const CariAPI = (function() {
         return get(channelId ? '/epg/' + channelId : '/epg');
     }
 
+    function getProgrammeInfo(title, description, channelId) {
+        let url = '/epg/programme-info?title=' + encodeURIComponent(title);
+        if (description) url += '&description=' + encodeURIComponent(description);
+        if (channelId) url += '&channel_id=' + encodeURIComponent(channelId);
+        return get(url);
+    }
+
     // User actions
     function updateWatchProgress(contentType, contentId, progress, duration) {
         return post('/auth/watch-progress', { content_type: contentType, content_id: contentId, progress, duration });
@@ -201,7 +208,7 @@ const CariAPI = (function() {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
         getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
-        getCategories, getPerson, search, getEpg,
+        getCategories, getPerson, search, getEpg, getProgrammeInfo,
         updateWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
         bustAllCaches, clearCacheBust,

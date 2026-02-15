@@ -760,7 +760,8 @@ class ContentApiService
 
     public function getEpg(array $filters = []): array
     {
-        $where = ["p.end_time > NOW()"];
+        // Include programmes from 3 hours ago so the TV guide can show past/current slots
+        $where = ["p.end_time > DATE_SUB(NOW(), INTERVAL 3 HOUR)"];
         $params = [];
 
         if (!empty($filters['channel_id'])) {
@@ -773,7 +774,7 @@ class ContentApiService
             $params[] = $filters['date'];
         }
 
-        // Default: next 24 hours
+        // Default: 3 hours ago to 24 hours ahead
         if (empty($filters['date'])) {
             $where[] = "p.start_time < DATE_ADD(NOW(), INTERVAL 24 HOUR)";
         }
@@ -1172,6 +1173,14 @@ class ContentApiService
             ));
         }
 
+        // Also check EPG cast if not found in movie/series cast
+        if (!$person) {
+            $person = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT name, tmdb_person_id, profile_url, profile_image FROM epg_programme_cast WHERE tmdb_person_id = ? LIMIT 1",
+                [$tmdbPersonId]
+            ));
+        }
+
         if (!$person) {
             return null;
         }
@@ -1198,6 +1207,42 @@ class ContentApiService
             [$tmdbPersonId]
         ), []);
 
+        // Get upcoming EPG appearances via cached metadata
+        $epgAppearances = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT p.title, p.start_time, p.end_time, p.channel_id,
+                    c.name AS channel_name, c.logo_url AS channel_logo,
+                    em.poster_local, em.poster_url, em.media_type, em.year
+             FROM epg_programme_cast ec
+             JOIN epg_programme_metadata em ON ec.metadata_id = em.id
+             JOIN epg_programs p ON LOWER(TRIM(p.title)) = em.title_normalised
+             JOIN channels c ON p.channel_id = c.id
+             WHERE ec.tmdb_person_id = ?
+               AND p.end_time > NOW()
+             ORDER BY p.start_time ASC
+             LIMIT 50",
+            [$tmdbPersonId]
+        ), []);
+
+        // Deduplicate by title + start_time (same programme on different sources)
+        $seen = [];
+        $epg = [];
+        foreach ($epgAppearances as $row) {
+            $key = $row['title'] . '|' . $row['start_time'] . '|' . $row['channel_id'];
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $epg[] = [
+                'title' => $row['title'],
+                'start_time' => $row['start_time'],
+                'end_time' => $row['end_time'],
+                'channel_id' => (int) $row['channel_id'],
+                'channel_name' => $row['channel_name'],
+                'channel_logo' => $row['channel_logo'],
+                'poster' => $row['poster_local'] ?: $row['poster_url'],
+                'media_type' => $row['media_type'],
+                'year' => $row['year'],
+            ];
+        }
+
         return [
             'name' => $person['name'],
             'profile_url' => $person['profile_url'] ?? null,
@@ -1205,6 +1250,7 @@ class ContentApiService
             'tmdb_person_id' => (int) ($person['tmdb_person_id'] ?? 0),
             'movies' => $movies,
             'series' => $series,
+            'epg' => $epg,
         ];
     }
 }
