@@ -3108,10 +3108,14 @@ const CariApp = (function() {
 
         shakaPlayer.configure({
             streaming: {
-                bufferingGoal: 30,
-                rebufferingGoal: 2,
+                bufferingGoal: 15,
+                rebufferingGoal: 1,
                 retryParameters: { maxAttempts: 3, baseDelay: 1000 },
                 alwaysStreamText: true,
+                // Live stream tuning — prevent re-fetching segments
+                // that are already buffered when playlist window is small
+                inaccurateManifestTolerance: 2,
+                segmentPrefetchLimit: 0,
             },
             preferredTextLanguage: 'en',
         });
