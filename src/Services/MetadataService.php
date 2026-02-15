@@ -629,7 +629,10 @@ class MetadataService
             $filtered = array_filter($results, fn($r) => in_array($r['media_type'] ?? '', ['movie', 'tv']));
             $filtered = array_values($filtered);
 
+            error_log("[MetadataService] [{$title}] TMDB search: " . count($results) . " raw results, " . count($filtered) . " movie/tv after filter");
+
             if (empty($filtered)) {
+                error_log("[MetadataService] [{$title}] No movie/tv results from TMDB");
                 return ['match' => null, 'results' => []];
             }
 
@@ -673,16 +676,19 @@ class MetadataService
      */
     private function pickBestMatch(string $title, string $description, array $candidates, array $channelContext = []): array
     {
+        $logTag = "[MetadataService] [{$title}]";
         $hasContext = !empty(trim($description)) || !empty(trim($channelContext['name'] ?? ''));
 
         // Only skip AI if we have no context at all to disambiguate
         if (!$hasContext) {
+            error_log("{$logTag} No context — auto-accepting first candidate");
             return $candidates[0];
         }
 
         try {
             $aiService = new AIService();
             if (!$aiService->isAvailable()) {
+                error_log("{$logTag} AI not available — auto-accepting first candidate");
                 return $candidates[0];
             }
 
@@ -743,17 +749,25 @@ PROMPT;
             ]);
 
             if ($result !== null) {
-                $pick = (int)trim($result);
+                $raw = trim($result);
+                $pick = (int)$raw;
+                error_log("{$logTag} AI responded: '{$raw}' (parsed={$pick}, candidates={$count})");
                 if ($pick >= 1 && $pick <= $count) {
-                    return $candidates[$pick - 1];
+                    $chosen = $candidates[$pick - 1];
+                    $chosenTitle = ($chosen['media_type'] ?? '') === 'movie' ? ($chosen['title'] ?? '') : ($chosen['name'] ?? '');
+                    error_log("{$logTag} AI picked #{$pick}: \"{$chosenTitle}\"");
+                    return $chosen;
                 }
                 if ($pick === 0) {
-                    // AI says no match — return null to signal no match
+                    error_log("{$logTag} AI says NO match (0) for {$count} candidates");
                     return ['_no_match' => true, 'media_type' => null];
                 }
+                error_log("{$logTag} AI returned unexpected value '{$raw}' — falling back to first candidate");
+            } else {
+                error_log("{$logTag} AI returned null — falling back to first candidate");
             }
         } catch (\Throwable $e) {
-            error_log("[MetadataService] AI match selection failed: " . $e->getMessage());
+            error_log("{$logTag} AI match selection failed: " . $e->getMessage());
         }
 
         return $candidates[0];

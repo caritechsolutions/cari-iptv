@@ -170,6 +170,8 @@ class EpgMetadataService
      */
     private function enrichRecord(array $record): void
     {
+        $logTag = "[EpgMetadata] [{$record['title_display']}]";
+
         // Grab description AND channel info from any EPG programme with this title
         // Use LIKE match since title_normalised may have stripped suffixes
         $epgContext = $this->db->fetch(
@@ -202,9 +204,22 @@ class EpgMetadataService
             'description' => $epgContext['channel_description'] ?? '',
         ];
 
+        error_log("{$logTag} Enriching — normalised='{$record['title_normalised']}' channel='{$channelContext['name']}' desc_len=" . strlen($description));
+
         $result = $this->metadata->searchProgrammeInfo($record['title_display'], $description, $channelContext);
 
-        if (isset($result['error']) || empty($result['match'])) {
+        if (isset($result['error'])) {
+            error_log("{$logTag} TMDB error: {$result['error']}");
+            $this->db->execute(
+                "UPDATE epg_programme_metadata SET status = 'not_found' WHERE id = ?",
+                [$record['id']]
+            );
+            return;
+        }
+
+        if (empty($result['match'])) {
+            $candidateCount = count($result['results'] ?? []);
+            error_log("{$logTag} No match — TMDB returned {$candidateCount} candidates but none selected");
             $this->db->execute(
                 "UPDATE epg_programme_metadata SET status = 'not_found' WHERE id = ?",
                 [$record['id']]
@@ -214,6 +229,8 @@ class EpgMetadataService
 
         $match = $result['match'];
         $mediaType = $result['media_type'] ?? null;
+
+        error_log("{$logTag} Matched → tmdb_id={$match['tmdb_id']} type={$mediaType} title='{$match['title']}'");
 
         // Download and process poster to WebP
         $posterLocal = null;
