@@ -74,7 +74,7 @@
     </div>
 
     <!-- Shaka Player (loaded from CDN; host locally in production) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.17/shaka-player.compiled.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.16.17/dist/shaka-player.compiled.min.js" crossorigin="anonymous"></script>
 
     <!-- App JavaScript -->
     <script src="/assets/js/player/api.js?v=<?= $assetVersion ?>"></script>
