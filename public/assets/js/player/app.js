@@ -1545,6 +1545,7 @@ const CariApp = (function() {
                     <div class="epg-channel-col" data-channel-id="${ch.id}">
                         <img src="${CariUI.esc(ch.logo_url || ch.logo || '')}" alt="" onerror="this.style.display='none'">
                         <div class="epg-channel-name">${CariUI.esc(ch.name)}</div>
+                        <div class="epg-now-playing-icon"><div class="epg-eq-bar"><span></span><span></span><span></span></div></div>
                     </div>
                     <div class="epg-timeline-row" style="width:${timelineWidthPx}px;min-width:${timelineWidthPx}px">
                         ${progsHtml}
@@ -3108,10 +3109,14 @@ const CariApp = (function() {
 
         shakaPlayer.configure({
             streaming: {
-                bufferingGoal: 30,
-                rebufferingGoal: 2,
+                bufferingGoal: 15,
+                rebufferingGoal: 1,
                 retryParameters: { maxAttempts: 3, baseDelay: 1000 },
                 alwaysStreamText: true,
+                // Live stream tuning — prevent re-fetching segments
+                // that are already buffered when playlist window is small
+                inaccurateManifestTolerance: 2,
+                segmentPrefetchLimit: 0,
             },
             preferredTextLanguage: 'en',
         });

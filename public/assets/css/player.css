@@ -1834,11 +1834,61 @@ img { max-width: 100%; display: block; }
 }
 
 .epg-row-active {
-    background: rgba(99, 102, 241, 0.08);
+    background: rgba(99, 102, 241, 0.15);
 }
 
 .epg-row-active .epg-channel-col {
     border-left: 3px solid var(--p-primary);
+    background: #1f1e3b;
+}
+
+.epg-row-active .epg-channel-col .epg-now-playing-icon {
+    display: flex;
+}
+
+.epg-now-playing-icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.epg-now-playing-icon .epg-eq-bar {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+}
+
+.epg-now-playing-icon .epg-eq-bar span {
+    display: block;
+    width: 3px;
+    background: var(--p-primary);
+    border-radius: 1px;
+    animation: epgEqBounce 0.8s ease-in-out infinite alternate;
+}
+
+.epg-now-playing-icon .epg-eq-bar span:nth-child(1) {
+    height: 40%;
+    animation-delay: 0s;
+}
+
+.epg-now-playing-icon .epg-eq-bar span:nth-child(2) {
+    height: 70%;
+    animation-delay: 0.2s;
+}
+
+.epg-now-playing-icon .epg-eq-bar span:nth-child(3) {
+    height: 50%;
+    animation-delay: 0.4s;
+}
+
+@keyframes epgEqBounce {
+    0% { transform: scaleY(0.4); }
+    100% { transform: scaleY(1); }
 }
 
 .epg-channel-col {
