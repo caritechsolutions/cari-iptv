@@ -1839,7 +1839,7 @@ img { max-width: 100%; display: block; }
 
 .epg-row-active .epg-channel-col {
     border-left: 3px solid var(--p-primary);
-    background: rgba(99, 102, 241, 0.18);
+    background: #1f1e3b;
 }
 
 .epg-row-active .epg-channel-col .epg-now-playing-icon {
