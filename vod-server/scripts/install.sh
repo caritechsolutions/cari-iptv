@@ -134,14 +134,16 @@ fi
 # ========================
 log "Building VOD Server..."
 
+# Branch to pull from
+BRANCH="${BRANCH:-claude/vod-server-setup-458YL}"
+
 # Determine source directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]-$0}")" 2>/dev/null && pwd || echo /tmp)"
 SOURCE_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Check if we're running from the repo
 if [ ! -f "$SOURCE_DIR/CMakeLists.txt" ]; then
     # Download from git
-    BRANCH="${BRANCH:-main}"
     TEMP_DIR=$(mktemp -d)
     log "Downloading source from branch: $BRANCH"
     git clone --depth 1 --branch "$BRANCH" \
