@@ -12,10 +12,42 @@ class VodServerService
 {
     private Database $db;
     private int $timeout = 30;
+    private static bool $tableChecked = false;
 
     public function __construct()
     {
         $this->db = Database::getInstance();
+        $this->ensureTable();
+    }
+
+    /**
+     * Ensure the vod_servers table exists (auto-create if migration hasn't run)
+     */
+    private function ensureTable(): void
+    {
+        if (self::$tableChecked) return;
+        self::$tableChecked = true;
+
+        try {
+            $this->db->fetch("SELECT 1 FROM vod_servers LIMIT 1");
+        } catch (\Exception $e) {
+            $this->db->execute("
+                CREATE TABLE IF NOT EXISTS `vod_servers` (
+                    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    `name` VARCHAR(100) NOT NULL,
+                    `url` VARCHAR(500) NOT NULL,
+                    `api_key` VARCHAR(256) NOT NULL DEFAULT '',
+                    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                    `is_default` TINYINT(1) NOT NULL DEFAULT 0,
+                    `sort_order` INT NOT NULL DEFAULT 0,
+                    `notes` TEXT DEFAULT NULL,
+                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX `idx_active` (`is_active`),
+                    INDEX `idx_default` (`is_default`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+        }
     }
 
     /* ==============================================================
@@ -201,6 +233,7 @@ class VodServerService
 
     /**
      * Test connection to a VOD server
+     * First checks /api/status (public), then verifies API key via /api/config (authenticated)
      */
     public function testConnection(?string $url = null, ?string $apiKey = null, ?int $serverId = null): array
     {
@@ -214,18 +247,31 @@ class VodServerService
         }
 
         try {
+            // Step 1: Check basic connectivity via public /api/status
             $result = $this->request($server, 'GET', '/api/status');
-            return [
-                'success'       => true,
-                'version'       => $result['version'] ?? 'Unknown',
-                'node_name'     => $result['node_name'] ?? 'Unknown',
-                'uptime'        => $result['uptime'] ?? 'Unknown',
-                'content_count' => $result['content_count'] ?? 0,
-                'active_jobs'   => $result['active_jobs'] ?? 0,
-            ];
         } catch (\Exception $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
+            return ['success' => false, 'error' => 'Cannot connect: ' . $e->getMessage()];
         }
+
+        try {
+            // Step 2: Verify API key by calling an authenticated endpoint
+            $this->request($server, 'GET', '/api/config');
+        } catch (\Exception $e) {
+            $msg = $e->getMessage();
+            if (stripos($msg, 'Unauthorized') !== false || stripos($msg, 'API key') !== false || stripos($msg, '401') !== false) {
+                return ['success' => false, 'error' => 'Server reachable but API key is invalid or missing. Check your API key.'];
+            }
+            return ['success' => false, 'error' => 'Auth check failed: ' . $msg];
+        }
+
+        return [
+            'success'       => true,
+            'version'       => $result['version'] ?? 'Unknown',
+            'node_name'     => $result['node_name'] ?? 'Unknown',
+            'uptime'        => $result['uptime'] ?? 'Unknown',
+            'content_count' => $result['content_count'] ?? 0,
+            'active_jobs'   => $result['active_jobs'] ?? 0,
+        ];
     }
 
     public function getStreamUrl(int $serverId, string $contentId, string $format = 'hls'): string
