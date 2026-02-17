@@ -3,7 +3,7 @@
 # CARI VOD Server - Installation Script
 # Installs dependencies, builds from source, and configures the service.
 #
-set -euo pipefail
+set -eo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -138,7 +138,7 @@ log "Building VOD Server..."
 BRANCH="${BRANCH:-claude/vod-server-setup-458YL}"
 
 # Determine source directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]-$0}")" 2>/dev/null && pwd || echo /tmp)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo /tmp)"
 SOURCE_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Check if we're running from the repo

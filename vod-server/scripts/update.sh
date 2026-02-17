@@ -4,7 +4,7 @@
 # Downloads latest source, rebuilds, and restarts the service.
 # Preserves configuration and data.
 #
-set -euo pipefail
+set -eo pipefail
 
 # Branch to pull updates from
 BRANCH="claude/vod-server-setup-458YL"
