@@ -63,6 +63,7 @@ use CariIPTV\Controllers\Admin\AppLayoutController;
 use CariIPTV\Controllers\Admin\AdController;
 use CariIPTV\Controllers\Admin\SubscriberController;
 use CariIPTV\Controllers\Admin\PackageController;
+use CariIPTV\Controllers\Admin\VodServerController;
 
 // Initialize session
 Session::start();
@@ -345,6 +346,20 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/packages/groups/{id}/delete', [PackageController::class, 'deleteGroup']);
     $router->post('/packages/groups/{id}/content/add', [PackageController::class, 'addGroupContent']);
     $router->post('/packages/groups/{id}/content/{iid}/remove', [PackageController::class, 'removeGroupContent']);
+
+    // VOD Server Integration
+    $router->get('/vod-server', [VodServerController::class, 'index']);
+    $router->get('/vod-server/status', [VodServerController::class, 'status']);
+    $router->get('/vod-server/config', [VodServerController::class, 'config']);
+    $router->get('/vod-server/content', [VodServerController::class, 'content']);
+    $router->post('/vod-server/content/delete', [VodServerController::class, 'deleteContent']);
+    $router->get('/vod-server/jobs', [VodServerController::class, 'jobs']);
+    $router->get('/vod-server/job-detail', [VodServerController::class, 'jobDetail']);
+    $router->post('/vod-server/jobs/submit', [VodServerController::class, 'submitJob']);
+    $router->post('/vod-server/jobs/{id}/cancel', [VodServerController::class, 'cancelJob']);
+    $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
+    $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
+    $router->post('/vod-server/settings/save', [VodServerController::class, 'saveSettings']);
 });
 
 // Dispatch the request
