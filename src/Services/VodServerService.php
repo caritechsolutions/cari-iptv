@@ -1,208 +1,262 @@
 <?php
 /**
  * CARI-IPTV VOD Server Service
- * HTTP client for communicating with the VOD Server API
+ * Manages VOD server records and communicates with the VOD Server API
  */
 
 namespace CariIPTV\Services;
 
+use CariIPTV\Core\Database;
+
 class VodServerService
 {
-    private string $baseUrl;
-    private string $apiKey;
-    private bool $enabled;
-    private int $timeout;
+    private Database $db;
+    private int $timeout = 30;
 
     public function __construct()
     {
-        $settings = new SettingsService();
-        $this->baseUrl = rtrim($settings->get('vod_server_url', '', 'vod_server'), '/');
-        $this->apiKey = $settings->get('vod_server_api_key', '', 'vod_server');
-        $this->enabled = (bool) $settings->get('vod_server_enabled', false, 'vod_server');
-        $this->timeout = (int) $settings->get('vod_server_timeout', 30, 'vod_server');
+        $this->db = Database::getInstance();
+    }
+
+    /* ==============================================================
+     * Server CRUD (multi-server management)
+     * ============================================================== */
+
+    /**
+     * Get all VOD servers
+     */
+    public function getServers(): array
+    {
+        return $this->db->fetchAll(
+            "SELECT * FROM vod_servers ORDER BY sort_order ASC, name ASC"
+        ) ?: [];
     }
 
     /**
-     * Check if VOD server integration is configured
+     * Get active VOD servers only
      */
-    public function isConfigured(): bool
+    public function getActiveServers(): array
     {
-        return !empty($this->baseUrl) && !empty($this->apiKey);
+        return $this->db->fetchAll(
+            "SELECT * FROM vod_servers WHERE is_active = 1 ORDER BY sort_order ASC, name ASC"
+        ) ?: [];
     }
 
     /**
-     * Check if VOD server integration is enabled
+     * Get a single server by ID
      */
-    public function isEnabled(): bool
+    public function getServer(int $id): ?array
     {
-        return $this->enabled && $this->isConfigured();
+        return $this->db->fetch(
+            "SELECT * FROM vod_servers WHERE id = ?", [$id]
+        ) ?: null;
     }
 
     /**
-     * Get server status
+     * Get the default server
      */
-    public function getStatus(): array
+    public function getDefaultServer(): ?array
     {
-        return $this->request('GET', '/api/status');
+        return $this->db->fetch(
+            "SELECT * FROM vod_servers WHERE is_default = 1 AND is_active = 1 LIMIT 1"
+        ) ?: $this->db->fetch(
+            "SELECT * FROM vod_servers WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1"
+        ) ?: null;
     }
 
     /**
-     * Get server configuration
+     * Create a new server
      */
-    public function getConfig(): array
+    public function createServer(array $data): int
     {
-        return $this->request('GET', '/api/config');
+        $count = $this->db->fetch("SELECT COUNT(*) as cnt FROM vod_servers")['cnt'] ?? 0;
+        $isDefault = !empty($data['is_default']) || $count == 0;
+
+        if ($isDefault) {
+            $this->db->execute("UPDATE vod_servers SET is_default = 0");
+        }
+
+        $this->db->insert('vod_servers', [
+            'name'       => $data['name'],
+            'url'        => rtrim($data['url'], '/'),
+            'api_key'    => $data['api_key'] ?? '',
+            'is_active'  => isset($data['is_active']) ? (int)$data['is_active'] : 1,
+            'is_default' => $isDefault ? 1 : 0,
+            'sort_order' => (int)($data['sort_order'] ?? 0),
+            'notes'      => $data['notes'] ?? null,
+        ]);
+
+        return (int) $this->db->lastInsertId();
     }
 
     /**
-     * List content in the VOD server library
+     * Update an existing server
      */
-    public function getContent(array $filters = []): array
+    public function updateServer(int $id, array $data): void
     {
+        if (!empty($data['is_default'])) {
+            $this->db->execute("UPDATE vod_servers SET is_default = 0");
+        }
+
+        $this->db->update('vod_servers', [
+            'name'       => $data['name'],
+            'url'        => rtrim($data['url'], '/'),
+            'api_key'    => $data['api_key'] ?? '',
+            'is_active'  => isset($data['is_active']) ? (int)$data['is_active'] : 1,
+            'is_default' => !empty($data['is_default']) ? 1 : 0,
+            'sort_order' => (int)($data['sort_order'] ?? 0),
+            'notes'      => $data['notes'] ?? null,
+        ], 'id = ?', [$id]);
+    }
+
+    /**
+     * Delete a server
+     */
+    public function deleteServer(int $id): void
+    {
+        $this->db->execute("DELETE FROM vod_servers WHERE id = ?", [$id]);
+    }
+
+    /* ==============================================================
+     * API Communication (per-server)
+     * ============================================================== */
+
+    public function getStatus(int $serverId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/status');
+    }
+
+    public function getConfig(int $serverId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/config');
+    }
+
+    public function getContent(int $serverId, array $filters = []): array
+    {
+        $server = $this->requireServer($serverId);
         $query = http_build_query(array_filter([
             'status' => $filters['status'] ?? null,
             'search' => $filters['search'] ?? null,
             'limit'  => $filters['limit'] ?? 50,
             'offset' => $filters['offset'] ?? 0,
         ], fn($v) => $v !== null));
-
-        return $this->request('GET', '/api/content' . ($query ? "?{$query}" : ''));
+        return $this->request($server, 'GET', '/api/content' . ($query ? "?{$query}" : ''));
     }
 
-    /**
-     * Get single content item details
-     */
-    public function getContentDetail(string $contentId): array
+    public function getContentDetail(int $serverId, string $contentId): array
     {
-        return $this->request('GET', '/api/content/' . urlencode($contentId));
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/content/' . urlencode($contentId));
     }
 
-    /**
-     * Delete content from VOD server
-     */
-    public function deleteContent(string $contentId): array
+    public function deleteContentItem(int $serverId, string $contentId): array
     {
-        return $this->request('DELETE', '/api/content/' . urlencode($contentId));
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'DELETE', '/api/content/' . urlencode($contentId));
     }
 
-    /**
-     * Submit a new transcode job
-     */
-    public function submitJob(string $contentId, string $sourcePath, array $options = []): array
+    public function submitJob(int $serverId, string $contentId, string $sourcePath, array $options = []): array
     {
-        $body = [
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'POST', '/api/jobs', [
             'content_id'  => $contentId,
             'source_path' => $sourcePath,
             'title'       => $options['title'] ?? $contentId,
             'source_type' => $options['source_type'] ?? 'file',
             'profile'     => $options['profile'] ?? 'standard',
             'priority'    => $options['priority'] ?? 5,
-        ];
-
-        if (!empty($options['callback_url'])) {
-            $body['callback_url'] = $options['callback_url'];
-        }
-
-        if (!empty($options['metadata'])) {
-            $body['metadata'] = $options['metadata'];
-        }
-
-        return $this->request('POST', '/api/jobs', $body);
+        ]);
     }
 
-    /**
-     * List transcode jobs
-     */
-    public function getJobs(array $filters = []): array
+    public function getJobs(int $serverId, array $filters = []): array
     {
+        $server = $this->requireServer($serverId);
         $query = http_build_query(array_filter([
             'status' => $filters['status'] ?? null,
             'limit'  => $filters['limit'] ?? 50,
             'offset' => $filters['offset'] ?? 0,
         ], fn($v) => $v !== null));
+        return $this->request($server, 'GET', '/api/jobs' . ($query ? "?{$query}" : ''));
+    }
 
-        return $this->request('GET', '/api/jobs' . ($query ? "?{$query}" : ''));
+    public function getJob(int $serverId, int $jobId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/jobs/' . $jobId);
+    }
+
+    public function cancelJob(int $serverId, int $jobId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'DELETE', '/api/jobs/' . $jobId);
+    }
+
+    public function browse(int $serverId, string $path = '/'): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/browse?path=' . urlencode($path));
     }
 
     /**
-     * Get single job details
+     * Test connection to a VOD server
      */
-    public function getJob(int $jobId): array
+    public function testConnection(?string $url = null, ?string $apiKey = null, ?int $serverId = null): array
     {
-        return $this->request('GET', '/api/jobs/' . $jobId);
-    }
-
-    /**
-     * Cancel/delete a job
-     */
-    public function cancelJob(int $jobId): array
-    {
-        return $this->request('DELETE', '/api/jobs/' . $jobId);
-    }
-
-    /**
-     * Browse filesystem on the VOD server
-     */
-    public function browse(string $path = '/'): array
-    {
-        return $this->request('GET', '/api/browse?path=' . urlencode($path));
-    }
-
-    /**
-     * Test connection to the VOD server
-     */
-    public function testConnection(?string $url = null, ?string $apiKey = null): array
-    {
-        $origUrl = $this->baseUrl;
-        $origKey = $this->apiKey;
-
-        if ($url !== null) $this->baseUrl = rtrim($url, '/');
-        if ($apiKey !== null) $this->apiKey = $apiKey;
+        if ($serverId) {
+            $server = $this->getServer($serverId);
+            if (!$server) return ['success' => false, 'error' => 'Server not found'];
+        } elseif ($url) {
+            $server = ['url' => rtrim($url, '/'), 'api_key' => $apiKey ?? ''];
+        } else {
+            return ['success' => false, 'error' => 'URL or server ID required'];
+        }
 
         try {
-            $result = $this->request('GET', '/api/status');
-            $this->baseUrl = $origUrl;
-            $this->apiKey = $origKey;
-
+            $result = $this->request($server, 'GET', '/api/status');
             return [
-                'success' => true,
-                'version' => $result['version'] ?? 'Unknown',
-                'node_name' => $result['node_name'] ?? 'Unknown',
-                'uptime' => $result['uptime'] ?? 'Unknown',
+                'success'       => true,
+                'version'       => $result['version'] ?? 'Unknown',
+                'node_name'     => $result['node_name'] ?? 'Unknown',
+                'uptime'        => $result['uptime'] ?? 'Unknown',
                 'content_count' => $result['content_count'] ?? 0,
-                'active_jobs' => $result['active_jobs'] ?? 0,
+                'active_jobs'   => $result['active_jobs'] ?? 0,
             ];
         } catch (\Exception $e) {
-            $this->baseUrl = $origUrl;
-            $this->apiKey = $origKey;
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
+            return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 
-    /**
-     * Build the HLS stream URL for a content item
-     */
-    public function getStreamUrl(string $contentId, string $format = 'hls'): string
+    public function getStreamUrl(int $serverId, string $contentId, string $format = 'hls'): string
     {
+        $server = $this->getServer($serverId);
+        if (!$server) return '';
         $ext = $format === 'dash' ? 'manifest.mpd' : 'master.m3u8';
-        return $this->baseUrl . '/content/' . urlencode($contentId) . '/' . $ext;
+        return $server['url'] . '/content/' . urlencode($contentId) . '/' . $ext;
     }
 
-    /**
-     * Make an HTTP request to the VOD Server API
-     */
-    private function request(string $method, string $path, ?array $body = null): array
+    /* ==============================================================
+     * Internal helpers
+     * ============================================================== */
+
+    private function requireServer(int $serverId): array
     {
-        if (empty($this->baseUrl)) {
+        $server = $this->getServer($serverId);
+        if (!$server) throw new \RuntimeException('VOD Server not found');
+        return $server;
+    }
+
+    private function request(array $server, string $method, string $path, ?array $body = null): array
+    {
+        $baseUrl = $server['url'] ?? '';
+        $apiKey  = $server['api_key'] ?? '';
+
+        if (empty($baseUrl)) {
             throw new \RuntimeException('VOD Server URL not configured');
         }
 
-        $url = $this->baseUrl . $path;
-
+        $url = $baseUrl . $path;
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
@@ -216,25 +270,21 @@ class VodServerService
         ]);
 
         $headers = ['Content-Type: application/json'];
-        if (!empty($this->apiKey)) {
-            $headers[] = 'X-API-Key: ' . $this->apiKey;
+        if (!empty($apiKey)) {
+            $headers[] = 'X-API-Key: ' . $apiKey;
         }
 
         switch (strtoupper($method)) {
             case 'POST':
                 curl_setopt($ch, CURLOPT_POST, true);
-                if ($body !== null) {
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-                }
+                if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
                 break;
             case 'DELETE':
                 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
                 break;
             case 'PUT':
                 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
-                if ($body !== null) {
-                    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-                }
+                if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
                 break;
         }
 
@@ -246,13 +296,8 @@ class VodServerService
         $errno = curl_errno($ch);
         curl_close($ch);
 
-        if ($errno) {
-            throw new \RuntimeException('Connection failed: ' . $error);
-        }
-
-        if ($httpCode === 0) {
-            throw new \RuntimeException('Could not connect to VOD Server at ' . $this->baseUrl);
-        }
+        if ($errno) throw new \RuntimeException('Connection failed: ' . $error);
+        if ($httpCode === 0) throw new \RuntimeException('Could not connect to VOD Server at ' . $baseUrl);
 
         $data = json_decode($response, true);
         if ($data === null && !empty($response)) {
@@ -260,8 +305,7 @@ class VodServerService
         }
 
         if ($httpCode >= 400) {
-            $msg = $data['error'] ?? $data['message'] ?? 'HTTP ' . $httpCode;
-            throw new \RuntimeException($msg);
+            throw new \RuntimeException($data['error'] ?? $data['message'] ?? 'HTTP ' . $httpCode);
         }
 
         return $data ?? [];

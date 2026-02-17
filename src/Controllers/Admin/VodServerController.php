@@ -1,7 +1,7 @@
 <?php
 /**
  * CARI-IPTV VOD Server Controller
- * Manages VOD Server integration - status, content, jobs, transcoding
+ * Manages VOD Server integration - multi-server, status, content, jobs, transcoding
  */
 
 namespace CariIPTV\Controllers\Admin;
@@ -9,17 +9,14 @@ namespace CariIPTV\Controllers\Admin;
 use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\VodServerService;
-use CariIPTV\Services\SettingsService;
 
 class VodServerController
 {
     private VodServerService $vodService;
-    private SettingsService $settings;
 
     public function __construct()
     {
         $this->vodService = new VodServerService();
-        $this->settings = new SettingsService();
     }
 
     /**
@@ -27,286 +24,273 @@ class VodServerController
      */
     public function index(): void
     {
-        $vodSettings = $this->settings->getGroup('vod_server');
+        $servers = $this->vodService->getServers();
+        $defaultServer = $this->vodService->getDefaultServer();
 
         Response::view('admin/vod-server/index', [
-            'title' => 'VOD Server',
-            'vodSettings' => $vodSettings,
-            'isConfigured' => $this->vodService->isConfigured(),
-            'isEnabled' => $this->vodService->isEnabled(),
-        ]);
+            'pageTitle' => 'VOD Server',
+            'servers' => $servers,
+            'defaultServerId' => $defaultServer['id'] ?? 0,
+        ], 'admin');
     }
 
-    /**
-     * AJAX: Get server status
-     */
+    /* ==============================================================
+     * Server CRUD (AJAX)
+     * ============================================================== */
+
+    public function listServers(): void
+    {
+        $this->sendJson(['success' => true, 'servers' => $this->vodService->getServers()]);
+    }
+
+    public function addServer(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $name   = trim($_POST['name'] ?? '');
+        $url    = trim($_POST['url'] ?? '');
+        $apiKey = trim($_POST['api_key'] ?? '');
+
+        if (empty($name) || empty($url)) {
+            $this->sendJson(['success' => false, 'error' => 'Name and URL are required']);
+            return;
+        }
+
+        try {
+            $id = $this->vodService->createServer([
+                'name'       => $name,
+                'url'        => $url,
+                'api_key'    => $apiKey,
+                'is_default' => !empty($_POST['is_default']),
+                'notes'      => trim($_POST['notes'] ?? ''),
+            ]);
+            $this->sendJson(['success' => true, 'message' => 'Server added', 'id' => $id]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function updateServerRecord(int $id): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $name = trim($_POST['name'] ?? '');
+        $url  = trim($_POST['url'] ?? '');
+
+        if (empty($name) || empty($url)) {
+            $this->sendJson(['success' => false, 'error' => 'Name and URL are required']);
+            return;
+        }
+
+        try {
+            $this->vodService->updateServer($id, [
+                'name'       => $name,
+                'url'        => $url,
+                'api_key'    => trim($_POST['api_key'] ?? ''),
+                'is_active'  => isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1,
+                'is_default' => !empty($_POST['is_default']),
+                'notes'      => trim($_POST['notes'] ?? ''),
+            ]);
+            $this->sendJson(['success' => true, 'message' => 'Server updated']);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function deleteServer(int $id): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        try {
+            $this->vodService->deleteServer($id);
+            $this->sendJson(['success' => true, 'message' => 'Server removed']);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /* ==============================================================
+     * Server API proxy (all require ?server_id= param)
+     * ============================================================== */
+
+    private function getServerId(): int
+    {
+        return (int)($_GET['server_id'] ?? $_POST['server_id'] ?? 0);
+    }
+
     public function status(): void
     {
         try {
-            if (!$this->vodService->isConfigured()) {
-                $this->sendJson(['success' => false, 'error' => 'VOD Server not configured']);
+            $sid = $this->getServerId();
+            if ($sid <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'No server selected']);
                 return;
             }
-
-            $status = $this->vodService->getStatus();
+            $status = $this->vodService->getStatus($sid);
             $this->sendJson(['success' => true, 'status' => $status]);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
-    /**
-     * AJAX: Get server configuration (profiles, etc.)
-     */
     public function config(): void
     {
         try {
-            $config = $this->vodService->getConfig();
+            $sid = $this->getServerId();
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            $config = $this->vodService->getConfig($sid);
             $this->sendJson(['success' => true, 'config' => $config]);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
-    /**
-     * AJAX: List content items from VOD server
-     */
     public function content(): void
     {
         try {
-            $filters = [
+            $sid = $this->getServerId();
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            $result = $this->vodService->getContent($sid, [
                 'status' => $_GET['status'] ?? null,
                 'search' => $_GET['search'] ?? null,
                 'limit'  => (int)($_GET['limit'] ?? 25),
                 'offset' => (int)($_GET['offset'] ?? 0),
-            ];
-
-            $result = $this->vodService->getContent($filters);
+            ]);
             $this->sendJson(['success' => true, 'data' => $result]);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
-    /**
-     * AJAX: Get single content detail
-     */
-    public function contentDetail(int $id): void
-    {
-        try {
-            $contentId = $_GET['content_id'] ?? '';
-            if (empty($contentId)) {
-                $this->sendJson(['success' => false, 'error' => 'Content ID required']);
-                return;
-            }
-
-            $detail = $this->vodService->getContentDetail($contentId);
-            $this->sendJson(['success' => true, 'content' => $detail]);
-        } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * AJAX: List jobs
-     */
-    public function jobs(): void
-    {
-        try {
-            $filters = [
-                'status' => $_GET['status'] ?? null,
-                'limit'  => (int)($_GET['limit'] ?? 25),
-                'offset' => (int)($_GET['offset'] ?? 0),
-            ];
-
-            $result = $this->vodService->getJobs($filters);
-            $this->sendJson(['success' => true, 'data' => $result]);
-        } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * AJAX: Get single job detail
-     */
-    public function jobDetail(): void
-    {
-        try {
-            $jobId = (int)($_GET['job_id'] ?? 0);
-            if ($jobId <= 0) {
-                $this->sendJson(['success' => false, 'error' => 'Job ID required']);
-                return;
-            }
-
-            $detail = $this->vodService->getJob($jobId);
-            $this->sendJson(['success' => true, 'job' => $detail]);
-        } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * AJAX: Submit a new transcode job
-     */
-    public function submitJob(): void
-    {
-        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
-            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
-            return;
-        }
-
-        try {
-            $contentId  = trim($_POST['content_id'] ?? '');
-            $sourcePath = trim($_POST['source_path'] ?? '');
-            $title      = trim($_POST['title'] ?? '');
-            $profile    = trim($_POST['profile'] ?? 'standard');
-            $priority   = (int)($_POST['priority'] ?? 5);
-            $sourceType = trim($_POST['source_type'] ?? 'file');
-
-            if (empty($contentId)) {
-                $this->sendJson(['success' => false, 'error' => 'Content ID is required']);
-                return;
-            }
-            if (empty($sourcePath)) {
-                $this->sendJson(['success' => false, 'error' => 'Source path is required']);
-                return;
-            }
-
-            $result = $this->vodService->submitJob($contentId, $sourcePath, [
-                'title'       => $title ?: $contentId,
-                'profile'     => $profile,
-                'priority'    => max(1, min(10, $priority)),
-                'source_type' => $sourceType,
-            ]);
-
-            $this->sendJson([
-                'success' => true,
-                'message' => 'Transcode job submitted successfully',
-                'job'     => $result['job'] ?? $result,
-            ]);
-        } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * AJAX: Cancel a job
-     */
-    public function cancelJob(int $id): void
-    {
-        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
-            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
-            return;
-        }
-
-        try {
-            $result = $this->vodService->cancelJob($id);
-            $this->sendJson([
-                'success' => true,
-                'message' => 'Job cancelled successfully',
-            ]);
-        } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * AJAX: Delete content from VOD server
-     */
     public function deleteContent(): void
     {
         if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
             $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
             return;
         }
-
         try {
+            $sid = (int)($_POST['server_id'] ?? 0);
             $contentId = trim($_POST['content_id'] ?? '');
-            if (empty($contentId)) {
-                $this->sendJson(['success' => false, 'error' => 'Content ID required']);
+            if ($sid <= 0 || empty($contentId)) {
+                $this->sendJson(['success' => false, 'error' => 'Server ID and Content ID required']);
                 return;
             }
-
-            $result = $this->vodService->deleteContent($contentId);
-            $this->sendJson([
-                'success' => true,
-                'message' => 'Content deleted from VOD Server',
-            ]);
+            $this->vodService->deleteContentItem($sid, $contentId);
+            $this->sendJson(['success' => true, 'message' => 'Content deleted']);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
-    /**
-     * AJAX: Browse files on VOD server
-     */
-    public function browseFiles(): void
+    public function jobs(): void
     {
         try {
-            $path = $_GET['path'] ?? '/';
-            $result = $this->vodService->browse($path);
+            $sid = $this->getServerId();
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            $result = $this->vodService->getJobs($sid, [
+                'status' => $_GET['status'] ?? null,
+                'limit'  => (int)($_GET['limit'] ?? 25),
+                'offset' => (int)($_GET['offset'] ?? 0),
+            ]);
             $this->sendJson(['success' => true, 'data' => $result]);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
-    /**
-     * AJAX: Test connection to VOD server
-     */
+    public function jobDetail(): void
+    {
+        try {
+            $sid = $this->getServerId();
+            $jobId = (int)($_GET['job_id'] ?? 0);
+            if ($sid <= 0 || $jobId <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'Server ID and Job ID required']);
+                return;
+            }
+            $detail = $this->vodService->getJob($sid, $jobId);
+            $this->sendJson(['success' => true, 'job' => $detail]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function submitJob(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+        try {
+            $sid = (int)($_POST['server_id'] ?? 0);
+            $contentId  = trim($_POST['content_id'] ?? '');
+            $sourcePath = trim($_POST['source_path'] ?? '');
+
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            if (empty($contentId)) { $this->sendJson(['success' => false, 'error' => 'Content ID is required']); return; }
+            if (empty($sourcePath)) { $this->sendJson(['success' => false, 'error' => 'Source path is required']); return; }
+
+            $result = $this->vodService->submitJob($sid, $contentId, $sourcePath, [
+                'title'       => trim($_POST['title'] ?? '') ?: $contentId,
+                'profile'     => trim($_POST['profile'] ?? 'standard'),
+                'priority'    => max(1, min(10, (int)($_POST['priority'] ?? 5))),
+                'source_type' => trim($_POST['source_type'] ?? 'file'),
+            ]);
+
+            $this->sendJson(['success' => true, 'message' => 'Job submitted', 'job' => $result['job'] ?? $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function cancelJob(int $id): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+        try {
+            $sid = (int)($_POST['server_id'] ?? 0);
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            $this->vodService->cancelJob($sid, $id);
+            $this->sendJson(['success' => true, 'message' => 'Job cancelled']);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function browseFiles(): void
+    {
+        try {
+            $sid = $this->getServerId();
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            $result = $this->vodService->browse($sid, $_GET['path'] ?? '/');
+            $this->sendJson(['success' => true, 'data' => $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
     public function testConnection(): void
     {
         if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
             $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
             return;
         }
-
         $url = trim($_POST['url'] ?? '');
         $apiKey = trim($_POST['api_key'] ?? '');
-
-        if (empty($url)) {
-            $this->sendJson(['success' => false, 'error' => 'URL is required']);
-            return;
-        }
-
-        $result = $this->vodService->testConnection($url, $apiKey);
-        $this->sendJson($result);
+        if (empty($url)) { $this->sendJson(['success' => false, 'error' => 'URL is required']); return; }
+        $this->sendJson($this->vodService->testConnection($url, $apiKey));
     }
 
-    /**
-     * AJAX: Save VOD server settings
-     */
-    public function saveSettings(): void
-    {
-        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
-            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
-            return;
-        }
-
-        $url     = trim($_POST['vod_server_url'] ?? '');
-        $apiKey  = trim($_POST['vod_server_api_key'] ?? '');
-        $enabled = !empty($_POST['vod_server_enabled']);
-
-        if ($enabled && empty($url)) {
-            $this->sendJson(['success' => false, 'error' => 'URL is required when enabling VOD Server']);
-            return;
-        }
-
-        $this->settings->setMany([
-            'vod_server_url'     => $url,
-            'vod_server_api_key' => $apiKey,
-            'vod_server_enabled' => $enabled ? '1' : '0',
-        ], 'vod_server');
-
-        $this->sendJson([
-            'success' => true,
-            'message' => 'VOD Server settings saved successfully',
-        ]);
-    }
-
-    /**
-     * Send JSON response
-     */
     private function sendJson(array $data): void
     {
         header('Content-Type: application/json');

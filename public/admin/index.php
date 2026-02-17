@@ -349,6 +349,10 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
 
     // VOD Server Integration
     $router->get('/vod-server', [VodServerController::class, 'index']);
+    $router->get('/vod-server/servers', [VodServerController::class, 'listServers']);
+    $router->post('/vod-server/servers/add', [VodServerController::class, 'addServer']);
+    $router->post('/vod-server/servers/{id}/update', [VodServerController::class, 'updateServerRecord']);
+    $router->post('/vod-server/servers/{id}/delete', [VodServerController::class, 'deleteServer']);
     $router->get('/vod-server/status', [VodServerController::class, 'status']);
     $router->get('/vod-server/config', [VodServerController::class, 'config']);
     $router->get('/vod-server/content', [VodServerController::class, 'content']);
@@ -359,7 +363,6 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/vod-server/jobs/{id}/cancel', [VodServerController::class, 'cancelJob']);
     $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
     $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
-    $router->post('/vod-server/settings/save', [VodServerController::class, 'saveSettings']);
 });
 
 // Dispatch the request
