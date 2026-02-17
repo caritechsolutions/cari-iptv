@@ -38,3 +38,6 @@ phpunit.xml
 node_modules/
 npm-debug.log
 yarn-error.log
+
+# VOD server build artifacts
+vod-server/build/
