@@ -17,7 +17,7 @@ typedef struct {
 /* Content directory info */
 typedef struct {
     char     content_id[256];
-    char     path[1024];
+    char     path[MAX_PATH_LEN + 256];
     uint64_t size_bytes;
     int      file_count;
 } content_dir_t;

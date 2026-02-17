@@ -69,7 +69,7 @@ int transcoder_probe(const char *source_path, media_info_t *info)
     }
 
     /* Build ffprobe command */
-    char cmd[2048];
+    char cmd[MAX_PATH_LEN * 2 + 256];
     snprintf(cmd, sizeof(cmd),
              "%s -v quiet -print_format json -show_format -show_streams \"%s\"",
              g_config->ffprobe_path, source_path);
@@ -765,7 +765,7 @@ int transcoder_extract_subtitles(const char *source_path, const char *output_dir
 
     /* We need to identify the subtitle stream indices. Run ffprobe again
      * to get the stream mapping. */
-    char cmd[2048];
+    char cmd[MAX_PATH_LEN * 2 + 256];
     snprintf(cmd, sizeof(cmd),
              "%s -v quiet -print_format json -show_streams -select_streams s \"%s\"",
              g_config->ffprobe_path, source_path);

@@ -7,8 +7,8 @@
 /* Packaging state */
 typedef struct {
     int     job_id;
-    char    input_dir[1024];    /* Dir with encoded files */
-    char    output_dir[1024];   /* Final content directory */
+    char    input_dir[MAX_PATH_LEN];    /* Dir with encoded files */
+    char    output_dir[MAX_PATH_LEN];   /* Final content directory */
     double  progress;           /* 0.0 to 100.0 */
     char    current_step[256];
     bool    cancelled;

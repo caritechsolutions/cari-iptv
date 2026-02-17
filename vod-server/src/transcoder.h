@@ -9,8 +9,8 @@
 typedef struct {
     int         job_id;
     pid_t       pid;            /* FFmpeg process ID */
-    char        source_path[1024];
-    char        output_dir[1024];
+    char        source_path[MAX_PATH_LEN];
+    char        output_dir[MAX_PATH_LEN];
     char        profile_name[64];
     double      progress;       /* 0.0 to 100.0 */
     double      duration;       /* Source duration in seconds */

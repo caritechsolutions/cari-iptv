@@ -240,7 +240,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         basename = basename ? basename + 1 : path;
 
         /* Determine track ID from filename */
-        char track_id[256];
+        char track_id[MAX_PATH_LEN];
         snprintf(track_id, sizeof(track_id), "%s", basename);
         /* Remove extension */
         char *dot = strrchr(track_id, '.');
@@ -340,7 +340,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
 
     /* Separate video and audio files */
     char video_paths[MAX_RENDITIONS][MAX_PATH_LEN];
-    char video_labels[MAX_RENDITIONS][256];
+    char video_labels[MAX_RENDITIONS][MAX_PATH_LEN];
     int video_count = 0;
     char audio_path[MAX_PATH_LEN] = {0};
     bool has_audio = false;

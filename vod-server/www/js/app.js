@@ -9,10 +9,11 @@ var App = {
 
     /* API Client */
     async api(method, path, body) {
-        const opts = {
-            method,
-            headers: { 'Content-Type': 'application/json' }
-        };
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.VOD_API_KEY) {
+            headers['X-API-Key'] = window.VOD_API_KEY;
+        }
+        const opts = { method, headers };
         if (body) opts.body = JSON.stringify(body);
 
         try {

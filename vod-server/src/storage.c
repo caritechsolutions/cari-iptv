@@ -269,7 +269,7 @@ int storage_cleanup_temp(int job_id)
 {
     if (!g_config) return -1;
 
-    char path[MAX_PATH_LEN];
+    char path[MAX_PATH_LEN + 256];
     snprintf(path, sizeof(path), "%s/job_%d", g_config->temp_path, job_id);
 
     struct stat st;
@@ -293,7 +293,7 @@ int storage_remove_content(const char *content_id)
 {
     if (!g_config || !content_id) return -1;
 
-    char path[MAX_PATH_LEN];
+    char path[MAX_PATH_LEN + 256];
     snprintf(path, sizeof(path), "%s/%s", g_config->library_path, content_id);
 
     struct stat st;
@@ -349,7 +349,7 @@ int storage_list_content(content_dir_t **out_dirs)
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] == '.') continue;
 
-        char full_path[MAX_PATH_LEN];
+        char full_path[MAX_PATH_LEN + 256];
         snprintf(full_path, sizeof(full_path), "%s/%s",
                  g_config->library_path, entry->d_name);
 
@@ -378,7 +378,7 @@ int storage_list_content(content_dir_t **out_dirs)
     while ((entry = readdir(dir)) != NULL && idx < count) {
         if (entry->d_name[0] == '.') continue;
 
-        char full_path[MAX_PATH_LEN];
+        char full_path[MAX_PATH_LEN + 256];
         snprintf(full_path, sizeof(full_path), "%s/%s",
                  g_config->library_path, entry->d_name);
 
@@ -398,7 +398,7 @@ int storage_list_content(content_dir_t **out_dirs)
             while ((sub_entry = readdir(subdir)) != NULL) {
                 if (sub_entry->d_name[0] == '.') continue;
 
-                char sub_path[MAX_PATH_LEN];
+                char sub_path[MAX_PATH_LEN + 512];
                 snprintf(sub_path, sizeof(sub_path), "%s/%s",
                          full_path, sub_entry->d_name);
 

@@ -104,7 +104,7 @@ int thumbnails_generate(const char *source_path, const char *output_dir,
     }
 
     /* Build sprite sheet path */
-    char sprite_path[MAX_PATH_LEN];
+    char sprite_path[MAX_PATH_LEN + 64];
     snprintf(sprite_path, sizeof(sprite_path), "%s/sprite.jpg", thumb_dir);
 
     /* Build FFmpeg command:
@@ -121,7 +121,7 @@ int thumbnails_generate(const char *source_path, const char *output_dir,
     if (ffmpeg_quality < 1)  ffmpeg_quality = 1;
     if (ffmpeg_quality > 31) ffmpeg_quality = 31;
 
-    char cmd[4096];
+    char cmd[MAX_PATH_LEN * 2 + 512];
     snprintf(cmd, sizeof(cmd),
              "%s -y -i \"%s\" "
              "-vf \"fps=1/%d,scale=%d:%d,tile=%dx%d\" "
@@ -168,7 +168,7 @@ int thumbnails_generate(const char *source_path, const char *output_dir,
              (double)st.st_size / 1024.0);
 
     /* Generate WebVTT file */
-    char vtt_path[MAX_PATH_LEN];
+    char vtt_path[MAX_PATH_LEN + 64];
     snprintf(vtt_path, sizeof(vtt_path), "%s/thumbnails.vtt", thumb_dir);
 
     FILE *vtt = fopen(vtt_path, "w");

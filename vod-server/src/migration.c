@@ -80,7 +80,7 @@ static int ensure_dir(const char *path)
  */
 static void cleanup_migration_temp(int migration_id)
 {
-    char dir[MAX_PATH_LEN];
+    char dir[MAX_PATH_LEN + 64];
     migration_temp_dir(migration_id, dir, sizeof(dir));
 
     char cmd[MAX_PATH_LEN + 32];
@@ -269,7 +269,7 @@ static int execute_pull(int migration_id, const char *content_id,
     }
 
     /* Create temp directory for this migration */
-    char temp_dir[MAX_PATH_LEN];
+    char temp_dir[MAX_PATH_LEN + 64];
     migration_temp_dir(migration_id, temp_dir, sizeof(temp_dir));
     if (ensure_dir(temp_dir) != 0) {
         update_migration_status(migration_id, "failed",
@@ -278,7 +278,7 @@ static int execute_pull(int migration_id, const char *content_id,
     }
 
     /* Build temp file path */
-    char temp_file[MAX_PATH_LEN];
+    char temp_file[MAX_PATH_LEN + 128];
     migration_temp_path(migration_id, "download.tar.gz", temp_file, sizeof(temp_file));
 
     /* Mark as transferring with started_at timestamp */
@@ -303,7 +303,7 @@ static int execute_pull(int migration_id, const char *content_id,
     /* Build curl download command:
      * GET {peer_url}/api/content/{content_id}/download
      * with X-API-Key header, output to temp file */
-    char cmd[4096];
+    char cmd[MAX_PATH_LEN * 2];
     if (api_key[0] != '\0') {
         snprintf(cmd, sizeof(cmd),
             "curl -s -f -m 3600 -H 'X-API-Key: %s' "
@@ -372,7 +372,7 @@ static int execute_pull(int migration_id, const char *content_id,
 
     /* Extract or move the downloaded file into the content directory.
      * Try tar extraction first; if that fails, just move the raw file. */
-    char extract_cmd[4096];
+    char extract_cmd[MAX_PATH_LEN * 2 + 256];
     snprintf(extract_cmd, sizeof(extract_cmd),
         "tar -xzf '%s' -C '%s' 2>/dev/null", temp_file, content_dir);
 
@@ -384,7 +384,7 @@ static int execute_pull(int migration_id, const char *content_id,
 
     if (extract_status != 0) {
         /* Not a tar archive -- move the raw file directly */
-        char dest_file[MAX_PATH_LEN];
+        char dest_file[MAX_PATH_LEN + 64];
         snprintf(dest_file, sizeof(dest_file), "%s/content.bin", content_dir);
         if (storage_move_file(temp_file, dest_file) != 0) {
             update_migration_status(migration_id, "failed",
@@ -481,7 +481,7 @@ static void check_active_progress(void)
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         int id = sqlite3_column_int(stmt, 0);
         /* Check the temp file size for this migration */
-        char temp_file[MAX_PATH_LEN];
+        char temp_file[MAX_PATH_LEN + 128];
         migration_temp_path(id, "download.tar.gz", temp_file, sizeof(temp_file));
         long long sz = file_size(temp_file);
         if (sz > 0) {
