@@ -25,7 +25,10 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
+#include <dirent.h>
 #include <sqlite3.h>
+
+#include "ssl.h"
 
 /* ---------- module state ---------- */
 
@@ -327,6 +330,28 @@ int api_handle_request(http_request_t *req)
                                "Method not allowed");
     }
 
+    /* --- Utility routes --- */
+
+    /* GET /api/browse?path=... */
+    if (strcmp(url, "/api/browse") == 0 && strcmp(method, HTTP_GET) == 0) {
+        return api_get_browse(req);
+    }
+
+    /* GET /api/ssl/status */
+    if (strcmp(url, "/api/ssl/status") == 0 && strcmp(method, HTTP_GET) == 0) {
+        return api_get_ssl_status(req);
+    }
+
+    /* POST /api/ssl/letsencrypt */
+    if (strcmp(url, "/api/ssl/letsencrypt") == 0 && strcmp(method, HTTP_POST) == 0) {
+        return api_post_ssl_letsencrypt(req);
+    }
+
+    /* POST /api/ssl/self-signed */
+    if (strcmp(url, "/api/ssl/self-signed") == 0 && strcmp(method, HTTP_POST) == 0) {
+        return api_post_ssl_self_signed(req);
+    }
+
     /* No matching API route */
     return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
                            "API endpoint not found");
@@ -405,6 +430,29 @@ int api_get_status(http_request_t *req)
 
     /* Active migrations */
     cJSON_AddNumberToObject(root, "active_migrations", migration_active_count());
+
+    /* FFmpeg / MP4Box availability */
+    {
+        struct stat st;
+        const char *ffmpeg_path  = s_config ? s_config->ffmpeg_path  : "/usr/local/bin/ffmpeg";
+        const char *ffprobe_path = s_config ? s_config->ffprobe_path : "/usr/local/bin/ffprobe";
+        const char *mp4box_path  = s_config ? s_config->mp4box_path  : "/usr/local/bin/MP4Box";
+
+        cJSON_AddBoolToObject(root, "ffmpeg_available",
+                              stat(ffmpeg_path, &st) == 0 && (st.st_mode & S_IXUSR));
+        cJSON_AddBoolToObject(root, "ffprobe_available",
+                              stat(ffprobe_path, &st) == 0 && (st.st_mode & S_IXUSR));
+        cJSON_AddBoolToObject(root, "mp4box_available",
+                              stat(mp4box_path, &st) == 0 && (st.st_mode & S_IXUSR));
+    }
+
+    /* SSL status */
+    cJSON_AddBoolToObject(root, "ssl_enabled",
+                          s_config ? s_config->ssl_enabled : false);
+
+    /* Port */
+    cJSON_AddNumberToObject(root, "port",
+                            s_config ? s_config->port : 8090);
 
     cJSON_AddStringToObject(root, "status", "running");
 
@@ -1948,6 +1996,282 @@ int api_post_peer_health(http_request_t *req)
     cJSON_AddStringToObject(root, "version", VOD_SERVER_VERSION);
     cJSON_AddNumberToObject(root, "active_jobs", job_processor_active_count());
     cJSON_AddBoolToObject(root, "peer_known", changes > 0);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * GET /api/browse  — list directories at a given path
+ * ================================================================ */
+
+int api_get_browse(http_request_t *req)
+{
+    const char *path = http_get_param(req->connection, "path");
+    if (!path || path[0] == '\0') path = "/";
+
+    /* Security: reject traversal */
+    if (strstr(path, "..") != NULL) {
+        return http_send_error(req->connection, MHD_HTTP_FORBIDDEN,
+                               "Path traversal not allowed");
+    }
+
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Cannot open directory");
+    }
+
+    cJSON *root  = cJSON_CreateObject();
+    cJSON *dirs  = cJSON_CreateArray();
+    cJSON_AddStringToObject(root, "path", path);
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue; /* skip hidden + . and .. */
+
+        char full[MAX_PATH_LEN + 256];
+        snprintf(full, sizeof(full), "%s/%s", path, entry->d_name);
+
+        struct stat st;
+        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
+            cJSON *d = cJSON_CreateObject();
+            cJSON_AddStringToObject(d, "name", entry->d_name);
+            cJSON_AddStringToObject(d, "path", full);
+            cJSON_AddItemToArray(dirs, d);
+        }
+    }
+    closedir(dir);
+
+    cJSON_AddItemToObject(root, "directories", dirs);
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * GET /api/ssl/status  — current SSL/TLS certificate info
+ * ================================================================ */
+
+int api_get_ssl_status(http_request_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+
+    cJSON_AddBoolToObject(root, "enabled",
+                          s_config ? s_config->ssl_enabled : false);
+    cJSON_AddBoolToObject(root, "ready", ssl_is_ready());
+    cJSON_AddStringToObject(root, "cert_file",
+                            s_config ? s_config->ssl_cert_file : "");
+    cJSON_AddStringToObject(root, "key_file",
+                            s_config ? s_config->ssl_key_file : "");
+
+    /* Check if certbot/letsencrypt is available */
+    {
+        struct stat st;
+        bool certbot = (stat("/usr/bin/certbot", &st) == 0 && (st.st_mode & S_IXUSR))
+                    || (stat("/usr/local/bin/certbot", &st) == 0 && (st.st_mode & S_IXUSR))
+                    || (stat("/snap/bin/certbot", &st) == 0 && (st.st_mode & S_IXUSR));
+        cJSON_AddBoolToObject(root, "certbot_available", certbot);
+    }
+
+    /* Try to get certificate details if loaded */
+    if (ssl_is_ready() && s_config && s_config->ssl_cert_file[0]) {
+        /* Use openssl to read cert details */
+        char cmd[MAX_PATH_LEN + 128];
+        snprintf(cmd, sizeof(cmd),
+                 "openssl x509 -in '%s' -noout -subject -issuer -dates -serial 2>/dev/null",
+                 s_config->ssl_cert_file);
+
+        FILE *fp = popen(cmd, "r");
+        if (fp) {
+            cJSON *cert = cJSON_CreateObject();
+            char line[512];
+            while (fgets(line, sizeof(line), fp)) {
+                size_t len = strlen(line);
+                if (len > 0 && line[len - 1] == '\n') line[len - 1] = '\0';
+
+                if (strncmp(line, "subject=", 8) == 0) {
+                    cJSON_AddStringToObject(cert, "subject", line + 8);
+                } else if (strncmp(line, "issuer=", 7) == 0) {
+                    cJSON_AddStringToObject(cert, "issuer", line + 7);
+                } else if (strncmp(line, "notBefore=", 10) == 0) {
+                    cJSON_AddStringToObject(cert, "not_before", line + 10);
+                } else if (strncmp(line, "notAfter=", 9) == 0) {
+                    cJSON_AddStringToObject(cert, "not_after", line + 9);
+                } else if (strncmp(line, "serial=", 7) == 0) {
+                    cJSON_AddStringToObject(cert, "serial", line + 7);
+                }
+            }
+
+            /* Check if it's self-signed */
+            cJSON *subj = cJSON_GetObjectItemCaseSensitive(cert, "subject");
+            cJSON *iss  = cJSON_GetObjectItemCaseSensitive(cert, "issuer");
+            if (subj && iss && cJSON_IsString(subj) && cJSON_IsString(iss)) {
+                cJSON_AddBoolToObject(cert, "self_signed",
+                                      strcmp(subj->valuestring, iss->valuestring) == 0);
+            }
+
+            pclose(fp);
+            cJSON_AddItemToObject(root, "certificate", cert);
+        }
+    }
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * POST /api/ssl/letsencrypt  — obtain cert via certbot
+ * Body: { "domain": "example.com", "email": "admin@example.com" }
+ * ================================================================ */
+
+int api_post_ssl_letsencrypt(http_request_t *req)
+{
+    cJSON *body = parse_request_body(req);
+    if (!body) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid JSON body");
+    }
+
+    const char *domain = json_str(body, "domain", "");
+    const char *email  = json_str(body, "email", "");
+
+    if (domain[0] == '\0') {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Domain is required");
+    }
+
+    /* Security: validate domain contains only safe chars */
+    for (const char *p = domain; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-')) {
+            cJSON_Delete(body);
+            return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                                   "Invalid domain name");
+        }
+    }
+
+    /* Determine cert output paths */
+    char cert_path[MAX_PATH_LEN];
+    char key_path[MAX_PATH_LEN];
+
+    if (s_config && s_config->ssl_cert_file[0]) {
+        snprintf(cert_path, sizeof(cert_path), "%s", s_config->ssl_cert_file);
+        snprintf(key_path,  sizeof(key_path),  "%s", s_config->ssl_key_file);
+    } else {
+        snprintf(cert_path, sizeof(cert_path), "/etc/vod-server/ssl/cert.pem");
+        snprintf(key_path,  sizeof(key_path),  "/etc/vod-server/ssl/key.pem");
+    }
+
+    /* Run certbot in standalone mode.
+     * We need to temporarily free port 80 if occupied, but certbot
+     * --standalone handles its own HTTP server on :80 for the ACME challenge.
+     * The --preferred-challenges http flag ensures HTTP-01 validation. */
+    char cmd[4096];
+    if (email[0] != '\0') {
+        snprintf(cmd, sizeof(cmd),
+                 "certbot certonly --standalone --non-interactive --agree-tos "
+                 "--preferred-challenges http "
+                 "-d '%s' --email '%s' "
+                 "--cert-path '%s' --key-path '%s' "
+                 "--fullchain-path '%s' "
+                 "2>&1",
+                 domain, email, cert_path, key_path, cert_path);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+                 "certbot certonly --standalone --non-interactive --agree-tos "
+                 "--preferred-challenges http --register-unsafely-without-email "
+                 "-d '%s' "
+                 "--cert-path '%s' --key-path '%s' "
+                 "--fullchain-path '%s' "
+                 "2>&1",
+                 domain, cert_path, key_path, cert_path);
+    }
+
+    cJSON_Delete(body);
+
+    log_info("Requesting Let's Encrypt certificate for %s", domain);
+
+    FILE *fp = popen(cmd, "r");
+    if (!fp) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Failed to run certbot");
+    }
+
+    /* Capture output */
+    char output[4096] = {0};
+    size_t olen = 0;
+    while (!feof(fp) && olen < sizeof(output) - 1) {
+        size_t n = fread(output + olen, 1, sizeof(output) - olen - 1, fp);
+        olen += n;
+        if (n == 0) break;
+    }
+    output[olen] = '\0';
+
+    int status = pclose(fp);
+
+    cJSON *root = cJSON_CreateObject();
+
+    if (status == 0) {
+        log_info("Let's Encrypt certificate obtained for %s", domain);
+        cJSON_AddBoolToObject(root, "success", 1);
+        cJSON_AddStringToObject(root, "message",
+                                "Certificate obtained. Restart the server to activate SSL.");
+        cJSON_AddStringToObject(root, "cert_path", cert_path);
+        cJSON_AddStringToObject(root, "key_path", key_path);
+
+        /* Try to reload the cert immediately */
+        if (ssl_load_files(cert_path, key_path) == 0) {
+            cJSON_AddStringToObject(root, "note",
+                                    "Certificate loaded. Full activation requires restart.");
+        }
+    } else {
+        log_error("certbot failed for %s (exit %d): %.512s", domain, status, output);
+        cJSON_AddBoolToObject(root, "success", 0);
+        cJSON_AddStringToObject(root, "error", "certbot failed");
+        cJSON_AddStringToObject(root, "output", output);
+    }
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * POST /api/ssl/self-signed  — generate a self-signed certificate
+ * ================================================================ */
+
+int api_post_ssl_self_signed(http_request_t *req)
+{
+    (void)req;
+
+    char cert_path[MAX_PATH_LEN];
+    char key_path[MAX_PATH_LEN];
+
+    if (s_config && s_config->ssl_cert_file[0]) {
+        snprintf(cert_path, sizeof(cert_path), "%s", s_config->ssl_cert_file);
+        snprintf(key_path,  sizeof(key_path),  "%s", s_config->ssl_key_file);
+    } else {
+        snprintf(cert_path, sizeof(cert_path), "/etc/vod-server/ssl/cert.pem");
+        snprintf(key_path,  sizeof(key_path),  "/etc/vod-server/ssl/key.pem");
+    }
+
+    log_info("Generating self-signed certificate...");
+
+    int rc = ssl_generate_self_signed(cert_path, key_path);
+
+    cJSON *root = cJSON_CreateObject();
+
+    if (rc == 0) {
+        cJSON_AddBoolToObject(root, "success", 1);
+        cJSON_AddStringToObject(root, "message",
+                                "Self-signed certificate generated. Restart to activate SSL.");
+        cJSON_AddStringToObject(root, "cert_path", cert_path);
+        cJSON_AddStringToObject(root, "key_path", key_path);
+
+        if (ssl_load_files(cert_path, key_path) == 0) {
+            cJSON_AddStringToObject(root, "note",
+                                    "Certificate loaded. Full activation requires restart.");
+        }
+    } else {
+        cJSON_AddBoolToObject(root, "success", 0);
+        cJSON_AddStringToObject(root, "error", "Failed to generate certificate");
+    }
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }

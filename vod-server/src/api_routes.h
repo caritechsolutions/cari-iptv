@@ -41,6 +41,14 @@ int api_delete_migration(http_request_t *req, int migration_id);
 /* Peer health endpoint (called by other peers) */
 int api_post_peer_health(http_request_t *req);
 
+/* Utility routes */
+int api_get_browse(http_request_t *req);
+
+/* SSL routes */
+int api_get_ssl_status(http_request_t *req);
+int api_post_ssl_letsencrypt(http_request_t *req);
+int api_post_ssl_self_signed(http_request_t *req);
+
 /**
  * Set the configuration pointer used by API routes.
  * Must be called before handling requests (typically at startup).

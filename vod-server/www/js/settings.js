@@ -24,14 +24,15 @@ var settingsPage = {
                     <div class="form-group">
                         <label>API Key</label>
                         <div class="flex gap-2">
-                            <input type="password" class="form-control" id="set-api-key" disabled>
+                            <input type="password" class="form-control text-mono" id="set-api-key" readonly>
                             <button class="btn btn-outline btn-sm" onclick="settingsPage.toggleApiKey()">Show</button>
+                            <button class="btn btn-outline btn-sm" onclick="settingsPage.copyApiKey()">Copy</button>
                         </div>
                     </div>
                     <p class="text-sm text-muted mt-2">Server settings are configured in vod-server.conf. Restart required for changes.</p>
                 </div>
 
-                <!-- SSL Settings -->
+                <!-- SSL/TLS Settings -->
                 <div class="card">
                     <div class="card-header"><h3>SSL/TLS</h3></div>
                     <div id="ssl-status">
@@ -44,16 +45,23 @@ var settingsPage = {
                     <div class="card-header"><h3>Storage</h3></div>
                     <div class="form-group">
                         <label>Library Path</label>
-                        <input type="text" class="form-control text-mono" id="set-library-path" disabled>
+                        <div class="flex gap-2">
+                            <input type="text" class="form-control text-mono" id="set-library-path" disabled style="flex:1">
+                            <button class="btn btn-outline btn-sm" onclick="settingsPage.browsePath('set-library-path')">Browse</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Temp Path</label>
-                        <input type="text" class="form-control text-mono" id="set-temp-path" disabled>
+                        <div class="flex gap-2">
+                            <input type="text" class="form-control text-mono" id="set-temp-path" disabled style="flex:1">
+                            <button class="btn btn-outline btn-sm" onclick="settingsPage.browsePath('set-temp-path')">Browse</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Min Free Space (GB)</label>
                         <input type="number" class="form-control" id="set-min-space" disabled>
                     </div>
+                    <p class="text-sm text-muted mt-2">Storage paths are set in vod-server.conf. Restart required.</p>
                 </div>
 
                 <!-- Transcoding Settings -->
@@ -137,8 +145,7 @@ var settingsPage = {
             <div class="card mt-3">
                 <div class="card-header"><h3>Tools</h3></div>
                 <div class="flex gap-2">
-                    <button class="btn btn-outline" onclick="settingsPage.checkFFmpeg()">Check FFmpeg</button>
-                    <button class="btn btn-outline" onclick="settingsPage.checkMP4Box()">Check MP4Box</button>
+                    <button class="btn btn-outline" onclick="settingsPage.checkTools()">Check FFmpeg / MP4Box</button>
                     <button class="btn btn-warning" onclick="settingsPage.clearTemp()">Clear Temp Files</button>
                 </div>
                 <div id="tools-output" class="mt-3 text-sm text-mono" style="display:none;white-space:pre-wrap;padding:12px;background:var(--bg-input);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;"></div>
@@ -147,44 +154,48 @@ var settingsPage = {
 
     async init() {
         try {
-            const data = await App.get('/status');
-            const config = data.config || data;
+            /* Fetch both status and config in parallel */
+            const [status, config] = await Promise.all([
+                App.get('/status'),
+                App.get('/config')
+            ]);
 
             /* Server */
-            document.getElementById('set-node-name').value = config.node_name || data.node_name || '';
-            document.getElementById('set-port').value = config.port || data.port || '';
-            document.getElementById('set-api-key').value = '********';
+            const srv = config.server || {};
+            const cls = config.cluster || {};
+            document.getElementById('set-node-name').value = cls.node_name || status.node_name || '';
+            document.getElementById('set-port').value = srv.port || status.port || '';
 
-            /* SSL */
-            document.getElementById('ssl-status').innerHTML = `
-                <div class="flex-between mb-2">
-                    <span>Status</span>
-                    <span class="status ${data.ssl_enabled ? 'online' : 'offline'}">${data.ssl_enabled ? 'Enabled' : 'Disabled'}</span>
-                </div>
-                <p class="text-sm text-muted">SSL is configured in vod-server.conf. Set enabled=true and provide cert/key paths.</p>
-            `;
+            /* API Key - use the injected key from the server */
+            document.getElementById('set-api-key').value = window.VOD_API_KEY || '';
+
+            /* SSL - load detailed status */
+            this.loadSSLStatus();
 
             /* Storage */
-            document.getElementById('set-library-path').value = config.library_path || '';
-            document.getElementById('set-temp-path').value = config.temp_path || '';
-            document.getElementById('set-min-space').value = config.min_free_space_gb || 10;
+            const stor = config.storage || {};
+            document.getElementById('set-library-path').value = stor.library_path || '';
+            document.getElementById('set-temp-path').value = stor.temp_path || '';
+            document.getElementById('set-min-space').value = stor.min_free_space_gb || 10;
 
             /* Transcoding */
-            document.getElementById('set-max-jobs').value = config.max_concurrent_jobs || 2;
-            document.getElementById('set-default-profile').value = config.default_profile || 'standard';
-            document.getElementById('set-hwaccel').value = config.hwaccel || 'none';
-            document.getElementById('set-segment-dur').value = config.segment_duration || 6;
+            const tc = config.transcoding || {};
+            document.getElementById('set-max-jobs').value = tc.max_concurrent_jobs || 2;
+            document.getElementById('set-default-profile').value = tc.default_profile || 'standard';
+            document.getElementById('set-hwaccel').value = tc.hwaccel || 'none';
+            document.getElementById('set-segment-dur').value = tc.segment_duration || 6;
 
             /* Thumbnails */
-            document.getElementById('set-thumb-enabled').checked = config.thumbnails_enabled !== false;
-            document.getElementById('set-thumb-interval').value = config.thumb_interval || 10;
-            document.getElementById('set-thumb-w').value = config.thumb_width || 160;
-            document.getElementById('set-thumb-h').value = config.thumb_height || 90;
+            const th = config.thumbnails || {};
+            document.getElementById('set-thumb-enabled').checked = th.enabled !== false;
+            document.getElementById('set-thumb-interval').value = th.interval || 10;
+            document.getElementById('set-thumb-w').value = th.width || 160;
+            document.getElementById('set-thumb-h').value = th.height || 90;
 
             /* Cluster */
-            document.getElementById('set-health-interval').value = config.health_check_interval || 30;
-            document.getElementById('set-offline-threshold').value = config.offline_threshold || 3;
-            document.getElementById('set-max-migrations').value = config.max_concurrent_migrations || 1;
+            document.getElementById('set-health-interval').value = cls.health_check_interval || 30;
+            document.getElementById('set-offline-threshold').value = cls.offline_threshold || 3;
+            document.getElementById('set-max-migrations').value = cls.max_concurrent_migrations || 1;
 
         } catch (err) {
             App.toast('Failed to load settings: ' + err.message, 'error');
@@ -193,10 +204,234 @@ var settingsPage = {
 
     stop() {},
 
+    /* --- SSL Section --- */
+
+    async loadSSLStatus() {
+        const container = document.getElementById('ssl-status');
+        try {
+            const ssl = await App.get('/ssl/status');
+
+            let certHtml = '';
+            if (ssl.certificate) {
+                const c = ssl.certificate;
+                certHtml = `
+                    <div class="mt-2" style="padding:8px;background:var(--bg-input);border-radius:var(--radius-sm)">
+                        <div class="text-sm mb-1"><strong>Certificate Details</strong></div>
+                        <table class="text-sm">
+                            ${c.subject ? `<tr><td class="text-muted" style="padding-right:12px">Subject</td><td>${App.esc(c.subject)}</td></tr>` : ''}
+                            ${c.issuer ? `<tr><td class="text-muted">Issuer</td><td>${App.esc(c.issuer)}</td></tr>` : ''}
+                            ${c.not_before ? `<tr><td class="text-muted">Valid From</td><td>${App.esc(c.not_before)}</td></tr>` : ''}
+                            ${c.not_after ? `<tr><td class="text-muted">Expires</td><td>${App.esc(c.not_after)}</td></tr>` : ''}
+                        </table>
+                        ${c.self_signed ? '<div class="text-sm text-warning mt-1">Self-signed certificate</div>' : ''}
+                    </div>`;
+            }
+
+            container.innerHTML = `
+                <div class="flex-between mb-2">
+                    <span>Status</span>
+                    <span class="status ${ssl.ready ? 'online' : 'offline'}">${ssl.ready ? 'Active' : ssl.enabled ? 'Enabled (no cert)' : 'Disabled'}</span>
+                </div>
+                ${ssl.cert_file ? `<div class="text-sm text-muted mb-1">Cert: ${App.esc(ssl.cert_file)}</div>` : ''}
+                ${ssl.key_file ? `<div class="text-sm text-muted mb-2">Key: ${App.esc(ssl.key_file)}</div>` : ''}
+                ${certHtml}
+                <div class="mt-3">
+                    <div class="text-sm text-muted mb-2">Generate or obtain a certificate:</div>
+                    <div class="flex gap-2 flex-wrap">
+                        <button class="btn btn-primary btn-sm" onclick="settingsPage.showLetsEncryptModal()">
+                            Let's Encrypt
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="settingsPage.generateSelfSigned()">
+                            Self-Signed
+                        </button>
+                    </div>
+                    ${!ssl.certbot_available ? '<div class="text-sm text-warning mt-2">certbot not installed. Install: <code>apt install certbot</code> or <code>snap install certbot --classic</code></div>' : ''}
+                </div>
+                <p class="text-sm text-muted mt-2">SSL must be enabled in vod-server.conf. Restart required after certificate changes.</p>
+            `;
+        } catch (err) {
+            container.innerHTML = `
+                <div class="flex-between mb-2">
+                    <span>Status</span>
+                    <span class="status offline">Unknown</span>
+                </div>
+                <p class="text-sm text-muted">Could not load SSL status.</p>
+            `;
+        }
+    },
+
+    showLetsEncryptModal() {
+        App.showModal("Let's Encrypt Certificate", `
+            <p class="text-sm text-muted mb-3">
+                Obtain a free SSL certificate from Let's Encrypt. Your server must be reachable on port 80 from the internet.
+            </p>
+            <div class="form-group">
+                <label>Domain Name *</label>
+                <input type="text" class="form-control" id="le-domain" placeholder="e.g. vod.example.com">
+            </div>
+            <div class="form-group">
+                <label>Email (optional, for renewal notices)</label>
+                <input type="email" class="form-control" id="le-email" placeholder="admin@example.com">
+            </div>
+            <div id="le-status" class="mt-2" style="display:none"></div>
+        `, `
+            <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="le-submit" onclick="settingsPage.requestLetsEncrypt()">Request Certificate</button>
+        `);
+    },
+
+    async requestLetsEncrypt() {
+        const domain = document.getElementById('le-domain').value.trim();
+        const email = document.getElementById('le-email').value.trim();
+        const statusEl = document.getElementById('le-status');
+        const btn = document.getElementById('le-submit');
+
+        if (!domain) {
+            App.toast('Domain name is required', 'warning');
+            return;
+        }
+
+        statusEl.style.display = 'block';
+        statusEl.className = 'mt-2 text-sm';
+        statusEl.innerHTML = '<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div> Requesting certificate... this may take a minute.';
+        btn.disabled = true;
+
+        try {
+            const result = await App.post('/ssl/letsencrypt', { domain, email });
+            if (result.success) {
+                statusEl.className = 'mt-2 text-sm text-success';
+                statusEl.textContent = result.message || 'Certificate obtained!';
+                App.toast('Certificate obtained!', 'success');
+                /* Refresh SSL status */
+                setTimeout(() => {
+                    App.closeModal();
+                    this.loadSSLStatus();
+                }, 2000);
+            } else {
+                statusEl.className = 'mt-2 text-sm text-danger';
+                statusEl.innerHTML = `<strong>Failed:</strong> ${App.esc(result.error || 'Unknown error')}` +
+                    (result.output ? `<pre style="margin-top:8px;max-height:150px;overflow:auto;font-size:11px;padding:8px;background:var(--bg-input);border-radius:4px">${App.esc(result.output)}</pre>` : '');
+            }
+        } catch (err) {
+            statusEl.className = 'mt-2 text-sm text-danger';
+            statusEl.textContent = 'Request failed: ' + err.message;
+        }
+        btn.disabled = false;
+    },
+
+    async generateSelfSigned() {
+        if (!confirm('Generate a self-signed certificate? This will overwrite any existing certificate.')) return;
+        try {
+            const result = await App.post('/ssl/self-signed', {});
+            if (result.success) {
+                App.toast(result.message || 'Self-signed certificate generated', 'success');
+                this.loadSSLStatus();
+            } else {
+                App.toast('Failed: ' + (result.error || 'Unknown error'), 'error');
+            }
+        } catch (err) {
+            App.toast('Failed: ' + err.message, 'error');
+        }
+    },
+
+    /* --- API Key --- */
+
     toggleApiKey() {
         const input = document.getElementById('set-api-key');
-        input.type = input.type === 'password' ? 'text' : 'password';
+        const btn = input.parentElement.querySelector('button');
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = 'Hide';
+        } else {
+            input.type = 'password';
+            btn.textContent = 'Show';
+        }
     },
+
+    copyApiKey() {
+        const key = window.VOD_API_KEY || '';
+        if (!key) {
+            App.toast('No API key configured', 'warning');
+            return;
+        }
+        navigator.clipboard.writeText(key).then(
+            () => App.toast('API key copied to clipboard', 'success'),
+            () => {
+                /* Fallback for non-HTTPS */
+                const input = document.getElementById('set-api-key');
+                input.type = 'text';
+                input.select();
+                document.execCommand('copy');
+                input.type = 'password';
+                App.toast('API key copied', 'success');
+            }
+        );
+    },
+
+    /* --- Directory Browse --- */
+
+    async browsePath(inputId) {
+        const input = document.getElementById(inputId);
+        const startPath = input.value || '/';
+        this._browseTarget = inputId;
+        this._browseCurrent = startPath;
+        await this.showBrowseModal(startPath);
+    },
+
+    async showBrowseModal(path) {
+        try {
+            const data = await App.get('/browse?path=' + encodeURIComponent(path));
+            const dirs = data.directories || [];
+
+            /* Sort alphabetically */
+            dirs.sort((a, b) => a.name.localeCompare(b.name));
+
+            /* Build parent path */
+            const parentPath = path === '/' ? null : path.replace(/\/[^/]+\/?$/, '') || '/';
+
+            const listHtml = dirs.length === 0
+                ? '<div class="text-center text-muted" style="padding:16px">No subdirectories</div>'
+                : dirs.map(d => `
+                    <div class="browse-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:8px"
+                         onclick="settingsPage.browseInto('${App.esc(d.path).replace(/'/g, "\\'")}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        <span>${App.esc(d.name)}</span>
+                    </div>
+                `).join('');
+
+            App.showModal('Browse Directory', `
+                <div class="text-mono text-sm mb-2" style="padding:8px;background:var(--bg-input);border-radius:var(--radius-sm)">${App.esc(path)}</div>
+                ${parentPath !== null ? `
+                    <div class="browse-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:8px"
+                         onclick="settingsPage.browseInto('${App.esc(parentPath).replace(/'/g, "\\'")}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                        <span>..</span>
+                    </div>
+                ` : ''}
+                <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border-color);border-radius:var(--radius-sm)">
+                    ${listHtml}
+                </div>
+            `, `
+                <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="settingsPage.selectBrowsePath('${App.esc(path).replace(/'/g, "\\'")}')">Select This Directory</button>
+            `);
+        } catch (err) {
+            App.toast('Cannot browse: ' + err.message, 'error');
+        }
+    },
+
+    browseInto(path) {
+        this.showBrowseModal(path);
+    },
+
+    selectBrowsePath(path) {
+        if (this._browseTarget) {
+            document.getElementById(this._browseTarget).value = path;
+        }
+        App.closeModal();
+    },
+
+    /* --- Save handlers --- */
 
     async saveTranscoding() {
         try {
@@ -239,21 +474,29 @@ var settingsPage = {
         }
     },
 
-    async checkFFmpeg() {
+    /* --- Tools --- */
+
+    async checkTools() {
         const output = document.getElementById('tools-output');
         output.style.display = 'block';
-        output.textContent = 'Checking FFmpeg...\n';
+        output.textContent = 'Checking tools...\n';
         try {
-            const data = await App.get('/status');
-            output.textContent += `FFmpeg: ${data.ffmpeg_available ? 'Available' : 'NOT FOUND'}\n`;
-            output.textContent += `MP4Box: ${data.mp4box_available ? 'Available' : 'NOT FOUND'}\n`;
+            const [status, config] = await Promise.all([
+                App.get('/status'),
+                App.get('/config')
+            ]);
+            const tc = config.transcoding || {};
+            output.textContent = '';
+            output.textContent += `FFmpeg:  ${status.ffmpeg_available ? 'Available' : 'NOT FOUND'}`;
+            if (tc.ffmpeg_path) output.textContent += `  (${tc.ffmpeg_path})`;
+            output.textContent += '\n';
+            output.textContent += `FFprobe: ${status.ffprobe_available ? 'Available' : 'NOT FOUND'}`;
+            if (tc.ffprobe_path) output.textContent += `  (${tc.ffprobe_path})`;
+            output.textContent += '\n';
+            output.textContent += `MP4Box:  ${status.mp4box_available ? 'Available' : 'NOT FOUND'}\n`;
         } catch (err) {
             output.textContent += `Error: ${err.message}\n`;
         }
-    },
-
-    async checkMP4Box() {
-        this.checkFFmpeg();
     },
 
     async clearTemp() {
