@@ -176,16 +176,33 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                         <div style="display:flex;gap:0.5rem">
                             <input type="text" class="form-input" id="vod-source-path"
                                    placeholder="/path/to/movie.mp4 or https://url/movie.mp4" style="flex:1">
+                            <input type="file" id="vod-file-input" accept="video/*,.mkv,.avi,.ts,.m2ts" style="display:none"
+                                   onchange="vodHandleFileSelect(this)">
+                            <button type="button" class="btn btn-primary" onclick="document.getElementById('vod-file-input').click()" title="Upload from your computer">
+                                <i class="lucide-upload"></i> Upload
+                            </button>
                             <button type="button" class="btn btn-secondary" onclick="vodBrowseSource()" title="Browse files on VOD server">
-                                <i class="lucide-folder-open"></i>
+                                <i class="lucide-folder-open"></i> Server
                             </button>
                         </div>
-                        <small style="color:var(--text-muted)">Path on the VOD server or a remote URL</small>
+                        <small style="color:var(--text-muted)">Upload from your computer, browse the VOD server, or enter a URL</small>
+                    </div>
+
+                    <!-- Upload progress -->
+                    <div id="vod-upload-progress" style="display:none;margin-bottom:1rem">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+                            <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-upload-filename">Uploading...</span>
+                            <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="vod-upload-pct">0%</span>
+                        </div>
+                        <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden">
+                            <div id="vod-upload-bar" style="height:100%;width:0%;background:var(--primary);border-radius:4px;transition:width 0.2s"></div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-upload-size"></div>
                     </div>
 
                     <div id="vod-transcode-status" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
 
-                    <div style="display:flex;justify-content:flex-end">
+                    <div style="display:flex;justify-content:flex-end;gap:0.5rem">
                         <button type="button" class="btn btn-primary" id="vod-submit-btn" onclick="vodSubmitTranscode()">
                             <i class="lucide-play"></i> Submit for Transcoding
                         </button>
@@ -286,6 +303,73 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     document.getElementById('vod-source-path').value = vodSelectedFile;
                 }
                 document.getElementById('vod-browse-modal').style.display = 'none';
+            }
+
+            function vodFormatSize(bytes) {
+                if (!bytes) return '0 B';
+                var k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+                var i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+            }
+
+            function vodHandleFileSelect(input) {
+                if (!input.files || !input.files[0]) return;
+                var file = input.files[0];
+
+                // Show progress bar
+                var progressDiv = document.getElementById('vod-upload-progress');
+                var statusDiv = document.getElementById('vod-transcode-status');
+                progressDiv.style.display = 'block';
+                statusDiv.style.display = 'none';
+                document.getElementById('vod-upload-filename').textContent = 'Uploading: ' + file.name;
+                document.getElementById('vod-upload-pct').textContent = '0%';
+                document.getElementById('vod-upload-bar').style.width = '0%';
+                document.getElementById('vod-upload-size').textContent = '0 / ' + vodFormatSize(file.size);
+
+                var formData = new FormData();
+                formData.append('csrf_token', '<?= \CariIPTV\Core\Session::csrf() ?>');
+                formData.append('video_file', file);
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/admin/vod-server/upload-source', true);
+
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        var pct = Math.round((e.loaded / e.total) * 100);
+                        document.getElementById('vod-upload-pct').textContent = pct + '%';
+                        document.getElementById('vod-upload-bar').style.width = pct + '%';
+                        document.getElementById('vod-upload-size').textContent = vodFormatSize(e.loaded) + ' / ' + vodFormatSize(e.total);
+                    }
+                });
+
+                xhr.addEventListener('load', function() {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            document.getElementById('vod-source-path').value = data.download_url;
+                            document.getElementById('vod-upload-filename').textContent = file.name + ' - Uploaded!';
+                            document.getElementById('vod-upload-bar').style.background = 'var(--success)';
+                            document.getElementById('vod-upload-pct').textContent = 'Done';
+                        } else {
+                            document.getElementById('vod-upload-filename').textContent = 'Upload failed: ' + (data.error || 'Unknown error');
+                            document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
+                            document.getElementById('vod-upload-bar').style.width = '100%';
+                        }
+                    } catch(e) {
+                        document.getElementById('vod-upload-filename').textContent = 'Upload failed: Invalid server response';
+                        document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
+                    }
+                    input.value = '';
+                });
+
+                xhr.addEventListener('error', function() {
+                    document.getElementById('vod-upload-filename').textContent = 'Upload failed: Network error';
+                    document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
+                    document.getElementById('vod-upload-bar').style.width = '100%';
+                    input.value = '';
+                });
+
+                xhr.send(formData);
             }
 
             function vodSubmitTranscode() {

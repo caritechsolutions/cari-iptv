@@ -284,6 +284,88 @@ class VodServerController
         $this->sendJson($this->vodService->testConnection($url, $apiKey));
     }
 
+    /**
+     * Upload a video file from the user's computer for VOD transcoding.
+     * Saves to public/uploads/vod-source/ and returns a URL the VOD server can download.
+     */
+    public function uploadSource(): void
+    {
+        // Allow large video file uploads
+        @ini_set('upload_max_filesize', '2G');
+        @ini_set('post_max_size', '2G');
+        @ini_set('max_execution_time', '600');
+        @ini_set('max_input_time', '600');
+
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        if (empty($_FILES['video_file']['tmp_name']) || $_FILES['video_file']['error'] !== UPLOAD_ERR_OK) {
+            $errCode = $_FILES['video_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+            $errMsgs = [
+                UPLOAD_ERR_INI_SIZE   => 'File exceeds the server upload limit',
+                UPLOAD_ERR_FORM_SIZE  => 'File exceeds the form upload limit',
+                UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded',
+                UPLOAD_ERR_NO_FILE    => 'No file was selected',
+                UPLOAD_ERR_NO_TMP_DIR => 'Server temp directory missing',
+                UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+            ];
+            $this->sendJson(['success' => false, 'error' => $errMsgs[$errCode] ?? 'Upload failed (code ' . $errCode . ')']);
+            return;
+        }
+
+        $file = $_FILES['video_file'];
+        $allowedExts = ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'ts', 'm2ts', 'mpg', 'mpeg', 'm4v', 'ogg', '3gp'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+        if (!in_array($ext, $allowedExts)) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid file type. Allowed: ' . implode(', ', $allowedExts)]);
+            return;
+        }
+
+        // Create upload directory
+        $uploadDir = dirname(__DIR__, 3) . '/public/uploads/vod-source';
+        if (!is_dir($uploadDir)) {
+            @mkdir($uploadDir, 0775, true);
+        }
+        if (!is_writable($uploadDir)) {
+            $this->sendJson(['success' => false, 'error' => 'Upload directory is not writable']);
+            return;
+        }
+
+        // Generate unique filename
+        $filename = 'vod_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        $destPath = $uploadDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            $this->sendJson(['success' => false, 'error' => 'Failed to save uploaded file']);
+            return;
+        }
+
+        // Build the download URL that the VOD server can reach
+        $settings = new \CariIPTV\Services\SettingsService();
+        $siteUrl = rtrim($settings->get('site_url', '', 'general'), '/');
+
+        // If site_url not configured, try to construct from server info
+        if (empty($siteUrl)) {
+            $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $siteUrl = $proto . '://' . $host;
+        }
+
+        $downloadUrl = $siteUrl . '/uploads/vod-source/' . $filename;
+
+        $this->sendJson([
+            'success'      => true,
+            'message'      => 'File uploaded successfully',
+            'filename'     => $file['name'],
+            'size'         => $file['size'],
+            'download_url' => $downloadUrl,
+            'local_path'   => '/uploads/vod-source/' . $filename,
+        ]);
+    }
+
     private function sendJson(array $data): void
     {
         header('Content-Type: application/json');

@@ -363,6 +363,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/vod-server/jobs/{id}/cancel', [VodServerController::class, 'cancelJob']);
     $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
     $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
+    $router->post('/vod-server/upload-source', [VodServerController::class, 'uploadSource']);
 });
 
 // Dispatch the request
