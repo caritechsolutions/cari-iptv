@@ -15,7 +15,7 @@ LimitNOFILE=65536
 
 # Security hardening
 ProtectSystem=strict
-ReadWritePaths=/var/lib/vod-server /var/log/vod-server /var/run
+ReadWritePaths=/var/lib/vod-server /var/log/vod-server /var/run /etc/vod-server
 ProtectHome=true
 NoNewPrivileges=true
 PrivateTmp=true

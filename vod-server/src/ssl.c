@@ -62,7 +62,7 @@ static bool file_exists(const char *path)
  */
 static int ensure_parent_dir(const char *path)
 {
-    char dir[1024];
+    char dir[MAX_PATH_LEN];
     snprintf(dir, sizeof(dir), "%s", path);
 
     /* Strip the filename component */
