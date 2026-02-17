@@ -1,0 +1,191 @@
+#!/bin/bash
+#
+# CARI VOD Server - Update Script
+# Downloads latest source, rebuilds, and restarts the service.
+# Preserves configuration and data.
+#
+set -euo pipefail
+
+# Branch to pull updates from
+BRANCH="claude/vod-server-setup-458YL"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+log()  { echo -e "${GREEN}[VOD-UPDATE]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+err()  { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+
+# Check root
+[[ $EUID -ne 0 ]] && err "This script must be run as root (sudo)"
+
+echo ""
+log "CARI VOD Server - Update"
+echo ""
+
+# ========================
+# 1. Check current version
+# ========================
+CURRENT_VERSION="unknown"
+if command -v vod-server &>/dev/null; then
+    CURRENT_VERSION=$(vod-server --version 2>/dev/null | head -1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+fi
+log "Current version: $CURRENT_VERSION"
+
+# ========================
+# 2. Download latest source
+# ========================
+TEMP_DIR=$(mktemp -d)
+log "Downloading latest source from branch: $BRANCH"
+
+RETRIES=4
+DELAY=2
+for i in $(seq 1 $RETRIES); do
+    if git clone --depth 1 --branch "$BRANCH" \
+        https://github.com/caritechsolutions/cari-iptv.git "$TEMP_DIR/cari-iptv" 2>/dev/null; then
+        break
+    fi
+    if [ "$i" -eq "$RETRIES" ]; then
+        rm -rf "$TEMP_DIR"
+        err "Failed to download source after $RETRIES attempts"
+    fi
+    warn "Download failed, retrying in ${DELAY}s..."
+    sleep $DELAY
+    DELAY=$((DELAY * 2))
+done
+
+SOURCE_DIR="$TEMP_DIR/cari-iptv/vod-server"
+
+if [ ! -f "$SOURCE_DIR/CMakeLists.txt" ]; then
+    rm -rf "$TEMP_DIR"
+    err "Source directory missing CMakeLists.txt"
+fi
+
+# Get new version
+NEW_VERSION=$(grep 'VOD_SERVER_VERSION_MAJOR\|VOD_SERVER_VERSION_MINOR\|VOD_SERVER_VERSION_PATCH' "$SOURCE_DIR/CMakeLists.txt" | \
+    grep -oP '[0-9]+' | tr '\n' '.' | sed 's/\.$//')
+log "New version: ${NEW_VERSION:-unknown}"
+
+# ========================
+# 3. Pause active jobs
+# ========================
+if systemctl is-active --quiet vod-server; then
+    log "Pausing active transcode jobs..."
+    # Send SIGHUP to tell server to pause jobs gracefully
+    # The server handles this by pausing FFmpeg processes
+    kill -USR1 "$(cat /var/run/vod-server.pid 2>/dev/null)" 2>/dev/null || true
+    sleep 2
+fi
+
+# ========================
+# 4. Backup current binary
+# ========================
+if [ -f /usr/local/bin/vod-server ]; then
+    cp /usr/local/bin/vod-server /usr/local/bin/vod-server.bak
+    log "Current binary backed up to vod-server.bak"
+fi
+
+# ========================
+# 5. Build
+# ========================
+log "Building..."
+
+BUILD_DIR="$SOURCE_DIR/build"
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+cmake "$SOURCE_DIR" -DCMAKE_BUILD_TYPE=Release > /dev/null 2>&1 || {
+    warn "Build failed. Restoring backup..."
+    [ -f /usr/local/bin/vod-server.bak ] && cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server
+    rm -rf "$TEMP_DIR"
+    err "CMake configuration failed"
+}
+
+make -j$(nproc) > /dev/null 2>&1 || {
+    warn "Build failed. Restoring backup..."
+    [ -f /usr/local/bin/vod-server.bak ] && cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server
+    rm -rf "$TEMP_DIR"
+    err "Compilation failed"
+}
+
+log "Build successful"
+
+# ========================
+# 6. Stop service
+# ========================
+log "Stopping VOD Server..."
+systemctl stop vod-server 2>/dev/null || true
+sleep 1
+
+# ========================
+# 7. Install new files
+# ========================
+log "Installing new binary..."
+install -m 755 "$BUILD_DIR/vod-server" /usr/local/bin/vod-server
+
+log "Updating Web GUI..."
+mkdir -p /usr/local/share/vod-server/www
+cp -r "$SOURCE_DIR/www/"* /usr/local/share/vod-server/www/
+
+# Update systemd service (if changed)
+install -m 644 "$SOURCE_DIR/scripts/vod-server.service" /etc/systemd/system/vod-server.service
+systemctl daemon-reload
+
+# ========================
+# 8. Run database migrations
+# ========================
+log "Running database migrations..."
+# The server runs migrations automatically on startup
+# No manual step needed here
+
+# ========================
+# 9. Restart service
+# ========================
+log "Starting VOD Server..."
+systemctl start vod-server
+
+sleep 2
+
+if systemctl is-active --quiet vod-server; then
+    # Verify it responds
+    RETRIES=3
+    for i in $(seq 1 $RETRIES); do
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/api/status 2>/dev/null | grep -q "200"; then
+            log "VOD Server is healthy!"
+            break
+        fi
+        sleep 1
+    done
+else
+    warn "Service failed to start. Restoring backup..."
+    if [ -f /usr/local/bin/vod-server.bak ]; then
+        cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server
+        systemctl start vod-server
+        warn "Reverted to previous version"
+    fi
+    rm -rf "$TEMP_DIR"
+    err "Update failed. Check: journalctl -u vod-server -n 30"
+fi
+
+# ========================
+# 10. Cleanup
+# ========================
+rm -rf "$TEMP_DIR"
+
+# Show result
+INSTALLED_VERSION=$(vod-server --version 2>/dev/null | head -1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+
+echo ""
+echo -e "${GREEN}============================================${NC}"
+echo -e "${GREEN}  VOD Server Update Complete!${NC}"
+echo -e "${GREEN}============================================${NC}"
+echo ""
+echo "  Previous: $CURRENT_VERSION"
+echo "  Current:  $INSTALLED_VERSION"
+echo ""
+echo "  Status: $(systemctl is-active vod-server)"
+echo "  Rollback: cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server && systemctl restart vod-server"
+echo ""

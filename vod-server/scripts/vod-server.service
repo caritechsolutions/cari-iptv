@@ -1,0 +1,28 @@
+[Unit]
+Description=CARI VOD Server - Video transcoding and serving daemon
+Documentation=https://github.com/caritechsolutions/cari-iptv
+After=network.target
+
+[Service]
+Type=simple
+User=vod-server
+Group=vod-server
+ExecStart=/usr/local/bin/vod-server -c /etc/vod-server/vod-server.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Security hardening
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vod-server /var/log/vod-server /var/run
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Allow access to configured mount paths
+# Add additional ReadWritePaths for custom library paths, e.g.:
+# ReadWritePaths=/mnt/vod-storage
+
+[Install]
+WantedBy=multi-user.target
