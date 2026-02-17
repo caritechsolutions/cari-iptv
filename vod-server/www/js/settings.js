@@ -1,7 +1,7 @@
 /**
  * VOD Server Web GUI - Settings Page
  */
-const settingsPage = {
+var settingsPage = {
 
     render() {
         return `

@@ -2,7 +2,7 @@
  * VOD Server Web GUI - Main Application
  * SPA router, API client, shared utilities
  */
-const App = {
+var App = {
     currentPage: null,
     refreshInterval: null,
     apiBase: '/api',

@@ -1,7 +1,7 @@
 /**
  * VOD Server Web GUI - Dashboard Page
  */
-const dashboardPage = {
+var dashboardPage = {
     interval: null,
 
     render() {

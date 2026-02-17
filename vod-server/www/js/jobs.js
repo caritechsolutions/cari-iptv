@@ -1,7 +1,7 @@
 /**
  * VOD Server Web GUI - Jobs Page
  */
-const jobsPage = {
+var jobsPage = {
     interval: null,
     statusFilter: '',
 

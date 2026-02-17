@@ -1,7 +1,7 @@
 /**
  * VOD Server Web GUI - Content Page
  */
-const contentPage = {
+var contentPage = {
     interval: null,
 
     render() {

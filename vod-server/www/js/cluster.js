@@ -1,7 +1,7 @@
 /**
  * VOD Server Web GUI - Cluster Page
  */
-const clusterPage = {
+var clusterPage = {
     interval: null,
 
     render() {
