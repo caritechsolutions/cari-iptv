@@ -233,8 +233,10 @@ BUILD_DIR="$SOURCE_DIR/build"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-cmake "$SOURCE_DIR" -DCMAKE_BUILD_TYPE=Release > /dev/null 2>&1 || err "CMake configuration failed"
-make -j$(nproc) > /dev/null 2>&1 || err "Build failed"
+log "Running cmake..."
+cmake "$SOURCE_DIR" -DCMAKE_BUILD_TYPE=Release 2>&1 || err "CMake configuration failed"
+log "Running make..."
+make -j$(nproc) 2>&1 || err "Build failed"
 
 log "Build successful"
 
