@@ -52,7 +52,7 @@ var contentPage = {
     async refresh() {
         try {
             const data = await App.get('/content');
-            const items = data.content || data || [];
+            const items = data.items || data.content || [];
             const tbody = document.getElementById('content-list');
 
             if (items.length === 0) {

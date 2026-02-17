@@ -73,7 +73,7 @@ var jobsPage = {
         try {
             const params = this.statusFilter ? `?status=${this.statusFilter}` : '';
             const data = await App.get('/jobs' + params);
-            const jobs = data.jobs || data || [];
+            const jobs = data.items || data.jobs || [];
             const tbody = document.getElementById('jobs-list');
 
             if (jobs.length === 0) {

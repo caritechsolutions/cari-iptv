@@ -125,7 +125,7 @@ var clusterPage = {
     async loadMigrations() {
         try {
             const data = await App.get('/migrations');
-            const migrations = data.migrations || data || [];
+            const migrations = data.items || data.migrations || [];
             const tbody = document.getElementById('migrations-list');
 
             if (migrations.length === 0) {

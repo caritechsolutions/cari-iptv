@@ -104,7 +104,7 @@ var dashboardPage = {
         try {
             const [status, jobs] = await Promise.all([
                 App.get('/status'),
-                App.get('/jobs?limit=5').catch(() => ({ jobs: [] }))
+                App.get('/jobs?limit=5').catch(() => ({ items: [] }))
             ]);
 
             /* Stats */
@@ -137,11 +137,11 @@ var dashboardPage = {
             document.getElementById('info-version').textContent = status.version || '-';
             document.getElementById('info-node').textContent = status.node_name || '-';
             document.getElementById('info-ffmpeg').textContent = status.ffmpeg_available ? 'Available' : 'Not found';
-            document.getElementById('info-uptime').textContent = status.uptime ? App.formatDuration(status.uptime) : '-';
+            document.getElementById('info-uptime').textContent = status.uptime_seconds ? App.formatDuration(status.uptime_seconds) : '-';
 
             /* Recent jobs */
             const tbody = document.getElementById('recent-jobs');
-            const jobList = jobs.jobs || jobs || [];
+            const jobList = jobs.items || jobs.jobs || [];
             if (jobList.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No jobs yet</td></tr>';
             } else {
