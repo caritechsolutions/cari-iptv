@@ -386,8 +386,8 @@ int storage_list_content(content_dir_t **out_dirs)
         if (stat(full_path, &st) != 0 || !S_ISDIR(st.st_mode))
             continue;
 
-        strncpy(dirs[idx].content_id, entry->d_name, sizeof(dirs[idx].content_id) - 1);
-        strncpy(dirs[idx].path, full_path, sizeof(dirs[idx].path) - 1);
+        snprintf(dirs[idx].content_id, sizeof(dirs[idx].content_id), "%s", entry->d_name);
+        snprintf(dirs[idx].path, sizeof(dirs[idx].path), "%s", full_path);
         dirs[idx].size_bytes = storage_dir_size(full_path);
 
         /* Count files in this content directory */

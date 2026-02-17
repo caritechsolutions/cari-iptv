@@ -40,8 +40,7 @@ static int lookup_resolution(const char *label, int *w, int *h)
 static int parse_renditions(transcode_profile_t *profile, const char *value)
 {
     char buf[MAX_VALUE_LEN];
-    strncpy(buf, value, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
+    snprintf(buf, sizeof(buf), "%s", value);
 
     profile->rendition_count = 0;
     char *saveptr = NULL;
@@ -62,7 +61,7 @@ static int parse_renditions(transcode_profile_t *profile, const char *value)
         const char *bitrate_str = colon + 1;
 
         rendition_t *r = &profile->renditions[profile->rendition_count];
-        strncpy(r->label, label, sizeof(r->label) - 1);
+        snprintf(r->label, sizeof(r->label), "%s", label);
 
         if (lookup_resolution(label, &r->width, &r->height) != 0) {
             log_warn("Unknown resolution: %s", label);
@@ -98,7 +97,7 @@ static transcode_profile_t *find_or_create_profile(vod_config_t *config, const c
     }
     transcode_profile_t *p = &config->profiles[config->profile_count];
     memset(p, 0, sizeof(*p));
-    strncpy(p->name, name, sizeof(p->name) - 1);
+    snprintf(p->name, sizeof(p->name), "%s", name);
     config->profile_count++;
     return p;
 }
@@ -106,12 +105,12 @@ static transcode_profile_t *find_or_create_profile(vod_config_t *config, const c
 /**
  * INI parser callback.
  */
-static int ini_handler(void *user, const char *section, const char *name, const char *value)
+static int config_ini_callback(void *user, const char *section, const char *name, const char *value)
 {
     vod_config_t *config = (vod_config_t *)user;
 
     #define MATCH(s, n) (strcmp(section, s) == 0 && strcmp(name, n) == 0)
-    #define COPY_STR(dest) strncpy(dest, value, sizeof(dest) - 1)
+    #define COPY_STR(dest) snprintf(dest, sizeof(dest), "%s", value)
 
     /* [server] */
     if (MATCH("server", "port"))          config->port = atoi(value);
@@ -166,11 +165,11 @@ static int ini_handler(void *user, const char *section, const char *name, const 
         transcode_profile_t *p = find_or_create_profile(config, profile_name);
         if (!p) return 1;
 
-        if (strcmp(name, "codec") == 0)         strncpy(p->codec, value, sizeof(p->codec) - 1);
-        else if (strcmp(name, "preset") == 0)   strncpy(p->preset, value, sizeof(p->preset) - 1);
+        if (strcmp(name, "codec") == 0)         snprintf(p->codec, sizeof(p->codec), "%s", value);
+        else if (strcmp(name, "preset") == 0)   snprintf(p->preset, sizeof(p->preset), "%s", value);
         else if (strcmp(name, "crf") == 0)      p->crf = atoi(value);
-        else if (strcmp(name, "audio_codec") == 0)   strncpy(p->audio_codec, value, sizeof(p->audio_codec) - 1);
-        else if (strcmp(name, "audio_bitrate") == 0) strncpy(p->audio_bitrate, value, sizeof(p->audio_bitrate) - 1);
+        else if (strcmp(name, "audio_codec") == 0)   snprintf(p->audio_codec, sizeof(p->audio_codec), "%s", value);
+        else if (strcmp(name, "audio_bitrate") == 0) snprintf(p->audio_bitrate, sizeof(p->audio_bitrate), "%s", value);
         else if (strcmp(name, "renditions") == 0)    parse_renditions(p, value);
     }
 
@@ -186,35 +185,35 @@ void config_set_defaults(vod_config_t *config)
 
     /* Server */
     config->port = 8090;
-    strncpy(config->bind_address, "0.0.0.0", sizeof(config->bind_address));
-    strncpy(config->api_key, "change-me-on-first-run", sizeof(config->api_key));
-    strncpy(config->log_file, "/var/log/vod-server/vod-server.log", sizeof(config->log_file));
-    strncpy(config->log_level, "info", sizeof(config->log_level));
-    strncpy(config->pid_file, "/var/run/vod-server.pid", sizeof(config->pid_file));
-    strncpy(config->www_root, "/usr/local/share/vod-server/www", sizeof(config->www_root));
+    snprintf(config->bind_address, sizeof(config->bind_address), "%s", "0.0.0.0");
+    snprintf(config->api_key, sizeof(config->api_key), "%s", "change-me-on-first-run");
+    snprintf(config->log_file, sizeof(config->log_file), "%s", "/var/log/vod-server/vod-server.log");
+    snprintf(config->log_level, sizeof(config->log_level), "%s", "info");
+    snprintf(config->pid_file, sizeof(config->pid_file), "%s", "/var/run/vod-server.pid");
+    snprintf(config->www_root, sizeof(config->www_root), "%s", "/usr/local/share/vod-server/www");
 
     /* SSL */
     config->ssl_enabled = false;
-    strncpy(config->ssl_cert_file, "/etc/vod-server/ssl/cert.pem", sizeof(config->ssl_cert_file));
-    strncpy(config->ssl_key_file, "/etc/vod-server/ssl/key.pem", sizeof(config->ssl_key_file));
+    snprintf(config->ssl_cert_file, sizeof(config->ssl_cert_file), "%s", "/etc/vod-server/ssl/cert.pem");
+    snprintf(config->ssl_key_file, sizeof(config->ssl_key_file), "%s", "/etc/vod-server/ssl/key.pem");
     config->ssl_auto_self_signed = true;
 
     /* Storage */
-    strncpy(config->library_path, "/var/lib/vod-server/library", sizeof(config->library_path));
-    strncpy(config->temp_path, "/var/lib/vod-server/tmp", sizeof(config->temp_path));
+    snprintf(config->library_path, sizeof(config->library_path), "%s", "/var/lib/vod-server/library");
+    snprintf(config->temp_path, sizeof(config->temp_path), "%s", "/var/lib/vod-server/tmp");
     config->min_free_space_gb = 10;
-    strncpy(config->database_path, "/var/lib/vod-server/vod-server.db", sizeof(config->database_path));
+    snprintf(config->database_path, sizeof(config->database_path), "%s", "/var/lib/vod-server/vod-server.db");
 
     /* Transcoding */
     config->max_concurrent_jobs = 2;
-    strncpy(config->ffmpeg_path, "/usr/local/bin/ffmpeg", sizeof(config->ffmpeg_path));
-    strncpy(config->ffprobe_path, "/usr/local/bin/ffprobe", sizeof(config->ffprobe_path));
-    strncpy(config->mp4box_path, "/usr/bin/MP4Box", sizeof(config->mp4box_path));
-    strncpy(config->default_profile, "standard", sizeof(config->default_profile));
+    snprintf(config->ffmpeg_path, sizeof(config->ffmpeg_path), "%s", "/usr/local/bin/ffmpeg");
+    snprintf(config->ffprobe_path, sizeof(config->ffprobe_path), "%s", "/usr/local/bin/ffprobe");
+    snprintf(config->mp4box_path, sizeof(config->mp4box_path), "%s", "/usr/bin/MP4Box");
+    snprintf(config->default_profile, sizeof(config->default_profile), "%s", "standard");
     config->segment_duration = 6;
     config->gop_size = 48;
     config->poll_interval = 10;
-    strncpy(config->hwaccel, "none", sizeof(config->hwaccel));
+    snprintf(config->hwaccel, sizeof(config->hwaccel), "%s", "none");
     config->gpu_device = 0;
 
     /* Thumbnails */
@@ -226,7 +225,7 @@ void config_set_defaults(vod_config_t *config)
     config->thumb_quality = 75;
 
     /* Cluster */
-    strncpy(config->node_name, "vod-node-1", sizeof(config->node_name));
+    snprintf(config->node_name, sizeof(config->node_name), "%s", "vod-node-1");
     config->health_check_interval = 30;
     config->offline_threshold = 3;
     config->max_concurrent_migrations = 1;
@@ -236,7 +235,7 @@ int config_load(vod_config_t *config, const char *path)
 {
     config_set_defaults(config);
 
-    int result = ini_parse(path, ini_handler, config);
+    int result = ini_parse(path, config_ini_callback, config);
     if (result < 0) {
         fprintf(stderr, "Cannot load config file: %s\n", path);
         return -1;

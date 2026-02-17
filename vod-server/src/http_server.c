@@ -286,7 +286,7 @@ request_handler(void *cls,
         return ret;
     }
 
-    /* --- API routes (/api/*) --- */
+    /* --- API routes (/api/...) --- */
     if (strncmp(url, "/api/", 5) == 0) {
         /* /api/status is public (no key needed) */
         bool needs_auth = (strcmp(url, "/api/status") != 0);

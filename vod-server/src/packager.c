@@ -68,8 +68,7 @@ static int ensure_dir(const char *path)
 
     /* Try to create parent first */
     char parent[MAX_PATH_LEN];
-    strncpy(parent, path, sizeof(parent) - 1);
-    parent[sizeof(parent) - 1] = '\0';
+    snprintf(parent, sizeof(parent), "%s", path);
 
     char *slash = strrchr(parent, '/');
     if (slash && slash != parent) {
@@ -181,7 +180,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         return packager_run_ffmpeg_fallback(state, config);
     }
 
-    strncpy(state->current_step, "Packaging (CMAF)", sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step), "%s", "Packaging (CMAF)");
     state->progress = 0.0;
 
     /* Ensure output directory exists */
@@ -242,8 +241,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
 
         /* Determine track ID from filename */
         char track_id[64];
-        strncpy(track_id, basename, sizeof(track_id) - 1);
-        track_id[sizeof(track_id) - 1] = '\0';
+        snprintf(track_id, sizeof(track_id), "%s", basename);
         /* Remove extension */
         char *dot = strrchr(track_id, '.');
         if (dot) *dot = '\0';
@@ -262,8 +260,8 @@ int packager_run(package_state_t *state, const vod_config_t *config)
     }
 
     state->progress = 20.0;
-    strncpy(state->current_step, "Running MP4Box (DASH+HLS)",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Running MP4Box (DASH+HLS)");
 
     /* Execute MP4Box */
     if (run_command(cmd) != 0) {
@@ -275,8 +273,8 @@ int packager_run(package_state_t *state, const vod_config_t *config)
     }
 
     state->progress = 80.0;
-    strncpy(state->current_step, "Generating HLS master playlist",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Generating HLS master playlist");
 
     /* MP4Box with --hls generates an m3u8 file alongside the mpd.
      * Rename it to master.m3u8 if needed. */
@@ -300,8 +298,8 @@ int packager_run(package_state_t *state, const vod_config_t *config)
     }
 
     state->progress = 100.0;
-    strncpy(state->current_step, "Packaging complete",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Packaging complete");
 
     log_info("Packaging completed for job %d: %s", state->job_id, state->output_dir);
 
@@ -320,8 +318,8 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
         return -1;
     }
 
-    strncpy(state->current_step, "Packaging (FFmpeg HLS fallback)",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Packaging (FFmpeg HLS fallback)");
     state->progress = 10.0;
 
     /* Ensure output directory exists */
@@ -355,17 +353,16 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
         /* Check if this is the audio file */
         if (strstr(basename, "audio") != NULL &&
             (strstr(basename, ".m4a") != NULL || strstr(basename, ".mp4") != NULL)) {
-            strncpy(audio_path, path, sizeof(audio_path) - 1);
+            snprintf(audio_path, sizeof(audio_path), "%s", path);
             has_audio = true;
             continue;
         }
 
         if (video_count < MAX_RENDITIONS) {
-            strncpy(video_paths[video_count], path, MAX_PATH_LEN - 1);
+            snprintf(video_paths[video_count], MAX_PATH_LEN, "%s", path);
 
             /* Extract label from filename (e.g., "720p" from "720p.mp4") */
-            strncpy(video_labels[video_count], basename, sizeof(video_labels[0]) - 1);
-            video_labels[video_count][sizeof(video_labels[0]) - 1] = '\0';
+            snprintf(video_labels[video_count], sizeof(video_labels[0]), "%s", basename);
             char *dot = strrchr(video_labels[video_count], '.');
             if (dot) *dot = '\0';
 
@@ -394,7 +391,6 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
      */
     char cmd[16384];
     int pos = 0;
-    int total_inputs = video_count + (has_audio ? 1 : 0);
 
     /* FFmpeg binary and overwrite */
     pos += snprintf(cmd + pos, sizeof(cmd) - pos, "%s -y ", config->ffmpeg_path);
@@ -468,8 +464,8 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
     }
 
     state->progress = 30.0;
-    strncpy(state->current_step, "Running FFmpeg HLS packager",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Running FFmpeg HLS packager");
 
     /* Execute */
     if (run_command(cmd) != 0) {
@@ -568,8 +564,8 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
     }
 
     state->progress = 90.0;
-    strncpy(state->current_step, "Verifying output",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Verifying output");
 
     /* Verify the output */
     if (packager_verify(state->output_dir) != 0) {
@@ -578,8 +574,8 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
     }
 
     state->progress = 100.0;
-    strncpy(state->current_step, "Packaging complete",
-            sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step),
+             "%s", "Packaging complete");
 
     log_info("FFmpeg HLS packaging completed for job %d: %s",
              state->job_id, state->output_dir);

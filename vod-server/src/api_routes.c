@@ -1,7 +1,7 @@
 /*
  * api_routes.c - JSON API endpoint handlers for VOD Server
  *
- * Handles all /api/* routes: status, config, content, jobs, peers, migrations.
+ * Handles all /api/ routes: status, config, content, jobs, peers, migrations.
  * Uses cJSON for building/parsing JSON and sqlite3 for database access.
  */
 

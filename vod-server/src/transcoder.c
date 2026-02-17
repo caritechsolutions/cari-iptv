@@ -173,8 +173,8 @@ int transcoder_probe(const char *source_path, media_info_t *info)
 
                 cJSON *codec_name = cJSON_GetObjectItemCaseSensitive(stream, "codec_name");
                 if (codec_name && cJSON_IsString(codec_name)) {
-                    strncpy(info->video_codec, codec_name->valuestring,
-                            sizeof(info->video_codec) - 1);
+                    snprintf(info->video_codec, sizeof(info->video_codec),
+                             "%s", codec_name->valuestring);
                 }
 
                 cJSON *width = cJSON_GetObjectItemCaseSensitive(stream, "width");
@@ -210,8 +210,8 @@ int transcoder_probe(const char *source_path, media_info_t *info)
 
                 cJSON *codec_name = cJSON_GetObjectItemCaseSensitive(stream, "codec_name");
                 if (codec_name && cJSON_IsString(codec_name)) {
-                    strncpy(info->audio_codec, codec_name->valuestring,
-                            sizeof(info->audio_codec) - 1);
+                    snprintf(info->audio_codec, sizeof(info->audio_codec),
+                             "%s", codec_name->valuestring);
                 }
 
                 cJSON *channels = cJSON_GetObjectItemCaseSensitive(stream, "channels");
@@ -535,8 +535,8 @@ int transcoder_start(transcode_state_t *state, const transcode_profile_t *profil
     state->pid = pid;
     state->progress = 0.0;
     state->cancelled = false;
-    strncpy(state->current_step, "Transcoding", sizeof(state->current_step) - 1);
-    strncpy(state->profile_name, profile->name, sizeof(state->profile_name) - 1);
+    snprintf(state->current_step, sizeof(state->current_step), "%s", "Transcoding");
+    snprintf(state->profile_name, sizeof(state->profile_name), "%s", profile->name);
 
     log_info("FFmpeg started with PID %d for job %d", pid, state->job_id);
 
@@ -565,8 +565,8 @@ int transcoder_check_progress(transcode_state_t *state)
                          state->job_id, state->pid);
                 state->pid = 0;
                 state->progress = 100.0;
-                strncpy(state->current_step, "Complete",
-                        sizeof(state->current_step) - 1);
+                snprintf(state->current_step, sizeof(state->current_step),
+                         "%s", "Complete");
                 return 1;
             }
             log_error("waitpid failed for job %d: %s",
@@ -582,8 +582,8 @@ int transcoder_check_progress(transcode_state_t *state)
                 int exit_code = WEXITSTATUS(status);
                 if (exit_code == 0) {
                     state->progress = 100.0;
-                    strncpy(state->current_step, "Complete",
-                            sizeof(state->current_step) - 1);
+                    snprintf(state->current_step, sizeof(state->current_step),
+                             "%s", "Complete");
                     log_info("Job %d: transcode completed successfully",
                              state->job_id);
                     return 1;
@@ -643,8 +643,8 @@ int transcoder_check_progress(transcode_state_t *state)
             fclose(fp);
             /* Don't mark complete yet -- waitpid will catch the exit */
             state->progress = 99.9;
-            strncpy(state->current_step, "Finalizing",
-                    sizeof(state->current_step) - 1);
+            snprintf(state->current_step, sizeof(state->current_step),
+                     "%s", "Finalizing");
             return 0;
         }
     }
@@ -707,8 +707,8 @@ int transcoder_cancel(transcode_state_t *state)
         if (result > 0) {
             log_info("Job %d: FFmpeg process %d terminated", state->job_id, state->pid);
             state->pid = 0;
-            strncpy(state->current_step, "Cancelled",
-                    sizeof(state->current_step) - 1);
+            snprintf(state->current_step, sizeof(state->current_step),
+                     "%s", "Cancelled");
             return 0;
         }
         if (result < 0) {
@@ -732,7 +732,7 @@ int transcoder_cancel(transcode_state_t *state)
         state->pid = 0;
     }
 
-    strncpy(state->current_step, "Cancelled", sizeof(state->current_step) - 1);
+    snprintf(state->current_step, sizeof(state->current_step), "%s", "Cancelled");
     return 0;
 }
 

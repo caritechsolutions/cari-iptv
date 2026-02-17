@@ -63,8 +63,7 @@ static bool file_exists(const char *path)
 static int ensure_parent_dir(const char *path)
 {
     char dir[1024];
-    strncpy(dir, path, sizeof(dir) - 1);
-    dir[sizeof(dir) - 1] = '\0';
+    snprintf(dir, sizeof(dir), "%s", path);
 
     /* Strip the filename component */
     char *slash = strrchr(dir, '/');
