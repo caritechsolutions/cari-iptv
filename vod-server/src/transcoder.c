@@ -853,7 +853,7 @@ int transcoder_extract_subtitles(const char *source_path, const char *output_dir
                  "%s/sub_%d_%s.vtt", output_dir, i, lang);
 
         /* Build extraction command */
-        char extract_cmd[2048];
+        char extract_cmd[MAX_PATH_LEN * 3];
         snprintf(extract_cmd, sizeof(extract_cmd),
                  "%s -y -i \"%s\" -map 0:%d -c:s webvtt \"%s\"",
                  g_config->ffmpeg_path, source_path, stream_index, out_file);

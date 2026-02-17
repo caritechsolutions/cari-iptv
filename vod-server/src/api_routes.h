@@ -4,7 +4,7 @@
 #include "http_server.h"
 
 /**
- * Handle an API request (/api/*).
+ * Handle an API request under /api/.
  * Returns MHD_YES if handled, MHD_NO if not an API route.
  */
 int api_handle_request(http_request_t *req);

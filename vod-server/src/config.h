@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 /* Maximum lengths */
-#define MAX_PATH_LEN        1024
+#define MAX_PATH_LEN        4096
 #define MAX_KEY_LEN         128
 #define MAX_VALUE_LEN       512
 #define MAX_RENDITIONS      8

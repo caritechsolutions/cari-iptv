@@ -124,9 +124,9 @@ static int daemonize(void)
     }
 
     /* Redirect stdio to /dev/null */
-    freopen("/dev/null", "r", stdin);
-    freopen("/dev/null", "w", stdout);
-    freopen("/dev/null", "w", stderr);
+    if (!freopen("/dev/null", "r", stdin))  (void)0;
+    if (!freopen("/dev/null", "w", stdout)) (void)0;
+    if (!freopen("/dev/null", "w", stderr)) (void)0;
 
     /* Change working directory */
     if (chdir("/") < 0) {

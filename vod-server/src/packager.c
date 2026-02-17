@@ -240,7 +240,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         basename = basename ? basename + 1 : path;
 
         /* Determine track ID from filename */
-        char track_id[64];
+        char track_id[256];
         snprintf(track_id, sizeof(track_id), "%s", basename);
         /* Remove extension */
         char *dot = strrchr(track_id, '.');
@@ -340,7 +340,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
 
     /* Separate video and audio files */
     char video_paths[MAX_RENDITIONS][MAX_PATH_LEN];
-    char video_labels[MAX_RENDITIONS][64];
+    char video_labels[MAX_RENDITIONS][256];
     int video_count = 0;
     char audio_path[MAX_PATH_LEN] = {0};
     bool has_audio = false;
@@ -490,7 +490,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
 
         /* Package each rendition separately */
         for (int i = 0; i < video_count; i++) {
-            char variant_cmd[4096];
+            char variant_cmd[16384];
             char variant_name[128];
             snprintf(variant_name, sizeof(variant_name),
                      "stream_%s", video_labels[i]);
