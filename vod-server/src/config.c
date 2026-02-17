@@ -207,8 +207,8 @@ void config_set_defaults(vod_config_t *config)
 
     /* Transcoding */
     config->max_concurrent_jobs = 2;
-    strncpy(config->ffmpeg_path, "/usr/bin/ffmpeg", sizeof(config->ffmpeg_path));
-    strncpy(config->ffprobe_path, "/usr/bin/ffprobe", sizeof(config->ffprobe_path));
+    strncpy(config->ffmpeg_path, "/usr/local/bin/ffmpeg", sizeof(config->ffmpeg_path));
+    strncpy(config->ffprobe_path, "/usr/local/bin/ffprobe", sizeof(config->ffprobe_path));
     strncpy(config->mp4box_path, "/usr/bin/MP4Box", sizeof(config->mp4box_path));
     strncpy(config->default_profile, "standard", sizeof(config->default_profile));
     config->segment_duration = 6;

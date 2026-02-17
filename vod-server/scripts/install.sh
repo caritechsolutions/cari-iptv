@@ -40,10 +40,18 @@ case "$OS" in
     ubuntu|debian)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
+        # VOD server build deps
         apt-get install -y -qq \
             build-essential cmake pkg-config \
             libmicrohttpd-dev libsqlite3-dev libgnutls28-dev \
-            curl wget git \
+            curl wget git xz-utils \
+            > /dev/null 2>&1
+        # FFmpeg 8 build deps
+        apt-get install -y -qq \
+            nasm yasm \
+            libx264-dev libx265-dev libfdk-aac-dev libmp3lame-dev libopus-dev \
+            libvpx-dev libsvtav1-dev libsvtav1enc-dev libdav1d-dev \
+            libass-dev libfreetype6-dev libvorbis-dev \
             > /dev/null 2>&1
         log "Build dependencies installed"
         ;;
@@ -56,8 +64,15 @@ case "$OS" in
         $PKG install -y -q \
             gcc gcc-c++ cmake3 pkgconfig \
             libmicrohttpd-devel sqlite-devel gnutls-devel \
-            curl wget git \
+            curl wget git xz \
             > /dev/null 2>&1
+        # FFmpeg build deps (may need RPM Fusion / EPEL)
+        $PKG install -y -q \
+            nasm yasm \
+            x264-devel x265-devel fdk-aac-devel lame-devel opus-devel \
+            libvpx-devel svt-av1-devel dav1d-devel \
+            libass-devel freetype-devel libvorbis-devel \
+            > /dev/null 2>&1 || warn "Some FFmpeg codec libraries not available. FFmpeg may build without all codecs."
         # cmake3 alias
         if ! command -v cmake &>/dev/null && command -v cmake3 &>/dev/null; then
             ln -sf /usr/bin/cmake3 /usr/bin/cmake
@@ -66,44 +81,106 @@ case "$OS" in
         ;;
     *)
         warn "Unsupported OS: $OS. Please install manually:"
-        warn "  - cmake, gcc, pkg-config"
+        warn "  - cmake, gcc, pkg-config, nasm, yasm"
         warn "  - libmicrohttpd-dev, libsqlite3-dev, libgnutls-dev"
+        warn "  - libx264-dev, libx265-dev, libfdk-aac-dev, libsvtav1-dev"
         ;;
 esac
 
 # ========================
-# 2. Install FFmpeg 8
+# 2. Install FFmpeg 8.0.1
 # ========================
+FFMPEG_TARGET_VERSION="8"
+FFMPEG_SOURCE_URL="https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz"
+FFMPEG_SOURCE_DIR="ffmpeg-8.0.1"
+
 log "Checking FFmpeg..."
 
-FFMPEG_INSTALLED=false
+NEED_FFMPEG_BUILD=true
 if command -v ffmpeg &>/dev/null; then
     FFMPEG_VERSION=$(ffmpeg -version 2>/dev/null | head -1 | grep -oP 'ffmpeg version \K[0-9]+' || echo "0")
-    if [ "$FFMPEG_VERSION" -ge 7 ]; then
-        log "FFmpeg $FFMPEG_VERSION already installed"
-        FFMPEG_INSTALLED=true
+    if [ "$FFMPEG_VERSION" -ge "$FFMPEG_TARGET_VERSION" ]; then
+        log "FFmpeg $FFMPEG_VERSION already installed (>= $FFMPEG_TARGET_VERSION)"
+        NEED_FFMPEG_BUILD=false
     else
-        warn "FFmpeg $FFMPEG_VERSION found but version 7+ recommended"
-        FFMPEG_INSTALLED=true
+        log "FFmpeg $FFMPEG_VERSION found, upgrading to 8.0.1..."
     fi
 fi
 
-if [ "$FFMPEG_INSTALLED" = false ]; then
+if [ "$NEED_FFMPEG_BUILD" = true ]; then
+    log "Building FFmpeg 8.0.1 from source (this will take a few minutes)..."
+
+    FFMPEG_BUILD_DIR=$(mktemp -d)
+    cd "$FFMPEG_BUILD_DIR"
+
+    # Download
+    log "Downloading FFmpeg 8.0.1..."
+    wget -q "$FFMPEG_SOURCE_URL" -O ffmpeg.tar.xz || err "Failed to download FFmpeg source"
+    tar -xf ffmpeg.tar.xz || err "Failed to extract FFmpeg source"
+    cd "$FFMPEG_SOURCE_DIR"
+
+    # Configure with commonly needed codecs
+    log "Configuring FFmpeg (detecting available libraries)..."
+    FFMPEG_CONFIGURE_FLAGS="
+        --prefix=/usr/local
+        --enable-gpl
+        --enable-nonfree
+        --enable-pthreads
+        --enable-libx264
+        --enable-libx265
+        --enable-libmp3lame
+        --enable-libopus
+        --enable-libvorbis
+        --enable-libvpx
+        --enable-libass
+        --enable-libfreetype
+    "
+
+    # Optional codecs — add if dev libs are available
+    pkg-config --exists fdk-aac 2>/dev/null && FFMPEG_CONFIGURE_FLAGS="$FFMPEG_CONFIGURE_FLAGS --enable-libfdk-aac"
+    pkg-config --exists SvtAv1Enc 2>/dev/null && FFMPEG_CONFIGURE_FLAGS="$FFMPEG_CONFIGURE_FLAGS --enable-libsvtav1"
+    pkg-config --exists dav1d 2>/dev/null && FFMPEG_CONFIGURE_FLAGS="$FFMPEG_CONFIGURE_FLAGS --enable-libdav1d"
+
+    ./configure $FFMPEG_CONFIGURE_FLAGS > /dev/null 2>&1 || {
+        warn "Full configure failed, trying minimal configuration..."
+        ./configure \
+            --prefix=/usr/local \
+            --enable-gpl \
+            --enable-pthreads \
+            --enable-libx264 \
+            --enable-libx265 \
+            > /dev/null 2>&1 || err "FFmpeg configure failed. Check build dependencies."
+    }
+
+    # Build
+    NPROC=$(nproc 2>/dev/null || echo 2)
+    log "Compiling FFmpeg with $NPROC threads..."
+    make -j"$NPROC" > /dev/null 2>&1 || err "FFmpeg build failed"
+
+    # Install
     log "Installing FFmpeg..."
-    case "$OS" in
-        ubuntu|debian)
-            apt-get install -y -qq ffmpeg > /dev/null 2>&1 || {
-                warn "Could not install FFmpeg from repos. Please install FFmpeg 7+ manually."
-                warn "See: https://ffmpeg.org/download.html"
-            }
-            ;;
-        centos|rhel|rocky|almalinux|fedora)
-            # Try RPM Fusion
-            $PKG install -y -q ffmpeg ffmpeg-devel > /dev/null 2>&1 || {
-                warn "Could not install FFmpeg from repos. Please install FFmpeg 7+ manually."
-            }
-            ;;
-    esac
+    make install > /dev/null 2>&1 || err "FFmpeg install failed"
+
+    # Update library cache
+    ldconfig 2>/dev/null || true
+
+    # Verify
+    INSTALLED_VER=$(ffmpeg -version 2>/dev/null | head -1 || echo "unknown")
+    log "FFmpeg installed: $INSTALLED_VER"
+
+    # Cleanup
+    cd /
+    rm -rf "$FFMPEG_BUILD_DIR"
+fi
+
+# Verify ffprobe is also available
+if ! command -v ffprobe &>/dev/null; then
+    # Check /usr/local/bin
+    if [ -f /usr/local/bin/ffprobe ]; then
+        log "ffprobe found at /usr/local/bin/ffprobe"
+    else
+        warn "ffprobe not found. It should have been installed with FFmpeg."
+    fi
 fi
 
 # ========================
