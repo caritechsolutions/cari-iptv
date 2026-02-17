@@ -742,14 +742,6 @@
                 </div>
 
                 <div class="nav-section">
-                    <div class="nav-section-title">Integrations</div>
-                    <a href="/admin/vod-server" class="nav-item <?= ($pageTitle ?? '') === 'VOD Server' ? 'active' : '' ?>">
-                        <i class="lucide-hard-drive"></i>
-                        <span>VOD Server</span>
-                    </a>
-                </div>
-
-                <div class="nav-section">
                     <div class="nav-section-title">System</div>
                     <a href="/admin/activity" class="nav-item">
                         <i class="lucide-history"></i>

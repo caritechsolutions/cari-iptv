@@ -14,6 +14,7 @@ use CariIPTV\Services\EmailService;
 use CariIPTV\Services\AIService;
 use CariIPTV\Services\MetadataService;
 use CariIPTV\Services\ImageService;
+use CariIPTV\Services\VodServerService;
 
 class SettingsController
 {
@@ -47,10 +48,20 @@ class SettingsController
             ],
         ];
 
+        // Get VOD servers for integrations tab
+        $vodServers = [];
+        try {
+            $vodService = new VodServerService();
+            $vodServers = $vodService->getServers();
+        } catch (\Exception $e) {
+            // Table may not exist yet before migration runs
+        }
+
         Response::view('admin/settings/index', [
             'pageTitle' => 'Settings',
             'settings' => $allSettings,
             'integrationStatus' => $integrationStatus,
+            'vodServers' => $vodServers,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');

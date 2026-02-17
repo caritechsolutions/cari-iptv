@@ -20,18 +20,11 @@ class VodServerController
     }
 
     /**
-     * Main VOD Server page
+     * Redirect to settings integrations tab (VOD servers are managed there now)
      */
     public function index(): void
     {
-        $servers = $this->vodService->getServers();
-        $defaultServer = $this->vodService->getDefaultServer();
-
-        Response::view('admin/vod-server/index', [
-            'pageTitle' => 'VOD Server',
-            'servers' => $servers,
-            'defaultServerId' => $defaultServer['id'] ?? 0,
-        ], 'admin');
+        Response::redirect('/admin/settings?tab=integrations');
     }
 
     /* ==============================================================
