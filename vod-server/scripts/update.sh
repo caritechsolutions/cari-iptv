@@ -70,14 +70,15 @@ NEW_VERSION=$(grep 'VOD_SERVER_VERSION_MAJOR\|VOD_SERVER_VERSION_MINOR\|VOD_SERV
 log "New version: ${NEW_VERSION:-unknown}"
 
 # ========================
-# 3. Pause active jobs
+# 3. Stop service & pause jobs
 # ========================
 if systemctl is-active --quiet vod-server; then
     log "Pausing active transcode jobs..."
-    # Send SIGHUP to tell server to pause jobs gracefully
-    # The server handles this by pausing FFmpeg processes
     kill -USR1 "$(cat /var/run/vod-server.pid 2>/dev/null)" 2>/dev/null || true
     sleep 2
+    log "Stopping VOD Server..."
+    systemctl stop vod-server 2>/dev/null || true
+    sleep 1
 fi
 
 # ========================
@@ -97,28 +98,29 @@ BUILD_DIR="$SOURCE_DIR/build"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-cmake "$SOURCE_DIR" -DCMAKE_BUILD_TYPE=Release > /dev/null 2>&1 || {
-    warn "Build failed. Restoring backup..."
+BUILD_LOG="$BUILD_DIR/build.log"
+
+cmake "$SOURCE_DIR" -DCMAKE_BUILD_TYPE=Release > "$BUILD_LOG" 2>&1 || {
+    warn "CMake configuration failed. Build log:"
+    cat "$BUILD_LOG"
+    warn "Restoring backup..."
     [ -f /usr/local/bin/vod-server.bak ] && cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server
+    systemctl start vod-server 2>/dev/null || true
     rm -rf "$TEMP_DIR"
     err "CMake configuration failed"
 }
 
-make -j$(nproc) > /dev/null 2>&1 || {
-    warn "Build failed. Restoring backup..."
+make -j$(nproc) >> "$BUILD_LOG" 2>&1 || {
+    warn "Compilation failed. Build log (last 50 lines):"
+    tail -50 "$BUILD_LOG"
+    warn "Restoring backup..."
     [ -f /usr/local/bin/vod-server.bak ] && cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server
+    systemctl start vod-server 2>/dev/null || true
     rm -rf "$TEMP_DIR"
     err "Compilation failed"
 }
 
 log "Build successful"
-
-# ========================
-# 6. Stop service
-# ========================
-log "Stopping VOD Server..."
-systemctl stop vod-server 2>/dev/null || true
-sleep 1
 
 # ========================
 # 7. Install new files
