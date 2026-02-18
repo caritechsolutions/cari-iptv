@@ -111,8 +111,11 @@ cmake "$SOURCE_DIR" -DCMAKE_BUILD_TYPE=Release > "$BUILD_LOG" 2>&1 || {
 }
 
 make -j$(nproc) >> "$BUILD_LOG" 2>&1 || {
-    warn "Compilation failed. Build log (last 50 lines):"
-    tail -50 "$BUILD_LOG"
+    warn "Compilation failed."
+    warn "=== ERRORS ==="
+    grep -i "error:" "$BUILD_LOG" || echo "(no lines matching 'error:')"
+    warn "=== FULL BUILD LOG ==="
+    cat "$BUILD_LOG"
     warn "Restoring backup..."
     [ -f /usr/local/bin/vod-server.bak ] && cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server
     systemctl start vod-server 2>/dev/null || true

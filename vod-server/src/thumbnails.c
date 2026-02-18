@@ -95,7 +95,7 @@ int thumbnails_generate(const char *source_path, const char *output_dir,
              thumb_count, columns, rows, width, height, interval);
 
     /* Create thumbnails output directory */
-    char thumb_dir[MAX_PATH_LEN];
+    char thumb_dir[MAX_PATH_LEN + 64];
     snprintf(thumb_dir, sizeof(thumb_dir), "%s/thumbnails", output_dir);
 
     if (ensure_dir(thumb_dir) != 0) {

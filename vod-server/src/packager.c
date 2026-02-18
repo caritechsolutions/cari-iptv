@@ -240,7 +240,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         basename = basename ? basename + 1 : path;
 
         /* Determine track ID from filename */
-        char track_id[MAX_PATH_LEN];
+        char track_id[256];
         snprintf(track_id, sizeof(track_id), "%s", basename);
         /* Remove extension */
         char *dot = strrchr(track_id, '.');
@@ -278,8 +278,8 @@ int packager_run(package_state_t *state, const vod_config_t *config)
 
     /* MP4Box with --hls generates an m3u8 file alongside the mpd.
      * Rename it to master.m3u8 if needed. */
-    char hls_src[MAX_PATH_LEN];
-    char hls_dst[MAX_PATH_LEN];
+    char hls_src[MAX_PATH_LEN + 64];
+    char hls_dst[MAX_PATH_LEN + 64];
     snprintf(hls_src, sizeof(hls_src), "%s/manifest.m3u8", state->output_dir);
     snprintf(hls_dst, sizeof(hls_dst), "%s/master.m3u8", state->output_dir);
 
@@ -475,7 +475,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
         log_warn("Trying single-variant HLS packaging for job %d", state->job_id);
 
         /* Build master playlist manually for single-file inputs */
-        char master_path[MAX_PATH_LEN];
+        char master_path[MAX_PATH_LEN + 64];
         snprintf(master_path, sizeof(master_path),
                  "%s/master.m3u8", state->output_dir);
 
@@ -496,7 +496,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
                      "stream_%s", video_labels[i]);
 
             /* Create subdirectory for this variant */
-            char variant_dir[MAX_PATH_LEN];
+            char variant_dir[MAX_PATH_LEN + 256];
             snprintf(variant_dir, sizeof(variant_dir),
                      "%s/%s", state->output_dir, variant_name);
             ensure_dir(variant_dir);
@@ -597,12 +597,12 @@ int packager_verify(const char *output_dir)
     }
 
     /* Check for master playlist (HLS) */
-    char hls_path[MAX_PATH_LEN];
+    char hls_path[MAX_PATH_LEN + 64];
     snprintf(hls_path, sizeof(hls_path), "%s/master.m3u8", output_dir);
     bool has_hls = file_exists_nonempty(hls_path);
 
     /* Check for DASH manifest */
-    char dash_path[MAX_PATH_LEN];
+    char dash_path[MAX_PATH_LEN + 64];
     snprintf(dash_path, sizeof(dash_path), "%s/manifest.mpd", output_dir);
     bool has_dash = file_exists_nonempty(dash_path);
 
@@ -643,7 +643,7 @@ int packager_verify(const char *output_dir)
 
         /* Check subdirectories for segments */
         if (entry->d_type == DT_DIR && name[0] != '.') {
-            char subdir_path[MAX_PATH_LEN];
+            char subdir_path[MAX_PATH_LEN + 256];
             snprintf(subdir_path, sizeof(subdir_path), "%s/%s", output_dir, name);
 
             DIR *sdp = opendir(subdir_path);

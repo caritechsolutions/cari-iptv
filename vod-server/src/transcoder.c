@@ -489,7 +489,7 @@ int transcoder_start(transcode_state_t *state, const transcode_profile_t *profil
     }
 
     /* Progress file path: <output_dir>/ffmpeg_progress.log */
-    char progress_file[MAX_PATH_LEN];
+    char progress_file[MAX_PATH_LEN + 64];
     snprintf(progress_file, sizeof(progress_file),
              "%s/ffmpeg_progress.log", state->output_dir);
 
@@ -515,7 +515,7 @@ int transcoder_start(transcode_state_t *state, const transcode_profile_t *profil
         }
 
         /* Redirect stderr to a log file */
-        char stderr_file[MAX_PATH_LEN];
+        char stderr_file[MAX_PATH_LEN + 64];
         snprintf(stderr_file, sizeof(stderr_file),
                  "%s/ffmpeg_stderr.log", state->output_dir);
         int fd_err = open(stderr_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -619,7 +619,7 @@ int transcoder_check_progress(transcode_state_t *state)
     }
 
     /* Process is still running -- parse progress file */
-    char progress_file[MAX_PATH_LEN];
+    char progress_file[MAX_PATH_LEN + 64];
     snprintf(progress_file, sizeof(progress_file),
              "%s/ffmpeg_progress.log", state->output_dir);
 
@@ -851,7 +851,7 @@ int transcoder_extract_subtitles(const char *source_path, const char *output_dir
         }
 
         /* Build output filename: sub_0_eng.vtt */
-        char out_file[MAX_PATH_LEN];
+        char out_file[MAX_PATH_LEN + 64];
         snprintf(out_file, sizeof(out_file),
                  "%s/sub_%d_%s.vtt", output_dir, i, lang);
 

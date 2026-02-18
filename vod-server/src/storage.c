@@ -137,8 +137,8 @@ static int copy_dir_recursive(const char *src, const char *dst)
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
-        char src_path[MAX_PATH_LEN];
-        char dst_path[MAX_PATH_LEN];
+        char src_path[MAX_PATH_LEN + 256];
+        char dst_path[MAX_PATH_LEN + 256];
         snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
         snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
 
