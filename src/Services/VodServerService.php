@@ -347,11 +347,21 @@ class VodServerService
 
         $data = json_decode($response, true);
         if ($data === null && !empty($response)) {
+            // Some responses may have trailing whitespace or BOM - try trimming
+            $trimmed = trim($response, "\xEF\xBB\xBF \t\n\r\0\x0B");
+            $data = json_decode($trimmed, true);
+        }
+        if ($data === null && !empty($response)) {
             throw new \RuntimeException('Invalid response from VOD Server (HTTP ' . $httpCode . ')');
         }
 
         if ($httpCode >= 400) {
             throw new \RuntimeException($data['error'] ?? $data['message'] ?? 'HTTP ' . $httpCode);
+        }
+
+        // For 2xx responses with empty body (e.g. 204 No Content), return success
+        if ($data === null) {
+            $data = ['success' => true];
         }
 
         return $data ?? [];
