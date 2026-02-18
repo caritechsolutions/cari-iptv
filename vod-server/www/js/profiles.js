@@ -235,14 +235,20 @@ var profilesPage = {
         const name = document.getElementById('pf-name').value.trim();
         if (!name) { App.toast('Profile name is required', 'warning'); return; }
 
-        /* Collect rendition rows */
+        /* Collect rendition rows as JSON array of objects (C API primary format) */
         const rows = document.querySelectorAll('.pf-rendition-row');
         const renditions = [];
+        const resMap = {
+            '360p':  [640, 360],   '480p':  [854, 480],   '576p':  [1024, 576],
+            '720p':  [1280, 720],  '1080p': [1920, 1080], '1440p': [2560, 1440],
+            '2160p': [3840, 2160]
+        };
         for (const row of rows) {
             const label = row.querySelector('[data-field="label"]').value;
             const bitrate = parseInt(row.querySelector('[data-field="bitrate"]').value);
             if (label && bitrate > 0) {
-                renditions.push(label + ':' + bitrate + 'k');
+                const dims = resMap[label] || [0, 0];
+                renditions.push({ label: label, width: dims[0], height: dims[1], bitrate_kbps: bitrate });
             }
         }
 
@@ -253,7 +259,7 @@ var profilesPage = {
             crf: parseInt(document.getElementById('pf-crf').value),
             audio_codec: document.getElementById('pf-audio-codec').value,
             audio_bitrate: document.getElementById('pf-audio-bitrate').value,
-            renditions: renditions.join(',')
+            renditions: renditions
         };
 
         btn.disabled = true;
