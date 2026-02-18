@@ -25,6 +25,7 @@ static int is_spa_route(const char *url)
     const char *spa_routes[] = {
         "/content",
         "/jobs",
+        "/uploads",
         "/cluster",
         "/settings",
         "/login",
