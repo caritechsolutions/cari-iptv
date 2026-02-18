@@ -138,68 +138,49 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
             </div>
 
             <?php if ($isEdit && !empty($vodServers)): ?>
+            <?php
+                $vodStatus   = $movie['vod_status'] ?? null;
+                $vodServerId = $movie['vod_server_id'] ?? null;
+                $vodJobId    = $movie['vod_job_id'] ?? null;
+                $vodProgress = (float)($movie['vod_progress'] ?? 0);
+                $vodError    = $movie['vod_error'] ?? null;
+                $vodActive   = in_array($vodStatus, ['pending', 'processing', 'packaging', 'downloading']);
+            ?>
             <!-- VOD Transcode Card -->
             <div class="card mb-3">
-                <div class="card-header">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
                     <h3 class="card-title"><i class="lucide-hard-drive"></i> VOD Transcode</h3>
+                    <?php if ($vodStatus === 'complete'): ?>
+                        <span class="badge badge-success"><i class="lucide-check-circle"></i> Ready</span>
+                    <?php elseif ($vodActive): ?>
+                        <span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>
+                    <?php elseif ($vodStatus === 'failed'): ?>
+                        <span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body">
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
-                        Upload a video file to transcode. The job starts automatically once the upload completes.
-                    </p>
 
-                    <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                        <div class="form-group">
-                            <label class="form-label">VOD Server</label>
-                            <select class="form-input" id="vod-transcode-server">
-                                <?php foreach ($vodServers as $vs): ?>
-                                    <option value="<?= $vs['id'] ?>" data-url="<?= htmlspecialchars($vs['url']) ?>">
-                                        <?= htmlspecialchars($vs['name']) ?><?= $vs['is_default'] ? ' (default)' : '' ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Transcode Profile</label>
-                            <select class="form-input" id="vod-transcode-profile">
-                                <option value="standard">Standard (H.264 ABR)</option>
-                                <option value="high">High (HEVC)</option>
-                                <option value="low">Low Bandwidth</option>
-                                <option value="hevc_4k">HEVC 4K</option>
-                                <option value="av1">AV1 (Web/Mobile)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Source File</label>
-                        <div style="display:flex;gap:0.5rem">
-                            <input type="text" class="form-input" id="vod-source-path"
-                                   placeholder="No file selected" style="flex:1" readonly>
-                            <input type="file" id="vod-file-input" accept="video/*,.mkv,.avi,.ts,.m2ts" style="display:none"
-                                   onchange="vodFileSelected(this)">
-                            <button type="button" class="btn btn-secondary" id="vod-browse-btn" onclick="document.getElementById('vod-file-input').click()" title="Browse your computer for a video file">
-                                <i class="lucide-folder-open"></i> Browse
-                            </button>
-                            <button type="button" class="btn btn-primary" id="vod-upload-btn" onclick="vodStartUpload(false)" style="display:none" title="Upload and start transcoding">
-                                <i class="lucide-upload"></i> Upload &amp; Transcode
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Upload progress -->
-                    <div id="vod-upload-progress" style="display:none;margin-bottom:1rem">
+                    <?php if ($vodActive): ?>
+                    <!-- Active job — show status on load, hide upload controls -->
+                    <div id="vod-transcode-progress" style="margin-bottom:1rem">
                         <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
-                            <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-upload-label">Uploading...</span>
-                            <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="vod-upload-pct">0%</span>
+                            <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-transcode-label">
+                                <?= $vodStatus === 'packaging' ? 'Packaging for streaming...' : ($vodStatus === 'downloading' ? 'Downloading source...' : 'Transcoding...') ?>
+                            </span>
+                            <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="vod-transcode-pct"><?= number_format($vodProgress, 1) ?>%</span>
                         </div>
                         <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden">
-                            <div id="vod-upload-bar" style="height:100%;width:0%;background:var(--primary);border-radius:4px;transition:width 0.2s"></div>
+                            <div id="vod-transcode-bar" style="height:100%;width:<?= $vodProgress ?>%;background:var(--accent, #8b5cf6);border-radius:4px;transition:width 0.3s"></div>
                         </div>
-                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-upload-size"></div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-transcode-step">Checking status...</div>
                     </div>
+                    <div id="vod-status-msg" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
 
-                    <!-- Transcode progress (shown after upload completes) -->
+                    <?php elseif ($vodStatus === 'complete'): ?>
+                    <!-- Completed — show success and allow re-transcode -->
+                    <div style="padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem;background:rgba(34,197,94,0.1);color:var(--success)">
+                        <i class="lucide-check-circle"></i> Transcode complete. Stream URL has been set.
+                    </div>
                     <div id="vod-transcode-progress" style="display:none;margin-bottom:1rem">
                         <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
                             <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-transcode-label">Transcoding...</span>
@@ -210,8 +191,94 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                         </div>
                         <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-transcode-step"></div>
                     </div>
-
                     <div id="vod-status-msg" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
+
+                    <?php elseif ($vodStatus === 'failed'): ?>
+                    <!-- Failed — show error and allow retry -->
+                    <div style="padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem;background:rgba(239,68,68,0.1);color:var(--danger)">
+                        <i class="lucide-alert-circle"></i> Transcode failed<?= $vodError ? ': ' . htmlspecialchars($vodError) : '' ?>
+                    </div>
+                    <div id="vod-transcode-progress" style="display:none;margin-bottom:1rem">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+                            <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-transcode-label">Transcoding...</span>
+                            <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="vod-transcode-pct">0%</span>
+                        </div>
+                        <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden">
+                            <div id="vod-transcode-bar" style="height:100%;width:0%;background:var(--accent, #8b5cf6);border-radius:4px;transition:width 0.3s"></div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-transcode-step"></div>
+                    </div>
+                    <div id="vod-status-msg" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
+
+                    <?php else: ?>
+                    <!-- No job yet — show instructions -->
+                    <div id="vod-transcode-progress" style="display:none;margin-bottom:1rem">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+                            <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-transcode-label">Transcoding...</span>
+                            <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="vod-transcode-pct">0%</span>
+                        </div>
+                        <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden">
+                            <div id="vod-transcode-bar" style="height:100%;width:0%;background:var(--accent, #8b5cf6);border-radius:4px;transition:width 0.3s"></div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-transcode-step"></div>
+                    </div>
+                    <div id="vod-status-msg" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
+                    <?php endif; ?>
+
+                    <!-- Upload controls (hidden during active job) -->
+                    <div id="vod-upload-controls" <?= $vodActive ? 'style="display:none"' : '' ?>>
+                        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                            <div class="form-group">
+                                <label class="form-label">VOD Server</label>
+                                <select class="form-input" id="vod-transcode-server">
+                                    <?php foreach ($vodServers as $vs): ?>
+                                        <option value="<?= $vs['id'] ?>" data-url="<?= htmlspecialchars($vs['url']) ?>"
+                                            <?= ($vodServerId && $vs['id'] == $vodServerId) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($vs['name']) ?><?= $vs['is_default'] ? ' (default)' : '' ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Transcode Profile</label>
+                                <select class="form-input" id="vod-transcode-profile">
+                                    <option value="standard">Standard (H.264 ABR)</option>
+                                    <option value="high">High (HEVC)</option>
+                                    <option value="low">Low Bandwidth</option>
+                                    <option value="hevc_4k">HEVC 4K</option>
+                                    <option value="av1">AV1 (Web/Mobile)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Source File</label>
+                            <div style="display:flex;gap:0.5rem">
+                                <input type="text" class="form-input" id="vod-source-path"
+                                       placeholder="No file selected" style="flex:1" readonly>
+                                <input type="file" id="vod-file-input" accept="video/*,.mkv,.avi,.ts,.m2ts" style="display:none"
+                                       onchange="vodFileSelected(this)">
+                                <button type="button" class="btn btn-secondary" id="vod-browse-btn" onclick="document.getElementById('vod-file-input').click()">
+                                    <i class="lucide-folder-open"></i> Browse
+                                </button>
+                                <button type="button" class="btn btn-primary" id="vod-upload-btn" onclick="vodStartUpload(false)" style="display:none">
+                                    <i class="lucide-upload"></i> Upload &amp; Transcode
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Upload progress -->
+                        <div id="vod-upload-progress" style="display:none;margin-bottom:1rem">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+                                <span style="font-size:0.85rem;color:var(--text-secondary)" id="vod-upload-label">Uploading...</span>
+                                <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="vod-upload-pct">0%</span>
+                            </div>
+                            <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden">
+                                <div id="vod-upload-bar" style="height:100%;width:0%;background:var(--primary);border-radius:4px;transition:width 0.2s"></div>
+                            </div>
+                            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="vod-upload-size"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -222,6 +289,11 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 var CSRF = '<?= \CariIPTV\Core\Session::csrf() ?>';
                 var MOVIE_ID = <?= $movie['id'] ?? 0 ?>;
                 var MOVIE_TITLE = <?= json_encode($movie['title'] ?? '') ?>;
+
+                // Saved job state from database (survives page reload)
+                var SAVED_SERVER_ID = <?= (int)($vodServerId ?? 0) ?>;
+                var SAVED_JOB_ID = <?= (int)($vodJobId ?? 0) ?>;
+                var SAVED_STATUS = <?= json_encode($vodStatus ?? '') ?>;
 
                 function fmt(bytes) {
                     if (!bytes) return '0 B';
@@ -248,7 +320,6 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     document.getElementById('vod-source-path').value = vodPendingFile.name + ' (' + fmt(vodPendingFile.size) + ')';
                     document.getElementById('vod-upload-btn').style.display = '';
                     document.getElementById('vod-upload-progress').style.display = 'none';
-                    document.getElementById('vod-transcode-progress').style.display = 'none';
                     document.getElementById('vod-status-msg').style.display = 'none';
                     document.getElementById('vod-upload-bar').style.width = '0%';
                     document.getElementById('vod-upload-bar').style.background = 'var(--primary)';
@@ -264,16 +335,13 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     var uploadBtn = document.getElementById('vod-upload-btn');
                     var browseBtn = document.getElementById('vod-browse-btn');
 
-                    // Disable buttons
                     uploadBtn.disabled = true;
                     uploadBtn.innerHTML = '<i class="lucide-loader"></i> Uploading...';
                     browseBtn.disabled = true;
                     document.getElementById('vod-transcode-server').disabled = true;
                     document.getElementById('vod-transcode-profile').disabled = true;
 
-                    // Show upload progress
                     document.getElementById('vod-upload-progress').style.display = 'block';
-                    document.getElementById('vod-transcode-progress').style.display = 'none';
                     document.getElementById('vod-status-msg').style.display = 'none';
                     document.getElementById('vod-upload-label').textContent = 'Uploading: ' + file.name;
                     document.getElementById('vod-upload-pct').textContent = '0%';
@@ -285,6 +353,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     formData.append('csrf_token', CSRF);
                     formData.append('video_file', file);
                     formData.append('server_id', serverId);
+                    formData.append('movie_id', MOVIE_ID);
                     formData.append('content_id', contentId);
                     formData.append('title', MOVIE_TITLE);
                     formData.append('profile', profile);
@@ -307,7 +376,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
                     xhr.addEventListener('load', function() {
                         if (xhr.status === 0 || xhr.responseText === '') {
-                            showMsg('Upload failed: File too large for server. Check PHP upload_max_filesize and Nginx client_max_body_size.', 'error');
+                            showMsg('Upload failed: File too large. Check PHP upload_max_filesize and Nginx client_max_body_size.', 'error');
                             resetButtons();
                             return;
                         }
@@ -325,20 +394,14 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                         }
 
                         if (data.success) {
-                            // Upload + job submission succeeded
                             document.getElementById('vod-upload-bar').style.background = 'var(--success)';
                             document.getElementById('vod-upload-label').textContent = file.name + ' — Uploaded!';
                             document.getElementById('vod-upload-pct').textContent = 'Done';
 
-                            // Auto-fill stream URL
-                            if (data.stream_url) {
-                                document.getElementById('stream_url').value = data.stream_url;
-                            }
-
-                            // Start polling transcode progress
                             var job = data.job;
+                            var sid = data.server_id || serverId;
                             if (job && job.id) {
-                                startTranscodePoll(serverId, job.id);
+                                startTranscodePoll(sid, job.id);
                             } else {
                                 showMsg('File uploaded and job submitted. Transcoding will start automatically.', 'success');
                                 resetButtons();
@@ -347,7 +410,6 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             vodPendingFile = null;
                             document.getElementById('vod-upload-btn').style.display = 'none';
                         } else if (data.error === 'duplicate') {
-                            // Content exists — prompt to overwrite
                             document.getElementById('vod-upload-bar').style.background = 'var(--warning)';
                             document.getElementById('vod-upload-label').textContent = 'Duplicate detected';
                             document.getElementById('vod-upload-pct').textContent = '';
@@ -358,7 +420,6 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                 '<button class="btn btn-outline btn-sm" onclick="vodCancelOverwrite()">Cancel</button>',
                                 'info'
                             );
-                            // Re-enable just the overwrite button state
                             uploadBtn.style.display = 'none';
                         } else {
                             showMsg('Upload failed: ' + (data.error || 'Unknown error'), 'error');
@@ -389,20 +450,17 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     browseBtn.disabled = false;
                     document.getElementById('vod-transcode-server').disabled = false;
                     document.getElementById('vod-transcode-profile').disabled = false;
+                    // Show upload controls again
+                    document.getElementById('vod-upload-controls').style.display = '';
                 }
 
                 function startTranscodePoll(serverId, jobId) {
                     var progDiv = document.getElementById('vod-transcode-progress');
                     progDiv.style.display = 'block';
-                    document.getElementById('vod-transcode-label').textContent = 'Transcoding...';
-                    document.getElementById('vod-transcode-pct').textContent = '0%';
-                    document.getElementById('vod-transcode-bar').style.width = '0%';
-                    document.getElementById('vod-transcode-bar').style.background = 'var(--accent, #8b5cf6)';
-                    document.getElementById('vod-transcode-step').textContent = 'Waiting for job to start...';
 
                     if (vodJobPollTimer) clearInterval(vodJobPollTimer);
                     vodJobPollTimer = setInterval(function() {
-                        fetch('/admin/vod-server/job-status?server_id=' + serverId + '&job_id=' + jobId)
+                        fetch('/admin/vod-server/job-status?server_id=' + serverId + '&job_id=' + jobId + '&movie_id=' + MOVIE_ID)
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
                                 if (!data.success || !data.job) return;
@@ -426,7 +484,11 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                     document.getElementById('vod-transcode-pct').textContent = '100%';
                                     document.getElementById('vod-transcode-label').textContent = 'Transcode complete!';
                                     document.getElementById('vod-transcode-step').textContent = '';
-                                    showMsg('Transcode complete! The stream URL has been set. Save the movie to apply.', 'success');
+                                    // Update stream_url field if returned
+                                    if (j.stream_url) {
+                                        document.getElementById('stream_url').value = j.stream_url;
+                                    }
+                                    showMsg('Transcode complete! Stream URL has been saved automatically.', 'success');
                                     resetButtons();
                                 } else if (j.status === 'failed') {
                                     clearInterval(vodJobPollTimer);
@@ -445,6 +507,12 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             })
                             .catch(function() { /* silent poll failure */ });
                     }, 3000);
+                }
+
+                // Auto-resume polling if there's an active job from DB
+                if (SAVED_JOB_ID > 0 && SAVED_SERVER_ID > 0 &&
+                    ['pending', 'processing', 'packaging', 'downloading'].indexOf(SAVED_STATUS) !== -1) {
+                    startTranscodePoll(SAVED_SERVER_ID, SAVED_JOB_ID);
                 }
             })();
             </script>

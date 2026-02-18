@@ -6,6 +6,7 @@
 
 namespace CariIPTV\Controllers\Admin;
 
+use CariIPTV\Core\Database;
 use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\VodServerService;
@@ -13,10 +14,12 @@ use CariIPTV\Services\VodServerService;
 class VodServerController
 {
     private VodServerService $vodService;
+    private Database $db;
 
     public function __construct()
     {
         $this->vodService = new VodServerService();
+        $this->db = Database::getInstance();
     }
 
     /**
@@ -263,7 +266,7 @@ class VodServerController
     /**
      * POST /admin/vod-server/upload-source
      * Receives file from browser, streams it to the selected VOD server,
-     * then auto-submits a transcode job. Returns job status for polling.
+     * then auto-submits a transcode job. Saves job reference on movie record.
      */
     public function uploadSource(): void
     {
@@ -274,6 +277,7 @@ class VodServerController
 
         $serverId  = (int)($_POST['server_id'] ?? 0);
         $contentId = trim($_POST['content_id'] ?? '');
+        $movieId   = (int)($_POST['movie_id'] ?? 0);
         $title     = trim($_POST['title'] ?? '');
         $profile   = trim($_POST['profile'] ?? 'standard');
         $overwrite = ($_POST['overwrite'] ?? '') === '1';
@@ -331,18 +335,32 @@ class VodServerController
                 'source_type' => 'file',
             ]);
 
-            // Build the expected stream URL
-            $server = $this->vodService->getServer($serverId);
-            $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+            $job = $jobResult['job'] ?? $jobResult;
+            $jobId = (int)($job['id'] ?? 0);
+
+            // Save job reference on the movie record
+            if ($movieId > 0 && $jobId > 0) {
+                $this->db->execute(
+                    "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
+                    [$serverId, $jobId, $movieId]
+                );
+            }
 
             $this->sendJson([
                 'success'    => true,
                 'message'    => 'File uploaded and transcode job submitted',
                 'upload_path' => $uploadResult['path'],
-                'job'        => $jobResult['job'] ?? $jobResult,
-                'stream_url' => $hlsUrl,
+                'job'        => $job,
+                'server_id'  => $serverId,
             ]);
         } catch (\Exception $e) {
+            // Save error on movie if possible
+            if ($movieId > 0) {
+                $this->db->execute(
+                    "UPDATE movies SET vod_server_id = ?, vod_status = 'failed', vod_error = ? WHERE id = ?",
+                    [$serverId, $e->getMessage(), $movieId]
+                );
+            }
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
@@ -370,20 +388,58 @@ class VodServerController
     }
 
     /**
-     * GET /admin/vod-server/job-status?server_id=X&job_id=Y
-     * Poll a specific job's status for the progress tracker
+     * GET /admin/vod-server/job-status?server_id=X&job_id=Y&movie_id=Z
+     * Poll a specific job's status. Updates the movie record with progress.
+     * When complete, writes the stream_url on the movie.
      */
     public function jobStatus(): void
     {
         try {
             $sid = (int)($_GET['server_id'] ?? 0);
             $jobId = (int)($_GET['job_id'] ?? 0);
+            $movieId = (int)($_GET['movie_id'] ?? 0);
             if ($sid <= 0 || $jobId <= 0) {
                 $this->sendJson(['success' => false, 'error' => 'Server ID and Job ID required']);
                 return;
             }
             $detail = $this->vodService->getJob($sid, $jobId);
             $job = $detail['job'] ?? $detail;
+            $status = $job['status'] ?? '';
+            $progress = (float)($job['progress'] ?? 0);
+            $errorMsg = $job['error_msg'] ?? null;
+
+            // Persist status to movie record
+            if ($movieId > 0) {
+                if ($status === 'complete') {
+                    // Transcode done — write the stream URL
+                    $server = $this->vodService->getServer($sid);
+                    $contentId = $job['content_id'] ?? ('movie-' . $movieId);
+                    $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+
+                    $this->db->execute(
+                        "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ? WHERE id = ?",
+                        [$hlsUrl, $movieId]
+                    );
+                    $job['stream_url'] = $hlsUrl;
+                } elseif ($status === 'failed') {
+                    $this->db->execute(
+                        "UPDATE movies SET vod_status = 'failed', vod_progress = ?, vod_error = ? WHERE id = ?",
+                        [$progress, $errorMsg, $movieId]
+                    );
+                } elseif ($status === 'cancelled') {
+                    $this->db->execute(
+                        "UPDATE movies SET vod_status = 'cancelled', vod_job_id = NULL, vod_error = 'Cancelled' WHERE id = ?",
+                        [$movieId]
+                    );
+                } else {
+                    // In progress — update progress
+                    $this->db->execute(
+                        "UPDATE movies SET vod_status = ?, vod_progress = ? WHERE id = ?",
+                        [$status, $progress, $movieId]
+                    );
+                }
+            }
+
             $this->sendJson(['success' => true, 'job' => $job]);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
