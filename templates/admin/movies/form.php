@@ -150,13 +150,23 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
             <div class="card mb-3">
                 <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
                     <h3 class="card-title"><i class="lucide-hard-drive"></i> VOD Transcode</h3>
-                    <?php if ($vodStatus === 'complete'): ?>
-                        <span class="badge badge-success"><i class="lucide-check-circle"></i> Ready</span>
-                    <?php elseif ($vodActive): ?>
-                        <span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>
-                    <?php elseif ($vodStatus === 'failed'): ?>
-                        <span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>
-                    <?php endif; ?>
+                    <div style="display:flex;align-items:center;gap:0.5rem">
+                        <?php if ($vodStatus === 'complete'): ?>
+                            <span class="badge badge-success"><i class="lucide-check-circle"></i> Ready</span>
+                        <?php elseif ($vodActive): ?>
+                            <span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>
+                        <?php elseif ($vodStatus === 'failed'): ?>
+                            <span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>
+                        <?php endif; ?>
+                        <?php if ($vodStatus): ?>
+                            <button type="button" class="btn btn-sm" id="vod-delete-btn"
+                                    onclick="vodDeleteFromServer()"
+                                    title="Delete transcoded content from VOD server and clear status"
+                                    style="background:transparent;color:var(--danger);border:1px solid var(--danger);font-size:0.75rem">
+                                <i class="lucide-trash-2"></i> Remove VOD
+                            </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 <div class="card-body">
 
@@ -400,8 +410,8 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
                             var job = data.job || {};
                             var sid = data.server_id || serverId;
-                            // Accept id or job_id from the VOD server response
-                            var jid = job.id || job.job_id || 0;
+                            // Accept id from job object or top-level job_id
+                            var jid = data.job_id || job.id || job.job_id || 0;
                             if (jid) {
                                 startTranscodePoll(sid, jid);
                             } else {
@@ -528,6 +538,60 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     pollOnce();
                     vodJobPollTimer = setInterval(pollOnce, 3000);
                 }
+
+                window.vodDeleteFromServer = function() {
+                    var serverId = SAVED_SERVER_ID || (document.getElementById('vod-transcode-server') ? document.getElementById('vod-transcode-server').value : 0);
+                    var contentId = 'movie-' + MOVIE_ID;
+                    var jobId = SAVED_JOB_ID || 0;
+
+                    if (!confirm('Delete this movie\'s transcoded content from the VOD server?\n\nThis will:\n- Remove the transcoded files from the VOD server\n- Clear the stream URL\n- Cancel any active transcode job\n\nThe movie record in the IPTV system will be kept.')) {
+                        return;
+                    }
+
+                    var btn = document.getElementById('vod-delete-btn');
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.innerHTML = '<i class="lucide-loader"></i> Removing...';
+                    }
+
+                    // Stop any active polling
+                    if (vodJobPollTimer) {
+                        clearInterval(vodJobPollTimer);
+                        vodJobPollTimer = null;
+                    }
+
+                    var formData = new FormData();
+                    formData.append('csrf_token', CSRF);
+                    formData.append('server_id', serverId);
+                    formData.append('content_id', contentId);
+                    formData.append('movie_id', MOVIE_ID);
+                    formData.append('job_id', jobId);
+
+                    fetch('/admin/vod-server/movie-vod-delete', { method: 'POST', body: formData })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.success) {
+                                if (typeof showToast === 'function') {
+                                    showToast(data.message || 'VOD content removed', 'success');
+                                }
+                                // Reload the page to show clean state (no VOD status)
+                                setTimeout(function() { location.reload(); }, 800);
+                            } else {
+                                alert('Failed: ' + (data.error || 'Unknown error'));
+                                if (btn) {
+                                    btn.disabled = false;
+                                    btn.innerHTML = '<i class="lucide-trash-2"></i> Remove VOD';
+                                }
+                            }
+                        })
+                        .catch(function(err) {
+                            alert('Network error: ' + err);
+                            if (btn) {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="lucide-trash-2"></i> Remove VOD';
+                            }
+                        });
+                };
 
                 // Auto-resume polling if there's an active job from DB
                 if (SAVED_JOB_ID > 0 && SAVED_SERVER_ID > 0 &&

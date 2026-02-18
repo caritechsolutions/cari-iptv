@@ -483,6 +483,70 @@ class VodServerController
         }
     }
 
+    /**
+     * POST /admin/vod-server/movie-vod-delete
+     * Delete VOD content from the server AND clear all VOD fields on the movie record.
+     * Expects: server_id, content_id, movie_id, csrf_token
+     */
+    public function movieVodDelete(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $serverId  = (int)($_POST['server_id'] ?? 0);
+        $contentId = trim($_POST['content_id'] ?? '');
+        $movieId   = (int)($_POST['movie_id'] ?? 0);
+
+        if ($movieId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'Movie ID required']);
+            return;
+        }
+
+        $vodDeleted = false;
+
+        // 1. Try to delete from VOD server (non-fatal — content may already be gone)
+        if ($serverId > 0 && !empty($contentId)) {
+            try {
+                $this->vodService->deleteContentItem($serverId, $contentId);
+                $vodDeleted = true;
+            } catch (\Exception $e) {
+                // Content may not exist on the server — that's fine
+                error_log('[VOD Delete] Server delete failed (may not exist): ' . $e->getMessage());
+            }
+        }
+
+        // 2. Also cancel any active job for this content
+        $vodJobId = (int)($_POST['job_id'] ?? 0);
+        if ($serverId > 0 && $vodJobId > 0) {
+            try {
+                $this->vodService->cancelJob($serverId, $vodJobId);
+            } catch (\Exception $e) {
+                // Job may already be finished or not exist
+                error_log('[VOD Delete] Job cancel failed (may not exist): ' . $e->getMessage());
+            }
+        }
+
+        // 3. Clear all VOD fields on the movie record
+        try {
+            $this->db->execute(
+                "UPDATE movies SET vod_server_id = NULL, vod_job_id = NULL, vod_status = NULL, vod_progress = 0, vod_error = NULL, stream_url = NULL WHERE id = ?",
+                [$movieId]
+            );
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => 'Failed to update movie record: ' . $e->getMessage()]);
+            return;
+        }
+
+        $this->sendJson([
+            'success' => true,
+            'message' => $vodDeleted
+                ? 'Content deleted from VOD server and movie record cleared'
+                : 'Movie VOD data cleared' . ($serverId > 0 ? ' (content may already be removed from server)' : ''),
+        ]);
+    }
+
     public function browseFiles(): void
     {
         try {

@@ -364,6 +364,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/vod-server/upload-source', [VodServerController::class, 'uploadSource']);
     $router->get('/vod-server/check-content', [VodServerController::class, 'checkContent']);
     $router->get('/vod-server/job-status', [VodServerController::class, 'jobStatus']);
+    $router->post('/vod-server/movie-vod-delete', [VodServerController::class, 'movieVodDelete']);
     $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
     $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
 });
