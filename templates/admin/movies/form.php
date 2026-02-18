@@ -175,17 +175,14 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                         <label class="form-label">Source File</label>
                         <div style="display:flex;gap:0.5rem">
                             <input type="text" class="form-input" id="vod-source-path"
-                                   placeholder="/path/to/movie.mp4 or https://url/movie.mp4" style="flex:1">
+                                   placeholder="Browse for a file or enter a URL" style="flex:1">
                             <input type="file" id="vod-file-input" accept="video/*,.mkv,.avi,.ts,.m2ts" style="display:none"
                                    onchange="vodHandleFileSelect(this)">
-                            <button type="button" class="btn btn-primary" onclick="document.getElementById('vod-file-input').click()" title="Upload from your computer">
-                                <i class="lucide-upload"></i> Upload
-                            </button>
-                            <button type="button" class="btn btn-secondary" onclick="vodBrowseSource()" title="Browse files on VOD server">
-                                <i class="lucide-folder-open"></i> Server
+                            <button type="button" class="btn btn-primary" onclick="document.getElementById('vod-file-input').click()" title="Browse your computer for a video file">
+                                <i class="lucide-folder-open"></i> Browse
                             </button>
                         </div>
-                        <small style="color:var(--text-muted)">Upload from your computer, browse the VOD server, or enter a URL</small>
+                        <small style="color:var(--text-muted)">Browse your computer for a video file, or paste a URL</small>
                     </div>
 
                     <!-- Upload progress -->
@@ -210,101 +207,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 </div>
             </div>
 
-            <!-- VOD Browse Modal -->
-            <div id="vod-browse-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;display:none;align-items:center;justify-content:center">
-                <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;max-width:600px;width:90%;max-height:80vh;overflow:hidden">
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border-color)">
-                        <h3 style="margin:0;font-size:1.1rem">Browse Files on VOD Server</h3>
-                        <button class="btn btn-sm" onclick="document.getElementById('vod-browse-modal').style.display='none'">&times;</button>
-                    </div>
-                    <div style="padding:1rem 1.25rem">
-                        <div id="vod-browse-path" style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-muted);padding:0.5rem 0.75rem;background:var(--bg-dark);border-radius:6px;margin-bottom:0.75rem">/</div>
-                        <div id="vod-browse-list" style="max-height:400px;overflow-y:auto">
-                            <div style="text-align:center;padding:2rem;color:var(--text-muted)">Loading...</div>
-                        </div>
-                    </div>
-                    <div style="padding:1rem 1.25rem;border-top:1px solid var(--border-color);display:flex;justify-content:space-between">
-                        <button class="btn btn-secondary" onclick="document.getElementById('vod-browse-modal').style.display='none'">Cancel</button>
-                        <button class="btn btn-primary" id="vod-browse-select" onclick="vodSelectFile()" disabled>Select File</button>
-                    </div>
-                </div>
-            </div>
-
             <script>
-            var vodSelectedFile = null;
-
-            function vodBrowseSource() {
-                vodSelectedFile = null;
-                document.getElementById('vod-browse-select').disabled = true;
-                document.getElementById('vod-browse-modal').style.display = 'flex';
-                vodLoadDir('/');
-            }
-
-            function vodLoadDir(path) {
-                var serverId = document.getElementById('vod-transcode-server').value;
-                var list = document.getElementById('vod-browse-list');
-                list.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted)">Loading...</div>';
-
-                // Update breadcrumb
-                var parts = path.split('/').filter(Boolean);
-                var bc = '<span style="cursor:pointer;color:var(--primary)" onclick="vodLoadDir(\'/\')">/</span>';
-                var acc = '';
-                parts.forEach(function(p) {
-                    acc += '/' + p;
-                    bc += ' <span style="cursor:pointer;color:var(--primary)" onclick="vodLoadDir(\'' + acc + '\')">' + p + '</span> /';
-                });
-                document.getElementById('vod-browse-path').innerHTML = bc;
-
-                fetch('/admin/vod-server/browse?server_id=' + serverId + '&path=' + encodeURIComponent(path))
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        if (!data.success) { list.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--danger)">' + (data.error || 'Error') + '</div>'; return; }
-                        var entries = data.data?.entries || data.data?.items || [];
-                        if (entries.length === 0) { list.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted)">Empty directory</div>'; return; }
-
-                        var dirs = entries.filter(function(e) { return e.type === 'directory'; }).sort(function(a,b) { return a.name.localeCompare(b.name); });
-                        var files = entries.filter(function(e) { return e.type !== 'directory'; }).sort(function(a,b) { return a.name.localeCompare(b.name); });
-                        var html = '';
-                        var videoExts = ['.mp4','.mkv','.avi','.mov','.wmv','.flv','.webm','.ts','.m2ts','.mpg','.mpeg','.m4v'];
-
-                        if (path !== '/') {
-                            var parent = path.replace(/\/[^/]+\/?$/, '') || '/';
-                            html += '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.75rem;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'var(--bg-hover)\'" onmouseout="this.style.background=\'transparent\'" onclick="vodLoadDir(\'' + parent + '\')"><i class="lucide-arrow-up" style="color:var(--text-muted)"></i><span>..</span></div>';
-                        }
-
-                        dirs.forEach(function(d) {
-                            var fp = (path === '/' ? '' : path) + '/' + d.name;
-                            html += '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.75rem;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'var(--bg-hover)\'" onmouseout="this.style.background=\'transparent\'" ondblclick="vodLoadDir(\'' + fp + '\')"><i class="lucide-folder" style="color:var(--text-muted)"></i><span style="flex:1">' + d.name + '</span></div>';
-                        });
-
-                        files.forEach(function(f) {
-                            var ext = '.' + (f.name.split('.').pop() || '').toLowerCase();
-                            var isVideo = videoExts.indexOf(ext) !== -1;
-                            var fp = (path === '/' ? '' : path) + '/' + f.name;
-                            html += '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.75rem;cursor:pointer;border-radius:6px;border:1px solid transparent" onclick="vodPickFile(this, \'' + fp.replace(/'/g, "\\'") + '\')" onmouseover="this.style.background=\'var(--bg-hover)\'" onmouseout="if(!this.classList.contains(\'sel\'))this.style.background=\'transparent\'"><i class="lucide-' + (isVideo ? 'film' : 'file') + '" style="color:var(--text-muted)"></i><span style="flex:1;font-size:0.9rem">' + f.name + '</span><span style="font-size:0.75rem;color:var(--text-muted)">' + (f.size_human || '') + '</span></div>';
-                        });
-
-                        list.innerHTML = html;
-                    })
-                    .catch(function(err) { list.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--danger)">' + err.message + '</div>'; });
-            }
-
-            function vodPickFile(el, path) {
-                document.querySelectorAll('#vod-browse-list > div.sel').forEach(function(d) { d.classList.remove('sel'); d.style.borderColor = 'transparent'; d.style.background = 'transparent'; });
-                el.classList.add('sel');
-                el.style.borderColor = 'var(--primary)';
-                el.style.background = 'rgba(99,102,241,0.08)';
-                vodSelectedFile = path;
-                document.getElementById('vod-browse-select').disabled = false;
-            }
-
-            function vodSelectFile() {
-                if (vodSelectedFile) {
-                    document.getElementById('vod-source-path').value = vodSelectedFile;
-                }
-                document.getElementById('vod-browse-modal').style.display = 'none';
-            }
-
             function vodFormatSize(bytes) {
                 if (!bytes) return '0 B';
                 var k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
