@@ -406,25 +406,35 @@ Currently manual testing only:
 
 ### Install & Update Scripts
 
-The platform uses bash scripts for installation and updates. **IMPORTANT: After making changes, update the branch name in these scripts before pushing.**
+The platform has **two independent sets** of install/update scripts:
 
-**Files to update:**
-- `install.sh` - Line ~1140: `BRANCH="your-branch-name"`
-- `update.sh` - Line ~19: `BRANCH="your-branch-name"`
+1. **IPTV Backend** (`install.sh` / `update.sh` in repo root) — PHP application, MySQL, Nginx
+2. **VOD Server** (`vod-server/scripts/install.sh` / `vod-server/scripts/update.sh`) — C daemon, FFmpeg, SQLite
 
-**Running updates on test/production:**
+**IMPORTANT: After making changes, update the branch name in ALL scripts before pushing.**
+
+**Files to update (branch names):**
+- `install.sh` - Line ~1357: `BRANCH="your-branch-name"` (IPTV backend)
+- `update.sh` - Line ~19: `BRANCH="your-branch-name"` (IPTV backend)
+- `vod-server/scripts/install.sh` - Line ~215: `BRANCH="${BRANCH:-your-branch-name}"` (VOD server)
+- `vod-server/scripts/update.sh` - Line ~10: `BRANCH="your-branch-name"` (VOD server)
+
+---
+
+#### IPTV Backend Install & Update
+
 ```bash
-# Update command (use the current branch name)
+# Fresh install (PHP app + MySQL + Nginx)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/install.sh?$(date +%s)" | sudo bash
+
+# Update existing installation
 curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/update.sh?$(date +%s)" | sudo bash
 
 # Example with specific branch:
-curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/add-movies-menu-OxBkb/update.sh?$(date +%s)" | sudo bash
-
-# Fresh install command:
-curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/install.sh?$(date +%s)" | sudo bash
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/vod-server-setup-458YL/update.sh?$(date +%s)" | sudo bash
 ```
 
-**What the update script does:**
+**What the IPTV update script does:**
 1. Creates backup (if --backup flag used)
 2. Enables maintenance mode
 3. Downloads latest code from the specified branch
@@ -435,11 +445,79 @@ curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_
 8. Clears cache and restarts PHP-FPM/Nginx
 9. Disables maintenance mode
 
-**Important notes:**
+---
+
+#### VOD Server Install & Update
+
+The VOD server is a standalone C daemon. It has its own install/update scripts that handle compilation from source.
+
+```bash
+# Fresh install (builds FFmpeg 8, compiles VOD server, creates systemd service)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/install.sh?$(date +%s)" | sudo bash
+
+# Update existing installation (rebuilds binary, updates Web GUI, auto-rollback on failure)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+
+# Example with specific branch:
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/vod-server-setup-458YL/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+```
+
+**What the VOD server install script does:**
+1. Detects OS (Ubuntu/Debian vs RHEL/CentOS)
+2. Installs build dependencies (cmake, libmicrohttpd-dev, libsqlite3-dev, etc.)
+3. Builds FFmpeg 8.0.1 from source (if not already >= v8)
+4. Installs GPAC/MP4Box for CMAF packaging
+5. Clones repo and builds VOD server with CMake
+6. Installs binary to `/usr/local/bin/vod-server`
+7. Installs Web GUI to `/usr/local/share/vod-server/www/`
+8. Copies default config to `/etc/vod-server/vod-server.conf` (won't overwrite existing)
+9. Creates `vod-server` system user and directories
+10. Generates random API key (replaces default `change-me-on-first-run`)
+11. Installs and starts systemd service
+
+**What the VOD server update script does:**
+1. Checks current version via `vod-server --version`
+2. Downloads latest source from branch (with retry + exponential backoff)
+3. Pauses active transcode jobs (SIGUSR1) and stops service
+4. Backs up current binary to `vod-server.bak`
+5. Rebuilds from source (cmake + make)
+6. Installs new binary, Web GUI, and systemd service
+7. Starts service and verifies health via `/api/status`
+8. **Auto-rollback** if the new binary fails to start
+9. Shows version comparison (previous → current)
+
+**VOD server installation paths:**
+| Path | Purpose |
+|------|---------|
+| `/usr/local/bin/vod-server` | Binary |
+| `/etc/vod-server/vod-server.conf` | Configuration |
+| `/etc/vod-server/ssl/` | SSL certificates |
+| `/var/lib/vod-server/library/` | Transcoded content |
+| `/var/lib/vod-server/tmp/` | Scratch/temp files |
+| `/var/lib/vod-server/vod-server.db` | SQLite database |
+| `/var/log/vod-server/vod-server.log` | Log file |
+| `/usr/local/share/vod-server/www/` | Web GUI |
+| `/etc/systemd/system/vod-server.service` | Systemd unit |
+
+**VOD server management commands:**
+```bash
+systemctl status vod-server      # Check status
+systemctl restart vod-server     # Restart
+systemctl stop vod-server        # Stop
+journalctl -u vod-server -f      # Follow logs
+vod-server --version             # Check version
+curl http://localhost:8090/api/status  # Health check (requires API key header)
+```
+
+---
+
+**Important notes (both scripts):**
 - The `$(date +%s)` cache-buster ensures you get the latest script
-- Migrations are idempotent - they track which have been run
-- The script requires root/sudo access
+- Both scripts require root/sudo access
+- IPTV migrations are idempotent (tracked in `_migrations` table)
+- VOD server runs SQLite migrations automatically on startup
 - Always test on development/staging first
+- The VOD server and IPTV backend are **independent** — you can update one without the other
 
 ## Important Guidelines for AI Assistants
 
@@ -1142,15 +1220,28 @@ The `movies` table tracks per-movie VOD state:
 
 ### Building the VOD Server
 
+**Recommended: Use the install/update scripts** (see [Install & Update Scripts](#install--update-scripts) above):
+```bash
+# Fresh install (handles ALL dependencies, FFmpeg, config, systemd)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/install.sh?$(date +%s)" | sudo bash
+
+# Update existing installation (rebuild + auto-rollback)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+```
+
+**Manual build (if you prefer):**
 ```bash
 cd vod-server
 mkdir -p build && cd build
-cmake ..
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 sudo make install
+sudo systemctl restart vod-server
 ```
 
-**Dependencies:** libmicrohttpd-dev, libsqlite3-dev, libgnutls28-dev, FFmpeg, MP4Box (GPAC)
+**Build dependencies:** cmake 3.10+, libmicrohttpd-dev, libsqlite3-dev, libgnutls28-dev
+
+**Runtime dependencies:** FFmpeg 8+ (libx264, libx265, libsvtav1), MP4Box/GPAC (optional, FFmpeg fallback)
 
 ## Project Status
 
