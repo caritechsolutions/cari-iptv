@@ -335,14 +335,32 @@ class VodServerController
                 'source_type' => 'file',
             ]);
 
+            // The VOD server may return the job inline or just {"success":true}.
+            // Try to extract the job ID from the response first.
             $job = $jobResult['job'] ?? $jobResult;
             $jobId = (int)($job['id'] ?? 0);
 
-            // Debug: log the full flow
-            error_log('[VOD Upload] movieId=' . $movieId . ' serverId=' . $serverId . ' jobId=' . $jobId);
-            error_log('[VOD Upload] jobResult keys: ' . implode(', ', array_keys($jobResult)));
-            error_log('[VOD Upload] job keys: ' . implode(', ', array_keys($job)));
-            error_log('[VOD Upload] job content: ' . json_encode($job));
+            // If the submit response didn't include the job ID, query the jobs
+            // list and find the one matching our content_id (most recent first).
+            if ($jobId <= 0) {
+                try {
+                    $jobsList = $this->vodService->getJobs($serverId, ['limit' => 20]);
+                    $items = $jobsList['items'] ?? $jobsList;
+                    if (is_array($items)) {
+                        foreach ($items as $item) {
+                            if (($item['content_id'] ?? '') === $contentId) {
+                                $job = $item;
+                                $jobId = (int)($item['id'] ?? 0);
+                                break;
+                            }
+                        }
+                    }
+                } catch (\Exception $lookupErr) {
+                    error_log('[VOD Upload] Job lookup failed: ' . $lookupErr->getMessage());
+                }
+            }
+
+            error_log('[VOD Upload] movieId=' . $movieId . ' serverId=' . $serverId . ' jobId=' . $jobId . ' contentId=' . $contentId);
 
             // Save job reference on the movie record (fail gracefully if columns don't exist yet)
             if ($movieId > 0 && $jobId > 0) {
@@ -351,12 +369,12 @@ class VodServerController
                         "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
                         [$serverId, $jobId, $movieId]
                     );
-                    error_log('[VOD Upload] DB save SUCCESS for movie ' . $movieId);
+                    error_log('[VOD Upload] DB save SUCCESS for movie ' . $movieId . ' jobId=' . $jobId);
                 } catch (\Exception $dbErr) {
                     error_log('[VOD Upload] DB save FAILED: ' . $dbErr->getMessage());
                 }
             } else {
-                error_log('[VOD Upload] SKIPPED DB save — movieId=' . $movieId . ' jobId=' . $jobId . ' (condition not met)');
+                error_log('[VOD Upload] SKIPPED DB save — movieId=' . $movieId . ' jobId=' . $jobId);
             }
 
             $this->sendJson([
@@ -364,6 +382,7 @@ class VodServerController
                 'message'    => 'File uploaded and transcode job submitted',
                 'upload_path' => $uploadResult['path'],
                 'job'        => $job,
+                'job_id'     => $jobId,
                 'server_id'  => $serverId,
                 'movie_id'   => $movieId,
             ]);
