@@ -709,7 +709,7 @@ static void pick_up_new_jobs(void)
         storage_ensure_dir(temp_dir);
 
         /* If source is an HTTP URL, download it to temp directory first */
-        char local_source[MAX_PATH_LEN];
+        char local_source[MAX_PATH_LEN + 256];
         const char *actual_source = source;
 
         if ((source_type && strcmp(source_type, "http") == 0) || is_http_url(source)) {

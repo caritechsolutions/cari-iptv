@@ -30,6 +30,8 @@
 
 #include "ssl.h"
 
+#include <errno.h>
+
 /* ---------- module state ---------- */
 
 static const vod_config_t *s_config = NULL;

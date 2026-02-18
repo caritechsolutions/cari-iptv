@@ -16,7 +16,7 @@
  */
 static int ensure_dir(const char *path)
 {
-    char tmp[MAX_PATH_LEN];
+    char tmp[MAX_PATH_LEN + 256];
     char *p = NULL;
     size_t len;
 

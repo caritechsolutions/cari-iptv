@@ -83,7 +83,7 @@ static void cleanup_migration_temp(int migration_id)
     char dir[MAX_PATH_LEN + 64];
     migration_temp_dir(migration_id, dir, sizeof(dir));
 
-    char cmd[MAX_PATH_LEN + 32];
+    char cmd[MAX_PATH_LEN + 128];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
     /* Best-effort cleanup; ignore errors */
     FILE *fp = popen(cmd, "r");

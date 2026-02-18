@@ -2,6 +2,7 @@
 #define VOD_HTTP_SERVER_H
 
 #include "config.h"
+#include <stdio.h>
 #include <stdbool.h>
 #include <microhttpd.h>
 
