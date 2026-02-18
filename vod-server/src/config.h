@@ -107,4 +107,29 @@ const transcode_profile_t *config_get_profile(const vod_config_t *config, const 
  */
 void config_dump(const vod_config_t *config);
 
+/**
+ * Add or update a profile in the config (in-memory).
+ * Returns 0 on success, -1 if MAX_PROFILES reached and name is new.
+ */
+int config_set_profile(vod_config_t *config, const transcode_profile_t *profile);
+
+/**
+ * Delete a profile by name from the config (in-memory).
+ * Returns 0 on success, -1 if not found.
+ */
+int config_delete_profile(vod_config_t *config, const char *name);
+
+/**
+ * Load profiles from SQLite settings table (key='profiles').
+ * Merges with/overrides existing profiles from the INI file.
+ * Call after db_init().  Returns number of profiles loaded, or -1 on error.
+ */
+int config_load_db_profiles(vod_config_t *config);
+
+/**
+ * Save all current profiles to SQLite settings table (key='profiles').
+ * Returns 0 on success, -1 on error.
+ */
+int config_save_db_profiles(const vod_config_t *config);
+
 #endif /* VOD_CONFIG_H */

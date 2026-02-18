@@ -252,11 +252,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             <div class="form-group">
                                 <label class="form-label">Transcode Profile</label>
                                 <select class="form-input" id="vod-transcode-profile">
-                                    <option value="standard">Standard (H.264 ABR)</option>
-                                    <option value="high">High (HEVC)</option>
-                                    <option value="low">Low Bandwidth</option>
-                                    <option value="hevc_4k">HEVC 4K</option>
-                                    <option value="av1">AV1 (Web/Mobile)</option>
+                                    <option value="standard">Loading profiles...</option>
                                 </select>
                             </div>
                         </div>
@@ -304,6 +300,32 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 var SAVED_SERVER_ID = <?= (int)($vodServerId ?? 0) ?>;
                 var SAVED_JOB_ID = <?= (int)($vodJobId ?? 0) ?>;
                 var SAVED_STATUS = <?= json_encode($vodStatus ?? '') ?>;
+
+                // Load profiles from VOD server dynamically
+                function loadVodProfiles(serverId) {
+                    if (!serverId) return;
+                    fetch('/admin/vod-server/profiles?server_id=' + serverId)
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            var select = document.getElementById('vod-transcode-profile');
+                            if (!select) return;
+                            var profiles = (data.success && data.data && data.data.profiles) ? data.data.profiles : [];
+                            if (profiles.length === 0) {
+                                select.innerHTML = '<option value="standard">standard</option>';
+                                return;
+                            }
+                            select.innerHTML = profiles.map(function(p) {
+                                return '<option value="' + p.name + '">' + p.name + ' (' + (p.codec || '?') + ')</option>';
+                            }).join('');
+                        })
+                        .catch(function() {});
+                }
+                // Load profiles for the initially selected server
+                var initServer = document.getElementById('vod-transcode-server');
+                if (initServer) {
+                    loadVodProfiles(initServer.value);
+                    initServer.addEventListener('change', function() { loadVodProfiles(this.value); });
+                }
 
                 function fmt(bytes) {
                     if (!bytes) return '0 B';

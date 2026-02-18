@@ -232,6 +232,11 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
+    /* Load profiles saved via API (overrides INI profiles if present) */
+    if (config_load_db_profiles(&g_config) > 0) {
+        log_info("Profiles loaded from database (overrides config file)");
+    }
+
     /* Initialize SSL if enabled */
     if (g_config.ssl_enabled) {
         if (ssl_init(&g_config) != 0) {

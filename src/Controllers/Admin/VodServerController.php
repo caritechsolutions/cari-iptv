@@ -571,6 +571,131 @@ class VodServerController
         $this->sendJson($this->vodService->testConnection($url, $apiKey));
     }
 
+    /* ==============================================================
+     * Profile CRUD (AJAX — proxied to VOD server)
+     * ============================================================== */
+
+    public function getProfiles(): void
+    {
+        try {
+            $sid = $this->getServerId();
+            if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'No server selected']); return; }
+            $result = $this->vodService->getProfiles($sid);
+            $this->sendJson(['success' => true, 'data' => $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function createProfile(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $sid = (int)($_POST['server_id'] ?? 0);
+        if ($sid <= 0) { $this->sendJson(['success' => false, 'error' => 'Server ID required']); return; }
+
+        $name = trim($_POST['name'] ?? '');
+        if (empty($name)) { $this->sendJson(['success' => false, 'error' => 'Profile name is required']); return; }
+
+        // Build renditions array from posted data
+        $renditions = [];
+        $labels = $_POST['rendition_label'] ?? [];
+        $bitrates = $_POST['rendition_bitrate'] ?? [];
+        for ($i = 0; $i < count($labels); $i++) {
+            $label = trim($labels[$i] ?? '');
+            $bitrate = (int)($bitrates[$i] ?? 0);
+            if (!empty($label) && $bitrate > 0) {
+                $renditions[] = ['label' => $label, 'bitrate_kbps' => $bitrate];
+            }
+        }
+
+        $data = [
+            'name'          => $name,
+            'codec'         => trim($_POST['codec'] ?? 'libx264'),
+            'preset'        => trim($_POST['preset'] ?? 'medium'),
+            'crf'           => (int)($_POST['crf'] ?? 23),
+            'audio_codec'   => trim($_POST['audio_codec'] ?? 'aac'),
+            'audio_bitrate' => trim($_POST['audio_bitrate'] ?? '128k'),
+            'renditions'    => $renditions,
+        ];
+
+        try {
+            $result = $this->vodService->createProfile($sid, $data);
+            $this->sendJson(['success' => true, 'message' => 'Profile created', 'data' => $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function updateProfile(int $id): void
+    {
+        // $id is unused — name comes from POST. URL param is for routing only.
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $sid = (int)($_POST['server_id'] ?? 0);
+        $name = trim($_POST['name'] ?? '');
+        if ($sid <= 0 || empty($name)) {
+            $this->sendJson(['success' => false, 'error' => 'Server ID and profile name required']);
+            return;
+        }
+
+        $renditions = [];
+        $labels = $_POST['rendition_label'] ?? [];
+        $bitrates = $_POST['rendition_bitrate'] ?? [];
+        for ($i = 0; $i < count($labels); $i++) {
+            $label = trim($labels[$i] ?? '');
+            $bitrate = (int)($bitrates[$i] ?? 0);
+            if (!empty($label) && $bitrate > 0) {
+                $renditions[] = ['label' => $label, 'bitrate_kbps' => $bitrate];
+            }
+        }
+
+        $data = [
+            'name'          => $name,
+            'codec'         => trim($_POST['codec'] ?? 'libx264'),
+            'preset'        => trim($_POST['preset'] ?? 'medium'),
+            'crf'           => (int)($_POST['crf'] ?? 23),
+            'audio_codec'   => trim($_POST['audio_codec'] ?? 'aac'),
+            'audio_bitrate' => trim($_POST['audio_bitrate'] ?? '128k'),
+            'renditions'    => $renditions,
+        ];
+
+        try {
+            $result = $this->vodService->updateProfile($sid, $name, $data);
+            $this->sendJson(['success' => true, 'message' => 'Profile updated', 'data' => $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function deleteProfile(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $sid = (int)($_POST['server_id'] ?? 0);
+        $name = trim($_POST['name'] ?? '');
+        if ($sid <= 0 || empty($name)) {
+            $this->sendJson(['success' => false, 'error' => 'Server ID and profile name required']);
+            return;
+        }
+
+        try {
+            $this->vodService->deleteProfile($sid, $name);
+            $this->sendJson(['success' => true, 'message' => 'Profile deleted']);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
     private function sendJson(array $data): void
     {
         header('Content-Type: application/json');

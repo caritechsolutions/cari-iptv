@@ -1,10 +1,13 @@
 #include "config.h"
+#include "database.h"
 #include "logger.h"
 #include "inih/ini.h"
+#include "cjson/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sqlite3.h>
 
 /* Resolution lookup table */
 static const struct {
@@ -285,4 +288,196 @@ void config_dump(const vod_config_t *config)
     }
     log_info("Cluster node: %s", config->node_name);
     log_info("=====================");
+}
+
+/* ================================================================
+ * Profile CRUD (in-memory)
+ * ================================================================ */
+
+int config_set_profile(vod_config_t *config, const transcode_profile_t *profile)
+{
+    if (!config || !profile || profile->name[0] == '\0') return -1;
+
+    /* Update existing */
+    for (int i = 0; i < config->profile_count; i++) {
+        if (strcmp(config->profiles[i].name, profile->name) == 0) {
+            memcpy(&config->profiles[i], profile, sizeof(transcode_profile_t));
+            return 0;
+        }
+    }
+
+    /* Add new */
+    if (config->profile_count >= MAX_PROFILES) {
+        log_warn("Cannot add profile '%s': max profiles (%d) reached", profile->name, MAX_PROFILES);
+        return -1;
+    }
+
+    memcpy(&config->profiles[config->profile_count], profile, sizeof(transcode_profile_t));
+    config->profile_count++;
+    return 0;
+}
+
+int config_delete_profile(vod_config_t *config, const char *name)
+{
+    if (!config || !name) return -1;
+
+    for (int i = 0; i < config->profile_count; i++) {
+        if (strcmp(config->profiles[i].name, name) == 0) {
+            /* Shift remaining profiles down */
+            for (int j = i; j < config->profile_count - 1; j++) {
+                memcpy(&config->profiles[j], &config->profiles[j + 1], sizeof(transcode_profile_t));
+            }
+            config->profile_count--;
+            memset(&config->profiles[config->profile_count], 0, sizeof(transcode_profile_t));
+            return 0;
+        }
+    }
+    return -1; /* Not found */
+}
+
+/* ================================================================
+ * Profile persistence (SQLite settings table)
+ * ================================================================ */
+
+int config_save_db_profiles(const vod_config_t *config)
+{
+    if (!config) return -1;
+
+    sqlite3 *db = db_handle();
+    if (!db) return -1;
+
+    /* Build JSON array of profiles */
+    cJSON *arr = cJSON_CreateArray();
+    for (int i = 0; i < config->profile_count; i++) {
+        const transcode_profile_t *p = &config->profiles[i];
+        cJSON *prof = cJSON_CreateObject();
+        cJSON_AddStringToObject(prof, "name", p->name);
+        cJSON_AddStringToObject(prof, "codec", p->codec);
+        cJSON_AddStringToObject(prof, "preset", p->preset);
+        cJSON_AddNumberToObject(prof, "crf", p->crf);
+        cJSON_AddStringToObject(prof, "audio_codec", p->audio_codec);
+        cJSON_AddStringToObject(prof, "audio_bitrate", p->audio_bitrate);
+
+        cJSON *renditions = cJSON_CreateArray();
+        for (int j = 0; j < p->rendition_count; j++) {
+            cJSON *r = cJSON_CreateObject();
+            cJSON_AddStringToObject(r, "label", p->renditions[j].label);
+            cJSON_AddNumberToObject(r, "width", p->renditions[j].width);
+            cJSON_AddNumberToObject(r, "height", p->renditions[j].height);
+            cJSON_AddNumberToObject(r, "bitrate_kbps", p->renditions[j].bitrate_kbps);
+            cJSON_AddItemToArray(renditions, r);
+        }
+        cJSON_AddItemToObject(prof, "renditions", renditions);
+        cJSON_AddItemToArray(arr, prof);
+    }
+
+    char *json_str = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    if (!json_str) return -1;
+
+    sqlite3_stmt *stmt;
+    const char *sql = "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                      "VALUES ('profiles', ?, CURRENT_TIMESTAMP)";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        free(json_str);
+        return -1;
+    }
+    sqlite3_bind_text(stmt, 1, json_str, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    free(json_str);
+
+    return (rc == SQLITE_DONE) ? 0 : -1;
+}
+
+int config_load_db_profiles(vod_config_t *config)
+{
+    if (!config) return -1;
+
+    sqlite3 *db = db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT value FROM settings WHERE key = 'profiles'";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+
+    int loaded = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *json_str = (const char *)sqlite3_column_text(stmt, 0);
+        if (json_str) {
+            cJSON *arr = cJSON_Parse(json_str);
+            if (cJSON_IsArray(arr)) {
+                /* Replace all profiles with DB version */
+                config->profile_count = 0;
+
+                cJSON *item;
+                cJSON_ArrayForEach(item, arr) {
+                    if (config->profile_count >= MAX_PROFILES) break;
+
+                    transcode_profile_t *p = &config->profiles[config->profile_count];
+                    memset(p, 0, sizeof(*p));
+
+                    cJSON *jname = cJSON_GetObjectItemCaseSensitive(item, "name");
+                    if (!cJSON_IsString(jname) || !jname->valuestring[0]) continue;
+
+                    snprintf(p->name, sizeof(p->name), "%s", jname->valuestring);
+
+                    cJSON *jcodec = cJSON_GetObjectItemCaseSensitive(item, "codec");
+                    if (cJSON_IsString(jcodec)) snprintf(p->codec, sizeof(p->codec), "%s", jcodec->valuestring);
+
+                    cJSON *jpreset = cJSON_GetObjectItemCaseSensitive(item, "preset");
+                    if (cJSON_IsString(jpreset)) snprintf(p->preset, sizeof(p->preset), "%s", jpreset->valuestring);
+
+                    cJSON *jcrf = cJSON_GetObjectItemCaseSensitive(item, "crf");
+                    if (cJSON_IsNumber(jcrf)) p->crf = jcrf->valueint;
+
+                    cJSON *jacodec = cJSON_GetObjectItemCaseSensitive(item, "audio_codec");
+                    if (cJSON_IsString(jacodec)) snprintf(p->audio_codec, sizeof(p->audio_codec), "%s", jacodec->valuestring);
+
+                    cJSON *jabitrate = cJSON_GetObjectItemCaseSensitive(item, "audio_bitrate");
+                    if (cJSON_IsString(jabitrate)) snprintf(p->audio_bitrate, sizeof(p->audio_bitrate), "%s", jabitrate->valuestring);
+
+                    cJSON *jrends = cJSON_GetObjectItemCaseSensitive(item, "renditions");
+                    if (cJSON_IsArray(jrends)) {
+                        p->rendition_count = 0;
+                        cJSON *ritem;
+                        cJSON_ArrayForEach(ritem, jrends) {
+                            if (p->rendition_count >= MAX_RENDITIONS) break;
+                            rendition_t *r = &p->renditions[p->rendition_count];
+
+                            cJSON *rl = cJSON_GetObjectItemCaseSensitive(ritem, "label");
+                            if (cJSON_IsString(rl)) snprintf(r->label, sizeof(r->label), "%s", rl->valuestring);
+
+                            cJSON *rw = cJSON_GetObjectItemCaseSensitive(ritem, "width");
+                            if (cJSON_IsNumber(rw)) r->width = rw->valueint;
+
+                            cJSON *rh = cJSON_GetObjectItemCaseSensitive(ritem, "height");
+                            if (cJSON_IsNumber(rh)) r->height = rh->valueint;
+
+                            cJSON *rb = cJSON_GetObjectItemCaseSensitive(ritem, "bitrate_kbps");
+                            if (cJSON_IsNumber(rb)) r->bitrate_kbps = rb->valueint;
+
+                            /* If width/height missing, try lookup from label */
+                            if (r->width == 0 && r->label[0]) {
+                                lookup_resolution(r->label, &r->width, &r->height);
+                            }
+
+                            p->rendition_count++;
+                        }
+                    }
+
+                    config->profile_count++;
+                    loaded++;
+                }
+            }
+            cJSON_Delete(arr);
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    log_info("Loaded %d profiles from database", loaded);
+    return loaded;
 }

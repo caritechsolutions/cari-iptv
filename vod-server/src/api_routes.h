@@ -55,6 +55,12 @@ int api_get_ssl_status(http_request_t *req);
 int api_post_ssl_letsencrypt(http_request_t *req);
 int api_post_ssl_self_signed(http_request_t *req);
 
+/* Profile routes */
+int api_get_profiles(http_request_t *req);
+int api_post_profile(http_request_t *req);
+int api_put_profile(http_request_t *req, const char *name);
+int api_delete_profile(http_request_t *req, const char *name);
+
 /**
  * Set the configuration pointer used by API routes.
  * Must be called before handling requests (typically at startup).

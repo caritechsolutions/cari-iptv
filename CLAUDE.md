@@ -39,6 +39,7 @@ Browser → PHP Templates → Controllers → Services → Database (MySQL)
 | Frontend | HTML5, CSS3, Vanilla JS |
 | Icons | Lucide Icons (CDN) |
 | Session | File-based (future: Redis) |
+| VOD Server | C (libmicrohttpd + SQLite + FFmpeg) — in `vod-server/` directory |
 
 ## Directory Structure
 
@@ -91,6 +92,15 @@ cari-iptv/
 │
 ├── database/
 │   └── migrations/        # Versioned SQL migrations (001-005)
+│
+├── vod-server/            # Standalone VOD transcoding server (C)
+│   ├── src/               # C source files (main.c, api_routes.c, transcoder.c, etc.)
+│   ├── include/           # Third-party headers (cJSON, inih)
+│   ├── config/            # Default config (vod-server.conf with transcode profiles)
+│   ├── database/          # SQLite schema
+│   ├── www/               # Web GUI (HTML/CSS/JS)
+│   ├── scripts/           # Systemd service, install scripts
+│   └── CMakeLists.txt     # Build system
 │
 └── storage/               # Logs, cache, sessions
 ```
@@ -1009,6 +1019,138 @@ The ad creation/edit modal provides:
 #### Future: Sora 2 Video Generation
 
 OpenAI's Sora 2 API integration is planned for AI-generated video ads. This would allow generating short video ad clips from text prompts, similar to how DALL-E 3 generates images. Implementation is pending Sora 2 API availability and cost evaluation.
+
+## VOD Server (Transcoding)
+
+The VOD server is a **standalone C daemon** located in `vod-server/` that handles video transcoding and HLS/DASH packaging. It runs as a separate process and communicates with the IPTV admin panel via REST API.
+
+### Architecture
+
+```
+IPTV Admin (PHP) ──REST API──▶ VOD Server (C daemon, port 8090)
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+                 FFmpeg          MP4Box          SQLite
+              (transcode)      (package)       (job queue)
+```
+
+### Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language | C (C11 standard) |
+| HTTP | libmicrohttpd |
+| Database | SQLite3 (WAL mode) |
+| Build | CMake 3.10+ |
+| Transcoding | FFmpeg (libx264, libx265, libsvtav1) |
+| Packaging | MP4Box (CMAF) with FFmpeg fallback |
+| HW Accel | NVIDIA NVENC, Intel VAAPI/QSV |
+
+### Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `vod-server/src/main.c` | Entry point, daemon init, signal handlers |
+| `vod-server/src/config.c` | INI config parsing, profile loading/saving |
+| `vod-server/src/config.h` | Config structs (`vod_config_t`, `transcode_profile_t`) |
+| `vod-server/src/api_routes.c` | All JSON API endpoint handlers |
+| `vod-server/src/transcoder.c` | FFmpeg command building, media probing |
+| `vod-server/src/packager.c` | HLS/DASH packaging (MP4Box + FFmpeg fallback) |
+| `vod-server/src/job_processor.c` | Job queue, concurrent transcode execution |
+| `vod-server/src/http_server.c` | libmicrohttpd setup, auth, request routing |
+| `vod-server/src/database.c` | SQLite operations |
+| `vod-server/config/vod-server.conf` | Default config with profile definitions |
+| `vod-server/database/schema.sql` | SQLite schema (jobs, content, peers, settings) |
+
+### Transcode Pipeline
+
+The current pipeline is **two-step**: encode intermediates, then package.
+
+```
+1. ENCODE: FFmpeg → per-rendition MP4 files (360p.mp4, 720p.mp4, 1080p.mp4, audio.m4a)
+2. PACKAGE: MP4Box → CMAF segments + master.m3u8 + manifest.mpd
+```
+
+Job status flow: `pending → downloading → processing → packaging → complete`
+
+### Transcode Profiles
+
+Profiles are defined in `vod-server.conf` as `[profile:name]` sections and can also be created/edited via the API (stored in SQLite `settings` table). DB profiles override INI profiles on startup.
+
+```ini
+[profile:standard]
+codec = libx264
+preset = slow
+crf = 23
+renditions = 360p:400k,480p:1000k,720p:2800k,1080p:5000k
+audio_codec = aac
+audio_bitrate = 128k
+```
+
+**Profile struct** (`config.h`): max 16 profiles, max 8 renditions each.
+
+### VOD Server API Endpoints
+
+All require `X-API-Key` header. Base URL: `http://vod-server:8090/api/`
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/status` | Server status (uptime, CPU, memory, disk) |
+| GET | `/api/config` | Current config + profiles |
+| POST | `/api/config` | Update settings (persisted to SQLite) |
+| GET | `/api/profiles` | List all transcode profiles |
+| POST | `/api/profiles` | Create new profile |
+| PUT | `/api/profiles/{name}` | Update existing profile |
+| DELETE | `/api/profiles/{name}` | Delete profile |
+| GET | `/api/jobs` | List transcode jobs (filterable) |
+| POST | `/api/jobs` | Submit new transcode job |
+| GET | `/api/jobs/{id}` | Job details + progress |
+| DELETE | `/api/jobs/{id}` | Cancel/delete job |
+| GET | `/api/content` | List transcoded content |
+| DELETE | `/api/content/{id}` | Delete content from library |
+| POST | `/api/upload` | Upload source file |
+| GET | `/api/browse` | Browse server filesystem |
+
+### IPTV Admin Integration
+
+The PHP admin panel proxies VOD server API calls through `VodServerService` + `VodServerController`:
+
+| IPTV Admin Route | Proxied To |
+|------------------|-----------|
+| `GET /admin/vod-server/profiles` | `GET /api/profiles` |
+| `POST /admin/vod-server/profiles/create` | `POST /api/profiles` |
+| `POST /admin/vod-server/profiles/update` | `PUT /api/profiles/{name}` |
+| `POST /admin/vod-server/profiles/delete` | `DELETE /api/profiles/{name}` |
+| `GET /admin/vod-server/config` | `GET /api/config` |
+| `GET /admin/vod-server/status` | `GET /api/status` |
+| `POST /admin/vod-server/jobs/submit` | `POST /api/jobs` |
+| `GET /admin/vod-server/job-status` | `GET /api/jobs/{id}` |
+
+### Movie VOD Fields
+
+The `movies` table tracks per-movie VOD state:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `vod_server_id` | INT | Which VOD server processed this |
+| `vod_job_id` | INT | Transcode job ID on that server |
+| `vod_status` | VARCHAR(20) | pending/processing/packaging/complete/failed/cancelled |
+| `vod_progress` | DECIMAL(5,2) | 0-100% |
+| `vod_error` | TEXT | Error message if failed |
+| `stream_url` | VARCHAR(500) | HLS URL (e.g. `http://vod:8090/content/movie-123/master.m3u8`) |
+
+### Building the VOD Server
+
+```bash
+cd vod-server
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+```
+
+**Dependencies:** libmicrohttpd-dev, libsqlite3-dev, libgnutls28-dev, FFmpeg, MP4Box (GPAC)
 
 ## Project Status
 

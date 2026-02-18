@@ -299,10 +299,112 @@
     </div>
 
     <div class="card" style="margin-top:1rem">
-        <div class="card-header"><h3>Transcode Profiles</h3></div>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Transcode Profiles</h3>
+            <button class="btn btn-primary btn-sm" onclick="VodPage.showProfileModal()">
+                <i class="lucide-plus"></i> New Profile
+            </button>
+        </div>
         <div class="card-body" id="profiles-info">
             <div class="empty-state"><p>Loading profiles...</p></div>
         </div>
+    </div>
+</div>
+
+<!-- Profile Create/Edit Modal -->
+<div id="profile-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center">
+    <div style="background:var(--card-bg,#1e293b);border-radius:var(--radius,8px);width:580px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border-color)">
+            <h3 id="profile-modal-title" style="margin:0">New Profile</h3>
+            <button onclick="VodPage.closeProfileModal()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.25rem;padding:0.25rem"><i class="lucide-x"></i></button>
+        </div>
+        <form id="profile-form" onsubmit="return VodPage.saveProfile(event)" style="padding:1.5rem">
+            <input type="hidden" id="profile-edit-name" value="">
+
+            <div class="form-group" style="margin-bottom:1rem">
+                <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">Profile Name</label>
+                <input type="text" class="form-control" id="profile-name" placeholder="e.g. standard_hd" required
+                       pattern="[a-z0-9_]+" title="Lowercase letters, numbers, underscores only"
+                       style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.9rem">
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+                <div class="form-group">
+                    <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">Video Codec</label>
+                    <select class="form-control" id="profile-codec" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.9rem">
+                        <option value="libx264">H.264 (libx264)</option>
+                        <option value="libx265">HEVC / H.265 (libx265)</option>
+                        <option value="libsvtav1">AV1 (libsvtav1)</option>
+                        <option value="h264_nvenc">H.264 NVENC (GPU)</option>
+                        <option value="hevc_nvenc">HEVC NVENC (GPU)</option>
+                        <option value="h264_vaapi">H.264 VAAPI (GPU)</option>
+                        <option value="hevc_vaapi">HEVC VAAPI (GPU)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">Preset</label>
+                    <select class="form-control" id="profile-preset" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.9rem">
+                        <option value="ultrafast">ultrafast</option>
+                        <option value="superfast">superfast</option>
+                        <option value="veryfast">veryfast</option>
+                        <option value="faster">faster</option>
+                        <option value="fast">fast</option>
+                        <option value="medium" selected>medium</option>
+                        <option value="slow">slow</option>
+                        <option value="slower">slower</option>
+                        <option value="veryslow">veryslow</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem">
+                <div class="form-group">
+                    <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">CRF (Quality)</label>
+                    <input type="number" class="form-control" id="profile-crf" value="23" min="0" max="51"
+                           style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.9rem">
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem">Lower = better quality, bigger files</div>
+                </div>
+                <div class="form-group">
+                    <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">Audio Codec</label>
+                    <select class="form-control" id="profile-audio-codec" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.9rem">
+                        <option value="aac">AAC</option>
+                        <option value="libopus">Opus</option>
+                        <option value="copy">Copy (passthrough)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">Audio Bitrate</label>
+                    <select class="form-control" id="profile-audio-bitrate" style="width:100%;padding:0.5rem 0.75rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.9rem">
+                        <option value="64k">64k</option>
+                        <option value="96k">96k</option>
+                        <option value="128k" selected>128k</option>
+                        <option value="192k">192k</option>
+                        <option value="256k">256k</option>
+                        <option value="320k">320k</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:1rem">
+                <label style="display:block;font-size:0.85rem;font-weight:500;color:var(--text-secondary);margin-bottom:0.35rem">
+                    Renditions (ABR Ladder)
+                    <button type="button" class="btn btn-sm" onclick="VodPage.addRenditionRow()"
+                            style="float:right;padding:0.1rem 0.5rem;font-size:0.75rem;background:var(--bg-hover);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:4px;cursor:pointer">
+                        <i class="lucide-plus" style="font-size:0.7rem"></i> Add
+                    </button>
+                </label>
+                <div id="profile-renditions">
+                    <!-- Rendition rows inserted here by JS -->
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:0.5rem;padding-top:0.5rem;border-top:1px solid var(--border-color)">
+                <button type="button" class="btn btn-secondary" onclick="VodPage.closeProfileModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="profile-save-btn">
+                    <i class="lucide-save"></i> Save Profile
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -1119,21 +1221,22 @@ const VodPage = {
         }
     },
 
-    /* ===================== Transcode ===================== */
+    /* ===================== Transcode Profiles ===================== */
     async loadProfiles() {
         if (!this.selectedServerId) return;
 
         const container = document.getElementById('profiles-info');
         try {
-            const res = await fetch('/admin/vod-server/config?' + this.serverParam());
+            const res = await fetch('/admin/vod-server/profiles?' + this.serverParam());
             const data = await res.json();
             if (!data.success) {
                 container.innerHTML = '<div class="empty-state"><p>' + this.esc(data.error) + '</p></div>';
                 return;
             }
 
-            this.profiles = data.config?.profiles || [];
+            this.profiles = data.data?.profiles || [];
 
+            /* Update the job submission profile dropdown */
             const select = document.getElementById('job-profile');
             if (this.profiles.length > 0) {
                 select.innerHTML = this.profiles.map(p =>
@@ -1142,33 +1245,186 @@ const VodPage = {
             }
 
             if (this.profiles.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>No profiles configured on the server.</p></div>';
+                container.innerHTML = '<div class="empty-state"><p>No profiles configured. Click "New Profile" to create one.</p></div>';
                 return;
             }
 
             container.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem">
                 ${this.profiles.map(p => `
-                    <div style="border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:1rem">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+                    <div style="border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:1rem;position:relative">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
                             <strong>${this.esc(p.name)}</strong>
                             <span class="badge-sm badge-ready">${this.esc(p.codec || '')}</span>
                         </div>
-                        ${p.renditions ? `
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem">
+                            Preset: ${this.esc(p.preset || '-')} &middot; CRF: ${p.crf || '-'} &middot; Audio: ${this.esc(p.audio_codec || 'aac')} @ ${this.esc(p.audio_bitrate || '128k')}
+                        </div>
+                        ${p.renditions && Array.isArray(p.renditions) ? `
                             <div style="font-size:0.8rem;color:var(--text-muted)">
-                                ${(Array.isArray(p.renditions) ? p.renditions : []).map(r =>
+                                ${p.renditions.map(r =>
                                     `<div style="display:flex;justify-content:space-between;padding:0.15rem 0">
-                                        <span>${r.label || r.resolution || (r.width + 'x' + r.height)}</span>
+                                        <span>${r.label || (r.width + 'x' + r.height)}</span>
                                         <span>${r.bitrate_kbps ? r.bitrate_kbps + 'k' : ''}</span>
                                     </div>`
                                 ).join('')}
                             </div>
-                        ` : ''}
+                        ` : '<div style="font-size:0.8rem;color:var(--text-muted)">No renditions</div>'}
+                        <div style="display:flex;gap:0.5rem;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--border-color)">
+                            <button class="btn btn-sm btn-secondary" onclick="VodPage.editProfile('${this.escAttr(p.name)}')" style="flex:1;font-size:0.75rem">
+                                <i class="lucide-edit-2"></i> Edit
+                            </button>
+                            <button class="btn btn-sm" onclick="VodPage.deleteProfile('${this.escAttr(p.name)}')" style="flex:1;font-size:0.75rem;background:transparent;color:var(--danger);border:1px solid var(--danger)">
+                                <i class="lucide-trash-2"></i> Delete
+                            </button>
+                        </div>
                     </div>
                 `).join('')}
             </div>`;
 
         } catch (err) {
             container.innerHTML = '<div class="empty-state"><p>' + this.esc(err.message) + '</p></div>';
+        }
+    },
+
+    /* --- Profile modal --- */
+    showProfileModal(editName) {
+        const modal = document.getElementById('profile-modal');
+        const title = document.getElementById('profile-modal-title');
+        const nameInput = document.getElementById('profile-name');
+        const editInput = document.getElementById('profile-edit-name');
+
+        // Reset form
+        document.getElementById('profile-form').reset();
+        document.getElementById('profile-renditions').innerHTML = '';
+
+        if (editName) {
+            const p = this.profiles.find(x => x.name === editName);
+            if (!p) return;
+
+            title.textContent = 'Edit Profile: ' + editName;
+            editInput.value = editName;
+            nameInput.value = p.name;
+            nameInput.readOnly = true;
+            nameInput.style.opacity = '0.6';
+
+            document.getElementById('profile-codec').value = p.codec || 'libx264';
+            document.getElementById('profile-preset').value = p.preset || 'medium';
+            document.getElementById('profile-crf').value = p.crf || 23;
+            document.getElementById('profile-audio-codec').value = p.audio_codec || 'aac';
+            document.getElementById('profile-audio-bitrate').value = p.audio_bitrate || '128k';
+
+            if (p.renditions && Array.isArray(p.renditions)) {
+                p.renditions.forEach(r => this.addRenditionRow(r.label, r.bitrate_kbps));
+            }
+        } else {
+            title.textContent = 'New Profile';
+            editInput.value = '';
+            nameInput.readOnly = false;
+            nameInput.style.opacity = '1';
+            // Add default rendition rows
+            this.addRenditionRow('360p', 400);
+            this.addRenditionRow('720p', 2800);
+            this.addRenditionRow('1080p', 5000);
+        }
+
+        modal.style.display = 'flex';
+    },
+
+    closeProfileModal() {
+        document.getElementById('profile-modal').style.display = 'none';
+    },
+
+    editProfile(name) {
+        this.showProfileModal(name);
+    },
+
+    addRenditionRow(label, bitrate) {
+        const container = document.getElementById('profile-renditions');
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem';
+        row.innerHTML = `
+            <select name="rendition_label[]" style="flex:1;padding:0.4rem 0.5rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.85rem">
+                <option value="360p"${label === '360p' ? ' selected' : ''}>360p (640x360)</option>
+                <option value="480p"${label === '480p' ? ' selected' : ''}>480p (854x480)</option>
+                <option value="576p"${label === '576p' ? ' selected' : ''}>576p (1024x576)</option>
+                <option value="720p"${label === '720p' ? ' selected' : ''}>720p (1280x720)</option>
+                <option value="1080p"${label === '1080p' ? ' selected' : ''}>1080p (1920x1080)</option>
+                <option value="1440p"${label === '1440p' ? ' selected' : ''}>1440p (2560x1440)</option>
+                <option value="2160p"${label === '2160p' ? ' selected' : ''}>2160p (3840x2160)</option>
+            </select>
+            <div style="display:flex;align-items:center;gap:0.25rem;flex:1">
+                <input type="number" name="rendition_bitrate[]" value="${bitrate || ''}" placeholder="Bitrate"
+                       min="100" max="50000" required
+                       style="flex:1;padding:0.4rem 0.5rem;background:var(--bg-dark,#0f172a);border:1px solid var(--border-color);border-radius:var(--radius-sm,6px);color:var(--text-primary);font-size:0.85rem">
+                <span style="font-size:0.8rem;color:var(--text-muted)">kbps</span>
+            </div>
+            <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:0.25rem;font-size:1rem"><i class="lucide-x"></i></button>
+        `;
+        container.appendChild(row);
+    },
+
+    async saveProfile(e) {
+        e.preventDefault();
+        if (!this.selectedServerId) { this.toast('Select a server first', 'error'); return false; }
+
+        const editName = document.getElementById('profile-edit-name').value;
+        const isEdit = editName !== '';
+        const btn = document.getElementById('profile-save-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="lucide-loader"></i> Saving...';
+
+        try {
+            const form = document.getElementById('profile-form');
+            const body = new URLSearchParams(new FormData(form));
+            body.set('csrf_token', CSRF);
+            body.set('server_id', this.selectedServerId);
+            body.set('name', document.getElementById('profile-name').value);
+            body.set('codec', document.getElementById('profile-codec').value);
+            body.set('preset', document.getElementById('profile-preset').value);
+            body.set('crf', document.getElementById('profile-crf').value);
+            body.set('audio_codec', document.getElementById('profile-audio-codec').value);
+            body.set('audio_bitrate', document.getElementById('profile-audio-bitrate').value);
+
+            const url = isEdit ? '/admin/vod-server/profiles/update' : '/admin/vod-server/profiles/create';
+            const res = await fetch(url, { method: 'POST', body: body });
+            const data = await res.json();
+
+            if (data.success) {
+                this.toast(isEdit ? 'Profile updated' : 'Profile created', 'success');
+                this.closeProfileModal();
+                this.loadProfiles();
+            } else {
+                this.toast(data.error || 'Failed', 'error');
+            }
+        } catch (err) {
+            this.toast(err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-save"></i> Save Profile';
+        }
+        return false;
+    },
+
+    async deleteProfile(name) {
+        if (!confirm('Delete profile "' + name + '"?\n\nExisting jobs using this profile will not be affected, but new jobs cannot use it.')) return;
+        try {
+            const body = 'csrf_token=' + encodeURIComponent(CSRF) +
+                         '&server_id=' + this.selectedServerId +
+                         '&name=' + encodeURIComponent(name);
+            const res = await fetch('/admin/vod-server/profiles/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.toast('Profile "' + name + '" deleted', 'success');
+                this.loadProfiles();
+            } else {
+                this.toast(data.error || 'Failed', 'error');
+            }
+        } catch (err) {
+            this.toast(err.message, 'error');
         }
     },
 

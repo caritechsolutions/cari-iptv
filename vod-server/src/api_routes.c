@@ -214,6 +214,25 @@ int api_handle_request(http_request_t *req)
                                "Method not allowed");
     }
 
+    /* --- Profile routes --- */
+
+    /* GET|PUT|DELETE /api/profiles/{name} */
+    if (strncmp(url, "/api/profiles/", 14) == 0 && strlen(url) > 14) {
+        const char *profile_name = url + 14;
+        if (strcmp(method, HTTP_PUT) == 0)    return api_put_profile(req, profile_name);
+        if (strcmp(method, HTTP_DELETE) == 0)  return api_delete_profile(req, profile_name);
+        return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                               "Method not allowed");
+    }
+
+    /* GET|POST /api/profiles */
+    if (strcmp(url, "/api/profiles") == 0) {
+        if (strcmp(method, HTTP_GET) == 0)  return api_get_profiles(req);
+        if (strcmp(method, HTTP_POST) == 0) return api_post_profile(req);
+        return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                               "Method not allowed");
+    }
+
     /* POST /api/health */
     if (strcmp(url, "/api/health") == 0 && strcmp(method, HTTP_POST) == 0) {
         return api_post_peer_health(req);
@@ -619,6 +638,276 @@ int api_post_config(http_request_t *req)
     cJSON_AddBoolToObject(root, "success", saved > 0);
     cJSON_AddNumberToObject(root, "saved", saved);
     cJSON_AddStringToObject(root, "message", "Settings updated. Some changes may require restart.");
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * Profile CRUD helpers
+ * ================================================================ */
+
+/**
+ * Get a mutable pointer to the config.
+ * Safe because the underlying g_config in main.c is non-const.
+ */
+static vod_config_t *get_mutable_config(void)
+{
+    return (vod_config_t *)s_config;
+}
+
+/**
+ * Build a cJSON object from a transcode_profile_t.
+ */
+static cJSON *profile_to_json(const transcode_profile_t *p)
+{
+    cJSON *prof = cJSON_CreateObject();
+    cJSON_AddStringToObject(prof, "name", p->name);
+    cJSON_AddStringToObject(prof, "codec", p->codec);
+    cJSON_AddStringToObject(prof, "preset", p->preset);
+    cJSON_AddNumberToObject(prof, "crf", p->crf);
+    cJSON_AddStringToObject(prof, "audio_codec", p->audio_codec);
+    cJSON_AddStringToObject(prof, "audio_bitrate", p->audio_bitrate);
+
+    cJSON *renditions = cJSON_CreateArray();
+    for (int j = 0; j < p->rendition_count; j++) {
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddStringToObject(r, "label", p->renditions[j].label);
+        cJSON_AddNumberToObject(r, "width", p->renditions[j].width);
+        cJSON_AddNumberToObject(r, "height", p->renditions[j].height);
+        cJSON_AddNumberToObject(r, "bitrate_kbps", p->renditions[j].bitrate_kbps);
+        cJSON_AddItemToArray(renditions, r);
+    }
+    cJSON_AddItemToObject(prof, "renditions", renditions);
+    return prof;
+}
+
+/**
+ * Parse a cJSON body into a transcode_profile_t.
+ * Returns 0 on success, -1 on error.
+ */
+static int json_to_profile(cJSON *body, transcode_profile_t *p)
+{
+    if (!body || !p) return -1;
+    memset(p, 0, sizeof(*p));
+
+    const char *name = json_str(body, "name", "");
+    if (name[0] == '\0') return -1;
+    snprintf(p->name, sizeof(p->name), "%s", name);
+
+    snprintf(p->codec, sizeof(p->codec), "%s", json_str(body, "codec", "libx264"));
+    snprintf(p->preset, sizeof(p->preset), "%s", json_str(body, "preset", "medium"));
+    p->crf = json_int(body, "crf", 23);
+    snprintf(p->audio_codec, sizeof(p->audio_codec), "%s", json_str(body, "audio_codec", "aac"));
+    snprintf(p->audio_bitrate, sizeof(p->audio_bitrate), "%s", json_str(body, "audio_bitrate", "128k"));
+
+    /* Parse renditions array */
+    cJSON *rends = cJSON_GetObjectItemCaseSensitive(body, "renditions");
+    if (cJSON_IsArray(rends)) {
+        cJSON *ritem;
+        cJSON_ArrayForEach(ritem, rends) {
+            if (p->rendition_count >= MAX_RENDITIONS) break;
+            rendition_t *r = &p->renditions[p->rendition_count];
+
+            const char *label = json_str(ritem, "label", "");
+            if (label[0] == '\0') continue;
+            snprintf(r->label, sizeof(r->label), "%s", label);
+
+            r->width = json_int(ritem, "width", 0);
+            r->height = json_int(ritem, "height", 0);
+            r->bitrate_kbps = json_int(ritem, "bitrate_kbps", 0);
+
+            if (r->bitrate_kbps <= 0) continue;
+
+            p->rendition_count++;
+        }
+    }
+
+    /* Also accept renditions as a compact string: "360p:400k,720p:2800k" */
+    if (p->rendition_count == 0) {
+        const char *rend_str = json_str(body, "renditions_str", "");
+        if (rend_str[0] != '\0') {
+            /* Reuse existing parse_renditions from config loading */
+            char buf[MAX_VALUE_LEN];
+            snprintf(buf, sizeof(buf), "%s", rend_str);
+            char *saveptr = NULL;
+            char *token = strtok_r(buf, ",", &saveptr);
+            while (token && p->rendition_count < MAX_RENDITIONS) {
+                while (*token == ' ') token++;
+                char *colon = strchr(token, ':');
+                if (colon) {
+                    *colon = '\0';
+                    rendition_t *r = &p->renditions[p->rendition_count];
+                    snprintf(r->label, sizeof(r->label), "%s", token);
+                    r->bitrate_kbps = atoi(colon + 1);
+                    /* Lookup resolution from label */
+                    r->width = 0; r->height = 0;
+                    if (strcasecmp(token, "360p") == 0)       { r->width = 640;  r->height = 360;  }
+                    else if (strcasecmp(token, "480p") == 0)  { r->width = 854;  r->height = 480;  }
+                    else if (strcasecmp(token, "576p") == 0)  { r->width = 1024; r->height = 576;  }
+                    else if (strcasecmp(token, "720p") == 0)  { r->width = 1280; r->height = 720;  }
+                    else if (strcasecmp(token, "1080p") == 0) { r->width = 1920; r->height = 1080; }
+                    else if (strcasecmp(token, "1440p") == 0) { r->width = 2560; r->height = 1440; }
+                    else if (strcasecmp(token, "2160p") == 0) { r->width = 3840; r->height = 2160; }
+                    if (r->bitrate_kbps > 0) p->rendition_count++;
+                }
+                token = strtok_r(NULL, ",", &saveptr);
+            }
+        }
+    }
+
+    return 0;
+}
+
+/* ================================================================
+ * GET /api/profiles — List all transcode profiles
+ * ================================================================ */
+
+int api_get_profiles(http_request_t *req)
+{
+    if (!s_config) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Configuration not available");
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *profiles = cJSON_CreateArray();
+    for (int i = 0; i < s_config->profile_count; i++) {
+        cJSON_AddItemToArray(profiles, profile_to_json(&s_config->profiles[i]));
+    }
+    cJSON_AddItemToObject(root, "profiles", profiles);
+    cJSON_AddNumberToObject(root, "count", s_config->profile_count);
+    cJSON_AddNumberToObject(root, "max_profiles", MAX_PROFILES);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * POST /api/profiles — Create a new transcode profile
+ * ================================================================ */
+
+int api_post_profile(http_request_t *req)
+{
+    vod_config_t *config = get_mutable_config();
+    if (!config) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Configuration not available");
+    }
+
+    cJSON *body = parse_request_body(req);
+    if (!body) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid JSON body");
+    }
+
+    transcode_profile_t profile;
+    if (json_to_profile(body, &profile) != 0) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid profile data: 'name' is required");
+    }
+
+    /* Check if name already exists */
+    if (config_get_profile(config, profile.name) != NULL) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_CONFLICT,
+                               "Profile with this name already exists");
+    }
+
+    if (config_set_profile(config, &profile) != 0) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Failed to add profile (max profiles reached)");
+    }
+
+    /* Persist to DB */
+    config_save_db_profiles(config);
+
+    cJSON_Delete(body);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "Profile created");
+    cJSON_AddItemToObject(root, "profile", profile_to_json(&profile));
+
+    log_info("Profile created: %s (codec=%s, %d renditions)",
+             profile.name, profile.codec, profile.rendition_count);
+
+    return send_json_obj(req->connection, MHD_HTTP_CREATED, root);
+}
+
+/* ================================================================
+ * PUT /api/profiles/{name} — Update an existing profile
+ * ================================================================ */
+
+int api_put_profile(http_request_t *req, const char *name)
+{
+    vod_config_t *config = get_mutable_config();
+    if (!config) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Configuration not available");
+    }
+
+    if (config_get_profile(config, name) == NULL) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "Profile not found");
+    }
+
+    cJSON *body = parse_request_body(req);
+    if (!body) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid JSON body");
+    }
+
+    transcode_profile_t profile;
+    if (json_to_profile(body, &profile) != 0) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid profile data");
+    }
+
+    /* Ensure name matches URL */
+    snprintf(profile.name, sizeof(profile.name), "%s", name);
+
+    config_set_profile(config, &profile);
+    config_save_db_profiles(config);
+
+    cJSON_Delete(body);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "Profile updated");
+    cJSON_AddItemToObject(root, "profile", profile_to_json(&profile));
+
+    log_info("Profile updated: %s (codec=%s, %d renditions)",
+             profile.name, profile.codec, profile.rendition_count);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * DELETE /api/profiles/{name} — Delete a profile
+ * ================================================================ */
+
+int api_delete_profile(http_request_t *req, const char *name)
+{
+    vod_config_t *config = get_mutable_config();
+    if (!config) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Configuration not available");
+    }
+
+    if (config_delete_profile(config, name) != 0) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "Profile not found");
+    }
+
+    config_save_db_profiles(config);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "Profile deleted");
+
+    log_info("Profile deleted: %s", name);
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }
