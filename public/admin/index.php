@@ -361,6 +361,9 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->get('/vod-server/job-detail', [VodServerController::class, 'jobDetail']);
     $router->post('/vod-server/jobs/submit', [VodServerController::class, 'submitJob']);
     $router->post('/vod-server/jobs/{id}/cancel', [VodServerController::class, 'cancelJob']);
+    $router->post('/vod-server/upload-source', [VodServerController::class, 'uploadSource']);
+    $router->get('/vod-server/check-content', [VodServerController::class, 'checkContent']);
+    $router->get('/vod-server/job-status', [VodServerController::class, 'jobStatus']);
     $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
     $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
 });

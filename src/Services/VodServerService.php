@@ -282,6 +282,84 @@ class VodServerService
         return $server['url'] . '/content/' . urlencode($contentId) . '/' . $ext;
     }
 
+    /**
+     * Upload a file to the VOD server via streaming PUT/POST
+     * Proxies the local temp file to VOD server's /api/upload endpoint
+     */
+    public function uploadFile(int $serverId, string $localPath, string $filename): array
+    {
+        $server = $this->requireServer($serverId);
+        $baseUrl = $server['url'] ?? '';
+        $apiKey  = $server['api_key'] ?? '';
+
+        if (empty($baseUrl)) {
+            throw new \RuntimeException('VOD Server URL not configured');
+        }
+
+        $fileSize = filesize($localPath);
+        $fh = fopen($localPath, 'rb');
+        if (!$fh) {
+            throw new \RuntimeException('Cannot open local file for reading');
+        }
+
+        $url = $baseUrl . '/api/upload?filename=' . urlencode($filename);
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_INFILE         => $fh,
+            CURLOPT_INFILESIZE     => $fileSize,
+            CURLOPT_TIMEOUT        => 0,          // No timeout for large files
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 3,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_HTTPHEADER     => array_filter([
+                'Content-Type: application/octet-stream',
+                'Content-Length: ' . $fileSize,
+                'Transfer-Encoding:',  // Disable chunked
+                !empty($apiKey) ? 'X-API-Key: ' . $apiKey : null,
+            ]),
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        $errno = curl_errno($ch);
+        curl_close($ch);
+        fclose($fh);
+
+        if ($errno) throw new \RuntimeException('Upload failed: ' . $error);
+        if ($httpCode >= 400) {
+            $data = json_decode($response, true);
+            throw new \RuntimeException($data['error'] ?? 'Upload failed (HTTP ' . $httpCode . ')');
+        }
+
+        $data = json_decode($response, true);
+        if (!$data) {
+            throw new \RuntimeException('Invalid response from VOD server');
+        }
+
+        return $data;
+    }
+
+    /**
+     * Check if content_id already exists on a VOD server
+     */
+    public function contentExists(int $serverId, string $contentId): bool
+    {
+        try {
+            $server = $this->requireServer($serverId);
+            $result = $this->request($server, 'GET', '/api/content/' . urlencode($contentId));
+            return !empty($result['content_id']) || !empty($result['content']);
+        } catch (\Exception $e) {
+            // 404 = not found = doesn't exist
+            return false;
+        }
+    }
+
     /* ==============================================================
      * Internal helpers
      * ============================================================== */

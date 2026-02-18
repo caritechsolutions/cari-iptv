@@ -260,6 +260,136 @@ class VodServerController
         }
     }
 
+    /**
+     * POST /admin/vod-server/upload-source
+     * Receives file from browser, streams it to the selected VOD server,
+     * then auto-submits a transcode job. Returns job status for polling.
+     */
+    public function uploadSource(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $serverId  = (int)($_POST['server_id'] ?? 0);
+        $contentId = trim($_POST['content_id'] ?? '');
+        $title     = trim($_POST['title'] ?? '');
+        $profile   = trim($_POST['profile'] ?? 'standard');
+        $overwrite = ($_POST['overwrite'] ?? '') === '1';
+
+        if ($serverId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'No VOD server selected']);
+            return;
+        }
+        if (empty($contentId)) {
+            $this->sendJson(['success' => false, 'error' => 'Content ID is required']);
+            return;
+        }
+
+        // Check for uploaded file
+        if (!isset($_FILES['video_file']) || $_FILES['video_file']['error'] !== UPLOAD_ERR_OK) {
+            $errCode = $_FILES['video_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+            $errMsg = match($errCode) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'File too large. Check server upload_max_filesize.',
+                UPLOAD_ERR_NO_FILE => 'No file uploaded',
+                UPLOAD_ERR_PARTIAL => 'Upload was interrupted',
+                default => 'Upload error (code ' . $errCode . ')',
+            };
+            $this->sendJson(['success' => false, 'error' => $errMsg]);
+            return;
+        }
+
+        $file = $_FILES['video_file'];
+        $filename = basename($file['name']);
+        $tmpPath = $file['tmp_name'];
+
+        try {
+            // Check for existing content (unless overwrite confirmed)
+            if (!$overwrite && $this->vodService->contentExists($serverId, $contentId)) {
+                $this->sendJson([
+                    'success' => false,
+                    'error' => 'duplicate',
+                    'message' => 'Content "' . $contentId . '" already exists on this VOD server.',
+                ]);
+                return;
+            }
+
+            // Stream file to VOD server
+            $uploadResult = $this->vodService->uploadFile($serverId, $tmpPath, $filename);
+
+            if (empty($uploadResult['path'])) {
+                $this->sendJson(['success' => false, 'error' => 'Upload succeeded but no path returned']);
+                return;
+            }
+
+            // Auto-submit transcode job
+            $jobResult = $this->vodService->submitJob($serverId, $contentId, $uploadResult['path'], [
+                'title'       => $title ?: $contentId,
+                'profile'     => $profile,
+                'priority'    => 5,
+                'source_type' => 'file',
+            ]);
+
+            // Build the expected stream URL
+            $server = $this->vodService->getServer($serverId);
+            $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+
+            $this->sendJson([
+                'success'    => true,
+                'message'    => 'File uploaded and transcode job submitted',
+                'upload_path' => $uploadResult['path'],
+                'job'        => $jobResult['job'] ?? $jobResult,
+                'stream_url' => $hlsUrl,
+            ]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * GET /admin/vod-server/check-content?server_id=X&content_id=Y
+     * Check if content already exists on the VOD server
+     */
+    public function checkContent(): void
+    {
+        $serverId  = (int)($_GET['server_id'] ?? 0);
+        $contentId = trim($_GET['content_id'] ?? '');
+
+        if ($serverId <= 0 || empty($contentId)) {
+            $this->sendJson(['success' => true, 'exists' => false]);
+            return;
+        }
+
+        try {
+            $exists = $this->vodService->contentExists($serverId, $contentId);
+            $this->sendJson(['success' => true, 'exists' => $exists]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => true, 'exists' => false]);
+        }
+    }
+
+    /**
+     * GET /admin/vod-server/job-status?server_id=X&job_id=Y
+     * Poll a specific job's status for the progress tracker
+     */
+    public function jobStatus(): void
+    {
+        try {
+            $sid = (int)($_GET['server_id'] ?? 0);
+            $jobId = (int)($_GET['job_id'] ?? 0);
+            if ($sid <= 0 || $jobId <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'Server ID and Job ID required']);
+                return;
+            }
+            $detail = $this->vodService->getJob($sid, $jobId);
+            $job = $detail['job'] ?? $detail;
+            $this->sendJson(['success' => true, 'job' => $job]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
     public function browseFiles(): void
     {
         try {
