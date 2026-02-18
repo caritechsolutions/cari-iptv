@@ -62,10 +62,13 @@ int transcoder_probe(const char *source_path, media_info_t *info)
 
     memset(info, 0, sizeof(*info));
 
-    /* Check that source file exists */
-    if (access(source_path, R_OK) != 0) {
-        log_error("Source file not readable: %s (%s)", source_path, strerror(errno));
-        return -1;
+    /* Check that source file exists (skip for HTTP/HTTPS URLs - ffprobe handles those) */
+    if (strncmp(source_path, "http://", 7) != 0 &&
+        strncmp(source_path, "https://", 8) != 0) {
+        if (access(source_path, R_OK) != 0) {
+            log_error("Source file not readable: %s (%s)", source_path, strerror(errno));
+            return -1;
+        }
     }
 
     /* Build ffprobe command */

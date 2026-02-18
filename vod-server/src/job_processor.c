@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <errno.h>
 
 /* Maximum concurrent jobs we can track */
@@ -538,6 +539,104 @@ static void handle_job_failed(active_job_t *job, const char *error_msg)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Download an HTTP/HTTPS source to a local file                      */
+/* ------------------------------------------------------------------ */
+
+static int download_http_source(const char *url, const char *dest_dir,
+                                char *local_path, size_t path_len,
+                                int job_id, sqlite3 *db)
+{
+    /* Extract filename from URL */
+    const char *basename = strrchr(url, '/');
+    if (!basename || basename[1] == '\0') {
+        basename = "source.mp4";
+    } else {
+        basename++; /* skip the '/' */
+    }
+
+    /* Copy filename and strip query parameters */
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s", basename);
+    char *q = strchr(filename, '?');
+    if (q) *q = '\0';
+
+    /* If no file extension, default to .mp4 */
+    if (!strchr(filename, '.')) {
+        snprintf(filename, sizeof(filename), "source.mp4");
+    }
+
+    /* Build local destination path */
+    snprintf(local_path, path_len, "%s/%s", dest_dir, filename);
+
+    /* Update job step in DB */
+    if (db) {
+        sqlite3_stmt *upd = NULL;
+        int rc = sqlite3_prepare_v2(db,
+            "UPDATE jobs SET current_step = 'Downloading source file...' WHERE id = ?",
+            -1, &upd, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int(upd, 1, job_id);
+            sqlite3_step(upd);
+            sqlite3_finalize(upd);
+        }
+    }
+
+    /* Build curl command: follow redirects, fail on HTTP errors, 1 hour timeout */
+    char cmd[MAX_PATH_LEN * 3];
+    snprintf(cmd, sizeof(cmd),
+             "curl -sS -f -L --max-time 3600 -o '%s' '%s' 2>&1",
+             local_path, url);
+
+    log_info("Job %d: Downloading source from %s", job_id, url);
+
+    FILE *fp = popen(cmd, "r");
+    if (!fp) {
+        log_error("Job %d: Failed to start curl: %s", job_id, strerror(errno));
+        return -1;
+    }
+
+    /* Capture any error output from curl */
+    char output[1024] = {0};
+    size_t total = 0;
+    char buf[256];
+    while (fgets(buf, sizeof(buf), fp)) {
+        size_t len = strlen(buf);
+        if (total + len < sizeof(output) - 1) {
+            memcpy(output + total, buf, len);
+            total += len;
+        }
+    }
+    output[total] = '\0';
+
+    int ret = pclose(fp);
+    if (ret != 0) {
+        int exit_code = WIFEXITED(ret) ? WEXITSTATUS(ret) : -1;
+        log_error("Job %d: curl download failed (exit %d): %s",
+                  job_id, exit_code, output);
+        return -1;
+    }
+
+    /* Verify the downloaded file exists and is non-empty */
+    struct stat st;
+    if (stat(local_path, &st) != 0 || st.st_size == 0) {
+        log_error("Job %d: Downloaded file is missing or empty: %s",
+                  job_id, local_path);
+        return -1;
+    }
+
+    log_info("Job %d: Downloaded %lld bytes to %s",
+             job_id, (long long)st.st_size, local_path);
+    return 0;
+}
+
+/* Check if a path is an HTTP/HTTPS URL */
+static int is_http_url(const char *path)
+{
+    return (strncmp(path, "http://", 7) == 0 ||
+            strncmp(path, "https://", 8) == 0);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Pick up new pending jobs from the database                         */
 /* ------------------------------------------------------------------ */
 
@@ -553,7 +652,7 @@ static void pick_up_new_jobs(void)
     /* Find the next pending job, ordered by priority (1=highest) then creation time */
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db,
-        "SELECT id, content_id, title, source_path, profile, callback_url "
+        "SELECT id, content_id, title, source_path, profile, callback_url, source_type "
         "FROM jobs WHERE status = 'pending' "
         "ORDER BY priority ASC, created_at ASC LIMIT 1",
         -1, &stmt, NULL);
@@ -563,12 +662,13 @@ static void pick_up_new_jobs(void)
     }
 
     while (sqlite3_step(stmt) == SQLITE_ROW && max_to_pick > 0) {
-        int job_id          = sqlite3_column_int(stmt, 0);
-        const char *cid     = (const char *)sqlite3_column_text(stmt, 1);
-        const char *title   = (const char *)sqlite3_column_text(stmt, 2);
-        const char *source  = (const char *)sqlite3_column_text(stmt, 3);
-        const char *profile = (const char *)sqlite3_column_text(stmt, 4);
-        const char *cb_url  = (const char *)sqlite3_column_text(stmt, 5);
+        int job_id              = sqlite3_column_int(stmt, 0);
+        const char *cid         = (const char *)sqlite3_column_text(stmt, 1);
+        const char *title       = (const char *)sqlite3_column_text(stmt, 2);
+        const char *source      = (const char *)sqlite3_column_text(stmt, 3);
+        const char *profile     = (const char *)sqlite3_column_text(stmt, 4);
+        const char *cb_url      = (const char *)sqlite3_column_text(stmt, 5);
+        const char *source_type = (const char *)sqlite3_column_text(stmt, 6);
 
         if (!cid || !source) {
             log_error("Job %d: missing content_id or source_path, skipping", job_id);
@@ -608,12 +708,47 @@ static void pick_up_new_jobs(void)
         }
         storage_ensure_dir(temp_dir);
 
+        /* If source is an HTTP URL, download it to temp directory first */
+        char local_source[MAX_PATH_LEN];
+        const char *actual_source = source;
+
+        if ((source_type && strcmp(source_type, "http") == 0) || is_http_url(source)) {
+            log_info("Job %d: Source is HTTP, downloading first", job_id);
+
+            if (download_http_source(source, temp_dir, local_source,
+                                     sizeof(local_source), job_id, db) != 0) {
+                log_error("Job %d: Failed to download source from %s", job_id, source);
+
+                sqlite3_stmt *fail_stmt = NULL;
+                char err_msg[512];
+                snprintf(err_msg, sizeof(err_msg),
+                         "Failed to download source file from URL: %.400s", source);
+                rc = sqlite3_prepare_v2(db,
+                    "UPDATE jobs SET status = 'failed', "
+                    "error_msg = ?, "
+                    "current_step = 'Failed', completed_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ?",
+                    -1, &fail_stmt, NULL);
+                if (rc == SQLITE_OK) {
+                    sqlite3_bind_text(fail_stmt, 1, err_msg, -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_int(fail_stmt, 2, job_id);
+                    sqlite3_step(fail_stmt);
+                    sqlite3_finalize(fail_stmt);
+                }
+                storage_cleanup_temp(job_id);
+                continue;
+            }
+
+            actual_source = local_source;
+            log_info("Job %d: Using downloaded source: %s", job_id, actual_source);
+        }
+
         /* Probe source file */
         media_info_t info;
         memset(&info, 0, sizeof(info));
 
-        if (transcoder_probe(source, &info) != 0) {
-            log_error("Job %d: Failed to probe source file: %s", job_id, source);
+        if (transcoder_probe(actual_source, &info) != 0) {
+            log_error("Job %d: Failed to probe source file: %s", job_id, actual_source);
 
             /* Mark job as failed in DB */
             sqlite3_stmt *fail_stmt = NULL;
@@ -689,7 +824,7 @@ static void pick_up_new_jobs(void)
         ts->progress = 0.0;
         ts->duration = info.duration;
         ts->cancelled = false;
-        snprintf(ts->source_path, sizeof(ts->source_path), "%s", source);
+        snprintf(ts->source_path, sizeof(ts->source_path), "%s", actual_source);
         snprintf(ts->output_dir, sizeof(ts->output_dir), "%s", temp_dir);
         snprintf(ts->profile_name, sizeof(ts->profile_name), "%s", prof->name);
         snprintf(ts->current_step, sizeof(ts->current_step), "Starting transcode...");
