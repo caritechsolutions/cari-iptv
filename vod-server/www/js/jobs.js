@@ -4,6 +4,7 @@
 var jobsPage = {
     interval: null,
     statusFilter: '',
+    jobs: [],
 
     render() {
         return `
@@ -17,6 +18,7 @@ var jobsPage = {
                         <option value="packaging">Packaging</option>
                         <option value="complete">Complete</option>
                         <option value="failed">Failed</option>
+                        <option value="cancelled">Cancelled</option>
                         <option value="paused">Paused</option>
                     </select>
                     <button class="btn btn-primary btn-sm" onclick="jobsPage.showNewJobModal()">
@@ -25,6 +27,18 @@ var jobsPage = {
                     </button>
                     <button class="btn btn-outline btn-sm" onclick="jobsPage.refresh()">Refresh</button>
                 </div>
+            </div>
+
+            <div id="jobs-bulk-actions" class="flex gap-2 mb-3" style="display:none">
+                <button class="btn btn-danger btn-sm" onclick="jobsPage.clearByStatus('failed')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Clear Failed
+                </button>
+                <button class="btn btn-outline btn-sm" onclick="jobsPage.clearByStatus('complete')">Clear Completed</button>
+                <button class="btn btn-outline btn-sm" onclick="jobsPage.clearByStatus('cancelled')">Clear Cancelled</button>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;color:var(--text-secondary);margin-left:8px;cursor:pointer">
+                    <input type="checkbox" id="jobs-cleanup-files" checked> Also delete source files
+                </label>
             </div>
 
             <div class="card">
@@ -74,7 +88,13 @@ var jobsPage = {
             const params = this.statusFilter ? `?status=${this.statusFilter}` : '';
             const data = await App.get('/jobs' + params);
             const jobs = data.items || data.jobs || [];
+            this.jobs = jobs;
             const tbody = document.getElementById('jobs-list');
+
+            /* Show/hide bulk actions based on whether there are deletable jobs */
+            const hasDeletable = jobs.some(j => ['failed', 'complete', 'cancelled'].includes(j.status));
+            const bulkEl = document.getElementById('jobs-bulk-actions');
+            if (bulkEl) bulkEl.style.display = hasDeletable ? '' : 'none';
 
             if (jobs.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="10">
@@ -89,12 +109,13 @@ var jobsPage = {
             tbody.innerHTML = jobs.map(j => {
                 const sourceShort = j.source_path ? j.source_path.split('/').pop() : '-';
                 const canCancel = ['pending', 'processing', 'packaging', 'downloading'].includes(j.status);
+                const canDelete = ['failed', 'complete', 'cancelled'].includes(j.status);
 
                 return `<tr>
                     <td class="text-mono">#${j.id}</td>
                     <td class="text-mono text-sm">${App.esc(j.content_id)}</td>
                     <td>${App.esc(j.title || '-')}</td>
-                    <td class="text-sm" title="${App.esc(j.source_path)}">${App.esc(sourceShort)}</td>
+                    <td class="text-sm" title="${App.esc(j.source_path || '')}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${App.esc(sourceShort)}</td>
                     <td>${App.esc(j.profile)}</td>
                     <td><span class="status ${j.status}">${j.status}</span></td>
                     <td style="min-width:140px">
@@ -109,14 +130,55 @@ var jobsPage = {
                     </td>
                     <td class="text-sm text-muted">${App.esc(j.current_step || '-')}</td>
                     <td class="text-muted text-sm">${App.timeAgo(j.created_at)}</td>
-                    <td>
+                    <td style="white-space:nowrap">
                         ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="jobsPage.cancelJob(${j.id})">Cancel</button>` : ''}
                         ${j.status === 'failed' ? `<button class="btn btn-outline btn-sm" title="${App.esc(j.error_msg || '')}" onclick="jobsPage.showError(${j.id})">Error</button>` : ''}
+                        ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="jobsPage.deleteJob(${j.id})">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Delete</button>` : ''}
                     </td>
                 </tr>`;
             }).join('');
         } catch (err) {
             /* Silent on poll failures */
+        }
+    },
+
+    async deleteJob(id) {
+        const cleanup = document.getElementById('jobs-cleanup-files');
+        const cleanupFiles = cleanup ? cleanup.checked : true;
+        const suffix = cleanupFiles ? '?cleanup=files' : '';
+
+        if (!confirm(`Delete job #${id}` + (cleanupFiles ? ' and its source file?' : '?'))) return;
+        try {
+            await App.del(`/jobs/${id}${suffix}`);
+            App.toast('Job deleted', 'success');
+            this.refresh();
+        } catch (err) {
+            App.toast('Failed to delete: ' + err.message, 'error');
+        }
+    },
+
+    async clearByStatus(status) {
+        const cleanup = document.getElementById('jobs-cleanup-files');
+        const cleanupFiles = cleanup ? cleanup.checked : true;
+        const count = this.jobs.filter(j => j.status === status).length;
+
+        if (count === 0) {
+            App.toast(`No ${status} jobs to clear`, 'info');
+            return;
+        }
+
+        const fileMsg = cleanupFiles ? ' and their source files' : '';
+        if (!confirm(`Delete all ${count} ${status} job(s)${fileMsg}?`)) return;
+
+        try {
+            const params = `?status=${status}` + (cleanupFiles ? '&cleanup=files' : '');
+            await App.del('/jobs' + params);
+            App.toast(`Cleared ${count} ${status} job(s)`, 'success');
+            this.refresh();
+        } catch (err) {
+            App.toast('Failed to clear jobs: ' + err.message, 'error');
         }
     },
 

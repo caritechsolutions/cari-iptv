@@ -268,10 +268,11 @@ int api_handle_request(http_request_t *req)
                                "Invalid job ID");
     }
 
-    /* GET|POST /api/jobs */
+    /* GET|POST|DELETE /api/jobs */
     if (strcmp(url, "/api/jobs") == 0) {
-        if (strcmp(method, HTTP_GET) == 0)  return api_get_jobs(req);
-        if (strcmp(method, HTTP_POST) == 0) return api_post_job(req);
+        if (strcmp(method, HTTP_GET) == 0)    return api_get_jobs(req);
+        if (strcmp(method, HTTP_POST) == 0)   return api_post_job(req);
+        if (strcmp(method, HTTP_DELETE) == 0)  return api_bulk_delete_jobs(req);
         return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
                                "Method not allowed");
     }
@@ -1360,8 +1361,12 @@ int api_delete_job(http_request_t *req, int job_id)
                                "Database not available");
     }
 
-    /* Fetch job status and PID */
-    const char *check_sql = "SELECT status, pid FROM jobs WHERE id = ?";
+    /* Check if caller wants source files cleaned up too */
+    const char *cleanup_param = http_get_param(req->connection, "cleanup");
+    int cleanup_source = (cleanup_param && strcmp(cleanup_param, "files") == 0);
+
+    /* Fetch job status, PID, and source path */
+    const char *check_sql = "SELECT status, pid, source_path FROM jobs WHERE id = ?";
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(db, check_sql, -1, &stmt, NULL) != SQLITE_OK) {
         return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
@@ -1377,8 +1382,15 @@ int api_delete_job(http_request_t *req, int job_id)
 
     const char *status = (const char *)sqlite3_column_text(stmt, 0);
     int pid = sqlite3_column_int(stmt, 1);
+    const char *source_raw = (const char *)sqlite3_column_text(stmt, 2);
     int is_active = (status && (strcmp(status, "processing") == 0 ||
                                 strcmp(status, "running") == 0));
+
+    /* Copy source_path before finalizing (SQLite memory) */
+    char source_path[2048] = {0};
+    if (source_raw && source_raw[0]) {
+        snprintf(source_path, sizeof(source_path), "%s", source_raw);
+    }
     sqlite3_finalize(stmt);
 
     /* If the job is currently active, try to kill the FFmpeg process */
@@ -1418,6 +1430,25 @@ int api_delete_job(http_request_t *req, int job_id)
     /* Clean up temp files */
     storage_cleanup_temp(job_id);
 
+    /* Delete source file if cleanup=files and it's in the uploads dir */
+    int source_deleted = 0;
+    if (cleanup_source && source_path[0]) {
+        /* Safety: only delete files inside the uploads directory */
+        if (strstr(source_path, "/uploads/") != NULL &&
+            strstr(source_path, "..") == NULL) {
+            struct stat st;
+            if (stat(source_path, &st) == 0 && S_ISREG(st.st_mode)) {
+                if (unlink(source_path) == 0) {
+                    log_info("Deleted source file: %s", source_path);
+                    source_deleted = 1;
+                } else {
+                    log_warn("Failed to delete source file: %s (%s)",
+                             source_path, strerror(errno));
+                }
+            }
+        }
+    }
+
     log_info("Job %d %s", job_id, is_active ? "cancelled" : "deleted");
 
     cJSON *root = cJSON_CreateObject();
@@ -1425,6 +1456,112 @@ int api_delete_job(http_request_t *req, int job_id)
     cJSON_AddStringToObject(root, "message",
                             is_active ? "Job cancelled" : "Job deleted");
     cJSON_AddNumberToObject(root, "job_id", job_id);
+    cJSON_AddBoolToObject(root, "source_deleted", source_deleted);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * DELETE /api/jobs?status=failed&cleanup=files
+ * Bulk-delete jobs by status. Optionally remove source files.
+ * ================================================================ */
+
+int api_bulk_delete_jobs(http_request_t *req)
+{
+    sqlite3 *db = db_handle();
+    if (!db) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Database not available");
+    }
+
+    const char *status_filter = http_get_param(req->connection, "status");
+    if (!status_filter || status_filter[0] == '\0') {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Missing required parameter: status (e.g. failed, complete, cancelled)");
+    }
+
+    /* Only allow bulk delete of terminal states */
+    if (strcmp(status_filter, "failed") != 0 &&
+        strcmp(status_filter, "complete") != 0 &&
+        strcmp(status_filter, "cancelled") != 0) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Can only bulk-delete failed, complete, or cancelled jobs");
+    }
+
+    const char *cleanup_param = http_get_param(req->connection, "cleanup");
+    int cleanup_source = (cleanup_param && strcmp(cleanup_param, "files") == 0);
+
+    /* First collect the jobs to delete (need source_path for cleanup) */
+    const char *select_sql = "SELECT id, source_path FROM jobs WHERE status = ?";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, select_sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Database query failed");
+    }
+    sqlite3_bind_text(stmt, 1, status_filter, -1, SQLITE_STATIC);
+
+    int deleted = 0;
+    int files_deleted = 0;
+
+    /* Collect job IDs and source paths */
+    typedef struct { int id; char source[2048]; } job_entry_t;
+    job_entry_t entries[500];  /* max 500 at a time */
+    int count = 0;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < 500) {
+        entries[count].id = sqlite3_column_int(stmt, 0);
+        const char *sp = (const char *)sqlite3_column_text(stmt, 1);
+        if (sp) {
+            snprintf(entries[count].source, sizeof(entries[count].source), "%s", sp);
+        } else {
+            entries[count].source[0] = '\0';
+        }
+        count++;
+    }
+    sqlite3_finalize(stmt);
+
+    if (count == 0) {
+        cJSON *root = cJSON_CreateObject();
+        cJSON_AddBoolToObject(root, "success", 1);
+        cJSON_AddStringToObject(root, "message", "No jobs to delete");
+        cJSON_AddNumberToObject(root, "deleted", 0);
+        return send_json_obj(req->connection, MHD_HTTP_OK, root);
+    }
+
+    /* Delete the records */
+    const char *del_sql = "DELETE FROM jobs WHERE status = ?";
+    if (sqlite3_prepare_v2(db, del_sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, status_filter, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_DONE) {
+            deleted = count;
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    /* Clean up temp dirs and optionally source files */
+    for (int i = 0; i < count; i++) {
+        storage_cleanup_temp(entries[i].id);
+
+        if (cleanup_source && entries[i].source[0] &&
+            strstr(entries[i].source, "/uploads/") != NULL &&
+            strstr(entries[i].source, "..") == NULL) {
+            struct stat st;
+            if (stat(entries[i].source, &st) == 0 && S_ISREG(st.st_mode)) {
+                if (unlink(entries[i].source) == 0) {
+                    files_deleted++;
+                }
+            }
+        }
+    }
+
+    log_info("Bulk deleted %d %s jobs (%d source files removed)",
+             deleted, status_filter, files_deleted);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "Jobs deleted");
+    cJSON_AddNumberToObject(root, "deleted", deleted);
+    cJSON_AddNumberToObject(root, "files_deleted", files_deleted);
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }

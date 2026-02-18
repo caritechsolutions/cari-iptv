@@ -25,6 +25,7 @@ int api_get_jobs(http_request_t *req);
 int api_post_job(http_request_t *req);
 int api_get_job(http_request_t *req, int job_id);
 int api_delete_job(http_request_t *req, int job_id);
+int api_bulk_delete_jobs(http_request_t *req);
 
 /* Peer routes */
 int api_get_peers(http_request_t *req);
