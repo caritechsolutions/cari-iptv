@@ -290,11 +290,20 @@ class VodServerController
      */
     public function uploadSource(): void
     {
-        // Allow large video file uploads
-        @ini_set('upload_max_filesize', '2G');
-        @ini_set('post_max_size', '2G');
+        // Extend execution time for large uploads
         @ini_set('max_execution_time', '600');
         @ini_set('max_input_time', '600');
+
+        // Detect if PHP dropped the request body due to post_max_size being exceeded.
+        // When this happens, both $_POST and $_FILES will be empty.
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && empty($_FILES)) {
+            $maxSize = ini_get('post_max_size');
+            $this->sendJson([
+                'success' => false,
+                'error' => "File too large. Server limit is {$maxSize}. Ask your administrator to increase upload_max_filesize and post_max_size in PHP config."
+            ]);
+            return;
+        }
 
         if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
             $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
@@ -303,8 +312,9 @@ class VodServerController
 
         if (empty($_FILES['video_file']['tmp_name']) || $_FILES['video_file']['error'] !== UPLOAD_ERR_OK) {
             $errCode = $_FILES['video_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+            $maxSize = ini_get('upload_max_filesize');
             $errMsgs = [
-                UPLOAD_ERR_INI_SIZE   => 'File exceeds the server upload limit',
+                UPLOAD_ERR_INI_SIZE   => "File exceeds the server upload limit ({$maxSize}). Increase upload_max_filesize in PHP config.",
                 UPLOAD_ERR_FORM_SIZE  => 'File exceeds the form upload limit',
                 UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded',
                 UPLOAD_ERR_NO_FILE    => 'No file was selected',

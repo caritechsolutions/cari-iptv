@@ -175,14 +175,19 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                         <label class="form-label">Source File</label>
                         <div style="display:flex;gap:0.5rem">
                             <input type="text" class="form-input" id="vod-source-path"
-                                   placeholder="Browse for a file or enter a URL" style="flex:1">
+                                   placeholder="No file selected" style="flex:1" readonly>
                             <input type="file" id="vod-file-input" accept="video/*,.mkv,.avi,.ts,.m2ts" style="display:none"
-                                   onchange="vodHandleFileSelect(this)">
-                            <button type="button" class="btn btn-primary" onclick="document.getElementById('vod-file-input').click()" title="Browse your computer for a video file">
+                                   onchange="vodFileSelected(this)">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('vod-file-input').click()" title="Browse your computer for a video file">
                                 <i class="lucide-folder-open"></i> Browse
                             </button>
+                            <button type="button" class="btn btn-primary" id="vod-upload-btn" onclick="vodUploadFile()" style="display:none" title="Upload the selected file">
+                                <i class="lucide-upload"></i> Upload
+                            </button>
                         </div>
-                        <small style="color:var(--text-muted)">Browse your computer for a video file, or paste a URL</small>
+                        <small style="color:var(--text-muted)">Browse your computer for a video file, or paste a URL below</small>
+                        <input type="text" class="form-input" id="vod-source-url" style="margin-top:0.5rem"
+                               placeholder="Or enter a URL: https://example.com/movie.mp4">
                     </div>
 
                     <!-- Upload progress -->
@@ -208,6 +213,8 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
             </div>
 
             <script>
+            var vodPendingFile = null;
+
             function vodFormatSize(bytes) {
                 if (!bytes) return '0 B';
                 var k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
@@ -215,18 +222,43 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
             }
 
-            function vodHandleFileSelect(input) {
+            function vodFileSelected(input) {
                 if (!input.files || !input.files[0]) return;
-                var file = input.files[0];
+                vodPendingFile = input.files[0];
 
-                // Show progress bar
+                // Show selected filename and size in the path field
+                document.getElementById('vod-source-path').value = vodPendingFile.name + ' (' + vodFormatSize(vodPendingFile.size) + ')';
+
+                // Show the Upload button
+                document.getElementById('vod-upload-btn').style.display = '';
+
+                // Reset progress/status
+                document.getElementById('vod-upload-progress').style.display = 'none';
+                document.getElementById('vod-transcode-status').style.display = 'none';
+                var bar = document.getElementById('vod-upload-bar');
+                bar.style.width = '0%';
+                bar.style.background = 'var(--primary)';
+            }
+
+            function vodUploadFile() {
+                if (!vodPendingFile) { alert('Please browse for a file first.'); return; }
+
+                var file = vodPendingFile;
+                var uploadBtn = document.getElementById('vod-upload-btn');
                 var progressDiv = document.getElementById('vod-upload-progress');
                 var statusDiv = document.getElementById('vod-transcode-status');
+
+                // Disable button during upload
+                uploadBtn.disabled = true;
+                uploadBtn.innerHTML = '<i class="lucide-loader"></i> Uploading...';
+
+                // Show progress bar
                 progressDiv.style.display = 'block';
                 statusDiv.style.display = 'none';
                 document.getElementById('vod-upload-filename').textContent = 'Uploading: ' + file.name;
                 document.getElementById('vod-upload-pct').textContent = '0%';
                 document.getElementById('vod-upload-bar').style.width = '0%';
+                document.getElementById('vod-upload-bar').style.background = 'var(--primary)';
                 document.getElementById('vod-upload-size').textContent = '0 / ' + vodFormatSize(file.size);
 
                 var formData = new FormData();
@@ -246,30 +278,48 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 });
 
                 xhr.addEventListener('load', function() {
+                    uploadBtn.disabled = false;
+                    uploadBtn.innerHTML = '<i class="lucide-upload"></i> Upload';
+
+                    if (xhr.status === 0 || xhr.responseText === '') {
+                        document.getElementById('vod-upload-filename').textContent = 'Upload failed: File too large for server. Check PHP upload_max_filesize setting.';
+                        document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
+                        document.getElementById('vod-upload-bar').style.width = '100%';
+                        return;
+                    }
+
                     try {
                         var data = JSON.parse(xhr.responseText);
                         if (data.success) {
-                            document.getElementById('vod-source-path').value = data.download_url;
+                            document.getElementById('vod-source-path').value = file.name + ' - Uploaded!';
+                            document.getElementById('vod-source-url').value = data.download_url;
                             document.getElementById('vod-upload-filename').textContent = file.name + ' - Uploaded!';
                             document.getElementById('vod-upload-bar').style.background = 'var(--success)';
                             document.getElementById('vod-upload-pct').textContent = 'Done';
+                            uploadBtn.style.display = 'none';
+                            vodPendingFile = null;
                         } else {
                             document.getElementById('vod-upload-filename').textContent = 'Upload failed: ' + (data.error || 'Unknown error');
                             document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
                             document.getElementById('vod-upload-bar').style.width = '100%';
                         }
                     } catch(e) {
-                        document.getElementById('vod-upload-filename').textContent = 'Upload failed: Invalid server response';
+                        var msg = 'Invalid server response';
+                        if (xhr.responseText.indexOf('413') !== -1 || xhr.responseText.indexOf('Too Large') !== -1) {
+                            msg = 'File too large. Increase upload_max_filesize in PHP/Nginx config.';
+                        }
+                        document.getElementById('vod-upload-filename').textContent = 'Upload failed: ' + msg;
                         document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
+                        document.getElementById('vod-upload-bar').style.width = '100%';
                     }
-                    input.value = '';
                 });
 
                 xhr.addEventListener('error', function() {
-                    document.getElementById('vod-upload-filename').textContent = 'Upload failed: Network error';
+                    uploadBtn.disabled = false;
+                    uploadBtn.innerHTML = '<i class="lucide-upload"></i> Upload';
+                    document.getElementById('vod-upload-filename').textContent = 'Upload failed: Network error or file too large';
                     document.getElementById('vod-upload-bar').style.background = 'var(--danger)';
                     document.getElementById('vod-upload-bar').style.width = '100%';
-                    input.value = '';
                 });
 
                 xhr.send(formData);
@@ -278,13 +328,13 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
             function vodSubmitTranscode() {
                 var serverId = document.getElementById('vod-transcode-server').value;
                 var profile = document.getElementById('vod-transcode-profile').value;
-                var sourcePath = document.getElementById('vod-source-path').value.trim();
+                var sourcePath = document.getElementById('vod-source-url').value.trim();
                 var movieId = <?= $movie['id'] ?? 0 ?>;
                 var movieTitle = <?= json_encode($movie['title'] ?? '') ?>;
                 var statusDiv = document.getElementById('vod-transcode-status');
                 var btn = document.getElementById('vod-submit-btn');
 
-                if (!sourcePath) { alert('Enter a source file path or URL.'); return; }
+                if (!sourcePath) { alert('Upload a file or enter a source URL first.'); return; }
 
                 btn.disabled = true;
                 btn.innerHTML = '<i class="lucide-loader"></i> Submitting...';

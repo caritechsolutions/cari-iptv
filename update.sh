@@ -512,6 +512,33 @@ CRONEOF
 restart_services() {
     log_step "Restarting Services"
 
+    # Update PHP upload limits for VOD file uploads
+    for PHP_INI in /etc/php/8.2/fpm/php.ini /etc/php/8.1/fpm/php.ini /etc/php.ini; do
+        if [ -f "$PHP_INI" ]; then
+            current_upload=$(grep -oP '(?<=^upload_max_filesize = )\S+' "$PHP_INI" 2>/dev/null || echo "")
+            if [ "$current_upload" != "2G" ]; then
+                sed -i 's/^upload_max_filesize.*/upload_max_filesize = 2G/' "$PHP_INI"
+                sed -i 's/^post_max_size.*/post_max_size = 2G/' "$PHP_INI"
+                sed -i 's/^max_execution_time.*/max_execution_time = 600/' "$PHP_INI"
+                sed -i 's/^max_input_time.*/max_input_time = 600/' "$PHP_INI"
+                log_info "Updated PHP upload limits in $PHP_INI"
+            fi
+            break
+        fi
+    done
+
+    # Add client_max_body_size to Nginx config if missing
+    NGINX_CONF="/etc/nginx/sites-available/cari-iptv"
+    if [ ! -f "$NGINX_CONF" ]; then
+        NGINX_CONF="/etc/nginx/conf.d/cari-iptv.conf"
+    fi
+    if [ -f "$NGINX_CONF" ]; then
+        if ! grep -q "client_max_body_size" "$NGINX_CONF"; then
+            sed -i '/index index.php/a\    \n    # Allow large file uploads (VOD source files)\n    client_max_body_size 2G;' "$NGINX_CONF"
+            log_info "Added client_max_body_size to Nginx config"
+        fi
+    fi
+
     # Restart PHP-FPM
     if systemctl is-active --quiet php8.2-fpm 2>/dev/null; then
         systemctl restart php8.2-fpm

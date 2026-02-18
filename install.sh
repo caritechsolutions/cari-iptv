@@ -609,10 +609,11 @@ configure_php() {
     # Configure PHP settings
     log_info "Optimizing PHP settings..."
     if [ -f "$PHP_INI" ]; then
-        sed -i 's/^upload_max_filesize.*/upload_max_filesize = 100M/' "$PHP_INI"
-        sed -i 's/^post_max_size.*/post_max_size = 100M/' "$PHP_INI"
+        sed -i 's/^upload_max_filesize.*/upload_max_filesize = 2G/' "$PHP_INI"
+        sed -i 's/^post_max_size.*/post_max_size = 2G/' "$PHP_INI"
         sed -i 's/^memory_limit.*/memory_limit = 256M/' "$PHP_INI"
-        sed -i 's/^max_execution_time.*/max_execution_time = 300/' "$PHP_INI"
+        sed -i 's/^max_execution_time.*/max_execution_time = 600/' "$PHP_INI"
+        sed -i 's/^max_input_time.*/max_input_time = 600/' "$PHP_INI"
         sed -i 's/^;date.timezone.*/date.timezone = UTC/' "$PHP_INI"
     fi
 
@@ -668,6 +669,9 @@ server {
 
     root ${INSTALL_DIR}/public;
     index index.php index.html;
+
+    # Allow large file uploads (VOD source files)
+    client_max_body_size 2G;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
