@@ -338,6 +338,12 @@ class VodServerController
             $job = $jobResult['job'] ?? $jobResult;
             $jobId = (int)($job['id'] ?? 0);
 
+            // Debug: log the full flow
+            error_log('[VOD Upload] movieId=' . $movieId . ' serverId=' . $serverId . ' jobId=' . $jobId);
+            error_log('[VOD Upload] jobResult keys: ' . implode(', ', array_keys($jobResult)));
+            error_log('[VOD Upload] job keys: ' . implode(', ', array_keys($job)));
+            error_log('[VOD Upload] job content: ' . json_encode($job));
+
             // Save job reference on the movie record (fail gracefully if columns don't exist yet)
             if ($movieId > 0 && $jobId > 0) {
                 try {
@@ -345,10 +351,12 @@ class VodServerController
                         "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
                         [$serverId, $jobId, $movieId]
                     );
+                    error_log('[VOD Upload] DB save SUCCESS for movie ' . $movieId);
                 } catch (\Exception $dbErr) {
-                    // Migration may not have run yet — non-fatal
-                    error_log('VOD status save failed (migration pending?): ' . $dbErr->getMessage());
+                    error_log('[VOD Upload] DB save FAILED: ' . $dbErr->getMessage());
                 }
+            } else {
+                error_log('[VOD Upload] SKIPPED DB save — movieId=' . $movieId . ' jobId=' . $jobId . ' (condition not met)');
             }
 
             $this->sendJson([
