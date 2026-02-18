@@ -398,12 +398,14 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             document.getElementById('vod-upload-label').textContent = file.name + ' — Uploaded!';
                             document.getElementById('vod-upload-pct').textContent = 'Done';
 
-                            var job = data.job;
+                            var job = data.job || {};
                             var sid = data.server_id || serverId;
-                            if (job && job.id) {
-                                startTranscodePoll(sid, job.id);
+                            // Accept id or job_id from the VOD server response
+                            var jid = job.id || job.job_id || 0;
+                            if (jid) {
+                                startTranscodePoll(sid, jid);
                             } else {
-                                showMsg('File uploaded and job submitted. Transcoding will start automatically.', 'success');
+                                showMsg('File uploaded and job submitted. Refresh the page to check transcode status.', 'success');
                                 resetButtons();
                             }
 
@@ -455,15 +457,25 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 }
 
                 function startTranscodePoll(serverId, jobId) {
+                    // Show transcode progress, hide upload controls
                     var progDiv = document.getElementById('vod-transcode-progress');
                     progDiv.style.display = 'block';
+                    document.getElementById('vod-upload-controls').style.display = 'none';
+                    document.getElementById('vod-transcode-label').textContent = 'Checking transcode status...';
+                    document.getElementById('vod-transcode-step').textContent = 'Polling VOD server...';
+                    console.log('[VOD] Starting transcode poll: server=' + serverId + ' job=' + jobId + ' movie=' + MOVIE_ID);
 
                     if (vodJobPollTimer) clearInterval(vodJobPollTimer);
-                    vodJobPollTimer = setInterval(function() {
+
+                    function pollOnce() {
                         fetch('/admin/vod-server/job-status?server_id=' + serverId + '&job_id=' + jobId + '&movie_id=' + MOVIE_ID)
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
-                                if (!data.success || !data.job) return;
+                                console.log('[VOD] Poll response:', data);
+                                if (!data.success || !data.job) {
+                                    document.getElementById('vod-transcode-step').textContent = 'Waiting for response...';
+                                    return;
+                                }
                                 var j = data.job;
                                 var pct = parseFloat(j.progress || 0);
 
@@ -471,7 +483,9 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                 document.getElementById('vod-transcode-bar').style.width = pct + '%';
                                 document.getElementById('vod-transcode-step').textContent = j.current_step || j.status || '';
 
-                                if (j.status === 'processing' || j.status === 'packaging' || j.status === 'downloading') {
+                                if (j.status === 'pending' || j.status === 'queued') {
+                                    document.getElementById('vod-transcode-label').textContent = 'Waiting in queue...';
+                                } else if (j.status === 'processing' || j.status === 'packaging' || j.status === 'downloading') {
                                     document.getElementById('vod-transcode-label').textContent =
                                         j.status === 'packaging' ? 'Packaging for streaming...' :
                                         j.status === 'downloading' ? 'Downloading source...' :
@@ -484,7 +498,6 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                     document.getElementById('vod-transcode-pct').textContent = '100%';
                                     document.getElementById('vod-transcode-label').textContent = 'Transcode complete!';
                                     document.getElementById('vod-transcode-step').textContent = '';
-                                    // Update stream_url field if returned
                                     if (j.stream_url) {
                                         document.getElementById('stream_url').value = j.stream_url;
                                     }
@@ -505,8 +518,15 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                     resetButtons();
                                 }
                             })
-                            .catch(function() { /* silent poll failure */ });
-                    }, 3000);
+                            .catch(function(err) {
+                                console.log('[VOD] Poll error:', err);
+                                document.getElementById('vod-transcode-step').textContent = 'Connection error, retrying...';
+                            });
+                    }
+
+                    // Poll immediately, then every 3 seconds
+                    pollOnce();
+                    vodJobPollTimer = setInterval(pollOnce, 3000);
                 }
 
                 // Auto-resume polling if there's an active job from DB

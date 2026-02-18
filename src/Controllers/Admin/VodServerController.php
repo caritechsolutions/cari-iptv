@@ -338,12 +338,17 @@ class VodServerController
             $job = $jobResult['job'] ?? $jobResult;
             $jobId = (int)($job['id'] ?? 0);
 
-            // Save job reference on the movie record
+            // Save job reference on the movie record (fail gracefully if columns don't exist yet)
             if ($movieId > 0 && $jobId > 0) {
-                $this->db->execute(
-                    "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
-                    [$serverId, $jobId, $movieId]
-                );
+                try {
+                    $this->db->execute(
+                        "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
+                        [$serverId, $jobId, $movieId]
+                    );
+                } catch (\Exception $dbErr) {
+                    // Migration may not have run yet — non-fatal
+                    error_log('VOD status save failed (migration pending?): ' . $dbErr->getMessage());
+                }
             }
 
             $this->sendJson([
@@ -352,15 +357,9 @@ class VodServerController
                 'upload_path' => $uploadResult['path'],
                 'job'        => $job,
                 'server_id'  => $serverId,
+                'movie_id'   => $movieId,
             ]);
         } catch (\Exception $e) {
-            // Save error on movie if possible
-            if ($movieId > 0) {
-                $this->db->execute(
-                    "UPDATE movies SET vod_server_id = ?, vod_status = 'failed', vod_error = ? WHERE id = ?",
-                    [$serverId, $e->getMessage(), $movieId]
-                );
-            }
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
     }
@@ -408,35 +407,46 @@ class VodServerController
             $progress = (float)($job['progress'] ?? 0);
             $errorMsg = $job['error_msg'] ?? null;
 
-            // Persist status to movie record
+            // Persist status to movie record (fail gracefully if columns don't exist yet)
             if ($movieId > 0) {
-                if ($status === 'complete') {
-                    // Transcode done — write the stream URL
-                    $server = $this->vodService->getServer($sid);
-                    $contentId = $job['content_id'] ?? ('movie-' . $movieId);
-                    $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+                try {
+                    if ($status === 'complete') {
+                        // Transcode done — write the stream URL
+                        $server = $this->vodService->getServer($sid);
+                        $contentId = $job['content_id'] ?? ('movie-' . $movieId);
+                        $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
 
-                    $this->db->execute(
-                        "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ? WHERE id = ?",
-                        [$hlsUrl, $movieId]
-                    );
-                    $job['stream_url'] = $hlsUrl;
-                } elseif ($status === 'failed') {
-                    $this->db->execute(
-                        "UPDATE movies SET vod_status = 'failed', vod_progress = ?, vod_error = ? WHERE id = ?",
-                        [$progress, $errorMsg, $movieId]
-                    );
-                } elseif ($status === 'cancelled') {
-                    $this->db->execute(
-                        "UPDATE movies SET vod_status = 'cancelled', vod_job_id = NULL, vod_error = 'Cancelled' WHERE id = ?",
-                        [$movieId]
-                    );
-                } else {
-                    // In progress — update progress
-                    $this->db->execute(
-                        "UPDATE movies SET vod_status = ?, vod_progress = ? WHERE id = ?",
-                        [$status, $progress, $movieId]
-                    );
+                        $this->db->execute(
+                            "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ? WHERE id = ?",
+                            [$hlsUrl, $movieId]
+                        );
+                        $job['stream_url'] = $hlsUrl;
+                    } elseif ($status === 'failed') {
+                        $this->db->execute(
+                            "UPDATE movies SET vod_status = 'failed', vod_progress = ?, vod_error = ? WHERE id = ?",
+                            [$progress, $errorMsg, $movieId]
+                        );
+                    } elseif ($status === 'cancelled') {
+                        $this->db->execute(
+                            "UPDATE movies SET vod_status = 'cancelled', vod_job_id = NULL, vod_error = 'Cancelled' WHERE id = ?",
+                            [$movieId]
+                        );
+                    } else {
+                        // In progress — update progress
+                        $this->db->execute(
+                            "UPDATE movies SET vod_status = ?, vod_progress = ? WHERE id = ?",
+                            [$status, $progress, $movieId]
+                        );
+                    }
+                } catch (\Exception $dbErr) {
+                    // Migration may not have run yet — non-fatal
+                    error_log('VOD status poll save failed: ' . $dbErr->getMessage());
+                    // Still compute stream_url for the JS response
+                    if ($status === 'complete') {
+                        $server = $this->vodService->getServer($sid);
+                        $contentId = $job['content_id'] ?? ('movie-' . $movieId);
+                        $job['stream_url'] = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+                    }
                 }
             }
 
