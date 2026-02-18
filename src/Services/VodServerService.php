@@ -423,23 +423,31 @@ class VodServerService
         if ($errno) throw new \RuntimeException('Connection failed: ' . $error);
         if ($httpCode === 0) throw new \RuntimeException('Could not connect to VOD Server at ' . $baseUrl);
 
-        $data = json_decode($response, true);
-        if ($data === null && !empty($response)) {
-            // Some responses may have trailing whitespace or BOM - try trimming
-            $trimmed = trim($response, "\xEF\xBB\xBF \t\n\r\0\x0B");
-            $data = json_decode($trimmed, true);
-        }
-        if ($data === null && !empty($response)) {
-            throw new \RuntimeException('Invalid response from VOD Server (HTTP ' . $httpCode . ')');
+        // Try to parse JSON response — strip any stray bytes
+        $clean = $response;
+        if ($clean !== null && $clean !== '') {
+            // Remove BOM, null bytes, and control characters that break json_decode
+            $clean = ltrim($clean, "\xEF\xBB\xBF");
+            $clean = trim($clean);
+            // Find the JSON object/array boundaries in case of surrounding garbage
+            $start = strpos($clean, '{');
+            if ($start === false) $start = strpos($clean, '[');
+            if ($start !== false) {
+                $clean = substr($clean, $start);
+            }
         }
 
+        $data = json_decode($clean, true);
+
+        // Check for HTTP errors
         if ($httpCode >= 400) {
-            throw new \RuntimeException($data['error'] ?? $data['message'] ?? 'HTTP ' . $httpCode);
+            $errMsg = $data['error'] ?? $data['message'] ?? 'HTTP ' . $httpCode;
+            throw new \RuntimeException($errMsg);
         }
 
-        // For 2xx responses with empty body (e.g. 204 No Content), return success
-        if ($data === null) {
-            $data = ['success' => true];
+        // For 2xx (200, 201, 204, etc.) — return parsed data or success placeholder
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return $data ?? ['success' => true];
         }
 
         return $data ?? [];
