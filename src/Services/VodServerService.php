@@ -231,30 +231,12 @@ class VodServerService
         return $this->request($server, 'GET', '/api/browse?path=' . urlencode($path));
     }
 
-    /* =========== Profile CRUD =========== */
+    /* =========== Profiles (read-only — manage on VOD Server GUI) =========== */
 
     public function getProfiles(int $serverId): array
     {
         $server = $this->requireServer($serverId);
         return $this->request($server, 'GET', '/api/profiles');
-    }
-
-    public function createProfile(int $serverId, array $data): array
-    {
-        $server = $this->requireServer($serverId);
-        return $this->request($server, 'POST', '/api/profiles', $data);
-    }
-
-    public function updateProfile(int $serverId, string $name, array $data): array
-    {
-        $server = $this->requireServer($serverId);
-        return $this->request($server, 'PUT', '/api/profiles/' . urlencode($name), $data);
-    }
-
-    public function deleteProfile(int $serverId, string $name): array
-    {
-        $server = $this->requireServer($serverId);
-        return $this->request($server, 'DELETE', '/api/profiles/' . urlencode($name));
     }
 
     /**

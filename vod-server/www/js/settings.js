@@ -76,11 +76,7 @@ var settingsPage = {
                     <div class="form-group">
                         <label>Default Profile</label>
                         <select class="form-control" id="set-default-profile">
-                            <option value="standard">Standard (H.264)</option>
-                            <option value="high">High (HEVC)</option>
-                            <option value="low">Low Bandwidth</option>
-                            <option value="hevc_4k">HEVC 4K</option>
-                            <option value="av1">AV1</option>
+                            <option value="">Loading...</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -181,9 +177,11 @@ var settingsPage = {
             /* Transcoding */
             const tc = config.transcoding || {};
             document.getElementById('set-max-jobs').value = tc.max_concurrent_jobs || 2;
-            document.getElementById('set-default-profile').value = tc.default_profile || 'standard';
             document.getElementById('set-hwaccel').value = tc.hwaccel || 'none';
             document.getElementById('set-segment-dur').value = tc.segment_duration || 6;
+
+            /* Load profile list into default profile dropdown */
+            this.loadProfileDropdown(tc.default_profile || 'standard');
 
             /* Thumbnails */
             const th = config.thumbnails || {};
@@ -203,6 +201,25 @@ var settingsPage = {
     },
 
     stop() {},
+
+    /* --- Profile Dropdown --- */
+
+    async loadProfileDropdown(selected) {
+        const select = document.getElementById('set-default-profile');
+        try {
+            const data = await App.get('/profiles');
+            const profiles = data.profiles || [];
+            if (profiles.length === 0) {
+                select.innerHTML = '<option value="standard">standard</option>';
+            } else {
+                select.innerHTML = profiles.map(p =>
+                    `<option value="${App.esc(p.name)}" ${p.name === selected ? 'selected' : ''}>${App.esc(p.name)} (${App.esc(p.codec || '?')})</option>`
+                ).join('');
+            }
+        } catch (err) {
+            select.innerHTML = `<option value="${App.esc(selected)}">${App.esc(selected)}</option>`;
+        }
+    },
 
     /* --- SSL Section --- */
 
