@@ -239,6 +239,9 @@
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-file-input').click()">
                             <i class="lucide-upload"></i> Upload
                         </button>
+                        <button type="button" class="btn btn-secondary" onclick="VodPage.showUploads()" title="Manage uploaded files">
+                            <i class="lucide-hard-drive"></i>
+                        </button>
                         <input type="file" id="upload-file-input" accept="video/*,.mkv,.avi,.mov,.wmv,.flv,.ts,.m2ts,.mpg,.mpeg,.m4v" style="display:none" onchange="VodPage.uploadSource(this)">
                     </div>
                     <div id="upload-progress-wrap" style="display:none;margin-top:0.5rem">
@@ -489,6 +492,31 @@
         <div class="modal-footer" style="display:flex;justify-content:space-between">
             <button class="btn btn-secondary" onclick="VodPage.closeModal('browse-modal')">Cancel</button>
             <button class="btn btn-primary" id="browse-select-btn" onclick="VodPage.selectBrowsed()" disabled>Select File</button>
+        </div>
+    </div>
+</div>
+
+<!-- Uploads Management Modal -->
+<div id="uploads-modal" class="modal-overlay" style="display:none">
+    <div class="modal" style="max-width:650px">
+        <div class="modal-header">
+            <h2>Uploaded Files</h2>
+            <button class="btn btn-sm" onclick="VodPage.closeModal('uploads-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="uploads-summary" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:var(--bg-dark);border-radius:6px;font-size:0.85rem">
+                <span id="uploads-count">0 files</span>
+                <span id="uploads-total-size" style="color:var(--text-muted)">0 B total</span>
+            </div>
+            <div class="browse-modal-list" id="uploads-list" style="max-height:350px;overflow-y:auto">
+                <div class="empty-state"><p>Loading...</p></div>
+            </div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:space-between">
+            <button class="btn btn-secondary" onclick="VodPage.closeModal('uploads-modal')">Close</button>
+            <button class="btn btn-danger" id="uploads-delete-all-btn" onclick="VodPage.deleteAllUploads()" style="display:none">
+                <i class="lucide-trash-2"></i> Delete All
+            </button>
         </div>
     </div>
 </div>
@@ -1322,6 +1350,111 @@ const VodPage = {
             this.activeUploadXhr.abort();
             this.activeUploadXhr = null;
         }
+    },
+
+    /* ===================== Uploads Management ===================== */
+    uploadFiles: [],
+
+    async showUploads() {
+        if (!this.selectedServerId) { this.toast('Select a server first', 'error'); return; }
+        document.getElementById('uploads-modal').style.display = 'flex';
+        document.getElementById('uploads-list').innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+        await this.loadUploads();
+    },
+
+    async loadUploads() {
+        const server = this.servers.find(s => s.id == this.selectedServerId);
+        if (!server) return;
+
+        try {
+            const res = await fetch(server.url.replace(/\/$/, '') + '/api/uploads', {
+                headers: server.api_key ? {'X-API-Key': server.api_key} : {}
+            });
+            const data = await res.json();
+            if (!data.success) { this.toast(data.error || 'Failed to load uploads', 'error'); return; }
+
+            this.uploadFiles = data.files || [];
+            const totalSize = data.total_size || 0;
+
+            document.getElementById('uploads-count').textContent = this.uploadFiles.length + ' file' + (this.uploadFiles.length !== 1 ? 's' : '');
+            document.getElementById('uploads-total-size').textContent = this.formatBytes(totalSize) + ' total';
+            document.getElementById('uploads-delete-all-btn').style.display = this.uploadFiles.length > 0 ? '' : 'none';
+
+            if (this.uploadFiles.length === 0) {
+                document.getElementById('uploads-list').innerHTML = '<div class="empty-state"><p>No uploaded files</p></div>';
+                return;
+            }
+
+            /* Sort by modified date, newest first */
+            this.uploadFiles.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+
+            document.getElementById('uploads-list').innerHTML = this.uploadFiles.map(f => `
+                <div class="browse-item" style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem">
+                    <i class="lucide-film" style="opacity:0.5"></i>
+                    <span class="name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${this.esc(f.path)}">${this.esc(f.name)}</span>
+                    <span style="color:var(--text-muted);font-size:0.8rem;white-space:nowrap">${this.formatBytes(f.size)}</span>
+                    <button class="btn btn-sm btn-secondary" onclick="VodPage.useUploadedFile('${this.escAttr(f.path)}')" title="Use as source" style="padding:0.15rem 0.4rem">
+                        <i class="lucide-check"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="VodPage.deleteUpload('${this.escAttr(f.name)}')" title="Delete" style="padding:0.15rem 0.4rem">
+                        <i class="lucide-trash-2"></i>
+                    </button>
+                </div>
+            `).join('');
+        } catch (err) {
+            document.getElementById('uploads-list').innerHTML = '<div class="empty-state"><p>' + this.esc(err.message) + '</p></div>';
+        }
+    },
+
+    useUploadedFile(path) {
+        document.getElementById('job-source').value = path;
+        document.getElementById('job-source-type').value = 'file';
+        this.closeModal('uploads-modal');
+        this.toast('Source path set', 'success');
+    },
+
+    async deleteUpload(filename) {
+        if (!confirm('Delete ' + filename + '?')) return;
+
+        const server = this.servers.find(s => s.id == this.selectedServerId);
+        if (!server) return;
+
+        try {
+            const res = await fetch(server.url.replace(/\/$/, '') + '/api/uploads?file=' + encodeURIComponent(filename), {
+                method: 'DELETE',
+                headers: server.api_key ? {'X-API-Key': server.api_key} : {}
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.toast('Deleted — freed ' + this.formatBytes(data.freed), 'success');
+                await this.loadUploads();
+            } else {
+                this.toast(data.error || 'Delete failed', 'error');
+            }
+        } catch (err) {
+            this.toast(err.message, 'error');
+        }
+    },
+
+    async deleteAllUploads() {
+        if (!confirm('Delete all ' + this.uploadFiles.length + ' uploaded files?')) return;
+
+        const server = this.servers.find(s => s.id == this.selectedServerId);
+        if (!server) return;
+
+        let deleted = 0;
+        for (const f of this.uploadFiles) {
+            try {
+                const res = await fetch(server.url.replace(/\/$/, '') + '/api/uploads?file=' + encodeURIComponent(f.name), {
+                    method: 'DELETE',
+                    headers: server.api_key ? {'X-API-Key': server.api_key} : {}
+                });
+                const data = await res.json();
+                if (data.success) deleted++;
+            } catch (e) { /* continue */ }
+        }
+        this.toast('Deleted ' + deleted + ' files', 'success');
+        await this.loadUploads();
     },
 
     /* ===================== Auto-refresh ===================== */

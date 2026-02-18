@@ -337,6 +337,14 @@ int api_handle_request(http_request_t *req)
         return api_post_upload(req);
     }
 
+    /* GET|DELETE /api/uploads */
+    if (strcmp(url, "/api/uploads") == 0) {
+        if (strcmp(method, HTTP_GET) == 0)    return api_get_uploads(req);
+        if (strcmp(method, HTTP_DELETE) == 0)  return api_delete_upload(req);
+        return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                               "Method not allowed");
+    }
+
     /* GET /api/browse?path=... */
     if (strcmp(url, "/api/browse") == 0 && strcmp(method, HTTP_GET) == 0) {
         return api_get_browse(req);
@@ -2031,6 +2039,103 @@ int api_post_upload(http_request_t *req)
     cJSON_AddStringToObject(root, "message", "File uploaded successfully");
     cJSON_AddStringToObject(root, "path", req->upload_path);
     cJSON_AddNumberToObject(root, "size", (double)req->upload_size);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * GET /api/uploads  — list files in the uploads directory
+ * ================================================================ */
+
+int api_get_uploads(http_request_t *req)
+{
+    char upload_dir[MAX_PATH_LEN];
+    snprintf(upload_dir, sizeof(upload_dir), "%s/uploads",
+             s_config ? s_config->temp_path : "/var/lib/vod-server/tmp");
+
+    DIR *dir = opendir(upload_dir);
+    if (!dir) {
+        /* Directory doesn't exist yet — return empty list */
+        cJSON *root = cJSON_CreateObject();
+        cJSON_AddBoolToObject(root, "success", 1);
+        cJSON_AddItemToObject(root, "files", cJSON_CreateArray());
+        cJSON_AddNumberToObject(root, "total_size", 0);
+        return send_json_obj(req->connection, MHD_HTTP_OK, root);
+    }
+
+    cJSON *files = cJSON_CreateArray();
+    uint64_t total_size = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+
+        char filepath[MAX_PATH_LEN];
+        snprintf(filepath, sizeof(filepath), "%s/%s", upload_dir, entry->d_name);
+
+        struct stat st;
+        if (stat(filepath, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+
+        cJSON *file = cJSON_CreateObject();
+        cJSON_AddStringToObject(file, "name", entry->d_name);
+        cJSON_AddStringToObject(file, "path", filepath);
+        cJSON_AddNumberToObject(file, "size", (double)st.st_size);
+        cJSON_AddNumberToObject(file, "modified", (double)st.st_mtime);
+        cJSON_AddItemToArray(files, file);
+
+        total_size += (uint64_t)st.st_size;
+    }
+    closedir(dir);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddItemToObject(root, "files", files);
+    cJSON_AddNumberToObject(root, "total_size", (double)total_size);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * DELETE /api/uploads?file=filename  — delete an uploaded file
+ * ================================================================ */
+
+int api_delete_upload(http_request_t *req)
+{
+    const char *filename = http_get_param(req->connection, "file");
+    if (!filename || filename[0] == '\0') {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Missing required parameter: file");
+    }
+
+    /* Prevent directory traversal */
+    if (strstr(filename, "..") || strchr(filename, '/') || strchr(filename, '\\')) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid filename");
+    }
+
+    char filepath[MAX_PATH_LEN];
+    snprintf(filepath, sizeof(filepath), "%s/uploads/%s",
+             s_config ? s_config->temp_path : "/var/lib/vod-server/tmp",
+             filename);
+
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "File not found");
+    }
+
+    if (unlink(filepath) != 0) {
+        log_error("Failed to delete upload: %s (%s)", filepath, strerror(errno));
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Failed to delete file");
+    }
+
+    log_info("Deleted upload: %s (%lld bytes)", filepath, (long long)st.st_size);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "File deleted");
+    cJSON_AddNumberToObject(root, "freed", (double)st.st_size);
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }

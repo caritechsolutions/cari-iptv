@@ -41,8 +41,10 @@ int api_delete_migration(http_request_t *req, int migration_id);
 /* Peer health endpoint (called by other peers) */
 int api_post_peer_health(http_request_t *req);
 
-/* Upload route */
+/* Upload routes */
 int api_post_upload(http_request_t *req);
+int api_get_uploads(http_request_t *req);
+int api_delete_upload(http_request_t *req);
 
 /* Utility routes */
 int api_get_browse(http_request_t *req);
