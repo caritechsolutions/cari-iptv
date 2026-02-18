@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <errno.h>
 
@@ -190,6 +191,63 @@ int http_send_file(struct MHD_Connection *conn, const char *filepath)
     return ret;
 }
 
+/**
+ * Serve a content/library file (HLS/DASH segments, manifests, etc.).
+ * Similar to http_send_file but uses fd-based streaming for large segments,
+ * adds CORS headers for browser-based players, and uses appropriate caching
+ * (no-cache for manifests, long cache for immutable segments).
+ */
+int http_send_content_file(struct MHD_Connection *conn, const char *filepath)
+{
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        log_debug("Content file not found: %s", filepath);
+        return http_send_error(conn, MHD_HTTP_NOT_FOUND, "File not found");
+    }
+
+    if (!S_ISREG(st.st_mode)) {
+        return http_send_error(conn, MHD_HTTP_FORBIDDEN, "Not a regular file");
+    }
+
+    /* Use fd-based response for efficient serving of large media segments */
+    int fd = open(filepath, O_RDONLY);
+    if (fd < 0) {
+        log_error("Cannot open content file: %s (%s)", filepath, strerror(errno));
+        return http_send_error(conn, MHD_HTTP_INTERNAL_SERVER_ERROR, "Cannot read file");
+    }
+
+    struct MHD_Response *response =
+        MHD_create_response_from_fd((uint64_t)st.st_size, fd);
+    if (!response) {
+        close(fd);
+        return MHD_NO;
+    }
+
+    const char *ct = http_content_type(filepath);
+    MHD_add_response_header(response, "Content-Type", ct);
+
+    /* CORS headers — required for browser-based HLS/DASH players */
+    MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Allow-Methods", "GET, OPTIONS");
+    MHD_add_response_header(response, "Access-Control-Allow-Headers",
+                            "Content-Type, Range");
+    MHD_add_response_header(response, "Access-Control-Expose-Headers",
+                            "Content-Length, Content-Range");
+
+    /* Caching: manifests must not be cached (they may update),
+     * segments/init files are immutable and can be cached long-term */
+    const char *dot = strrchr(filepath, '.');
+    if (dot && (strcasecmp(dot, ".m3u8") == 0 || strcasecmp(dot, ".mpd") == 0)) {
+        MHD_add_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    } else {
+        MHD_add_response_header(response, "Cache-Control", "public, max-age=86400, immutable");
+    }
+
+    int ret = MHD_queue_response(conn, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
 /* ---------- API key validation ---------- */
 
 /**
@@ -364,8 +422,9 @@ request_handler(void *cls,
 
     log_debug("%s %s", method, url);
 
-    /* Handle CORS preflight for API routes */
-    if (strcmp(method, "OPTIONS") == 0 && strncmp(url, "/api/", 5) == 0) {
+    /* Handle CORS preflight for API and content routes */
+    if (strcmp(method, "OPTIONS") == 0 &&
+        (strncmp(url, "/api/", 5) == 0 || strncmp(url, "/content/", 9) == 0)) {
         struct MHD_Response *response =
             MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
         add_cors_headers(response);

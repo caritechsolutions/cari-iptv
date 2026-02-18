@@ -27,6 +27,7 @@ static int is_spa_route(const char *url)
         "/jobs",
         "/uploads",
         "/cluster",
+        "/profiles",
         "/settings",
         "/login",
         NULL
@@ -163,13 +164,35 @@ int web_handle_request(http_request_t *req)
         return result;
     }
 
-    /* Static asset files (css, js, images, fonts) */
     /* Security: prevent directory traversal */
     if (strstr(req->url, "..") != NULL) {
         log_warn("Directory traversal attempt: %s", req->url);
         return http_send_error(req->connection, 403, "Forbidden");
     }
 
+    /* --- Content/library file serving (/content/{id}/{file}) --- */
+    /* Serves HLS/DASH files from library_path for video playback.
+     * /content (exact, no subpath) is an SPA route handled above.
+     * /content/movie-4/master.m3u8 -> {library_path}/movie-4/master.m3u8 */
+    if (strncmp(req->url, "/content/", 9) == 0 && req->url[9] != '\0') {
+        const char *library_path = g_http_config
+            ? g_http_config->library_path
+            : "/var/lib/vod-server/library";
+
+        /* Map /content/X/Y to {library_path}/X/Y */
+        snprintf(filepath, sizeof(filepath), "%s/%s", library_path, req->url + 9);
+
+        struct stat st;
+        if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode)) {
+            log_debug("Serving content file: %s", filepath);
+            return http_send_content_file(req->connection, filepath);
+        }
+
+        log_debug("Content file not found: %s", filepath);
+        return http_send_error(req->connection, 404, "Content not found");
+    }
+
+    /* Static asset files (css, js, images, fonts) */
     snprintf(filepath, sizeof(filepath), "%s%s", www_root, req->url);
 
     int result = serve_static_file(req, filepath);

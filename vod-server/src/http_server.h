@@ -85,6 +85,12 @@ int http_send_file(struct MHD_Connection *conn, const char *filepath);
 int http_send_error(struct MHD_Connection *conn, int status, const char *message);
 
 /**
+ * Serve a content/library file (HLS/DASH manifests, segments, etc.).
+ * Adds CORS headers for browser-based players and uses fd-based streaming.
+ */
+int http_send_content_file(struct MHD_Connection *conn, const char *filepath);
+
+/**
  * Get a query parameter value.
  * Returns NULL if not found.
  */
