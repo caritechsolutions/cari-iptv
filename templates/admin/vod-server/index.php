@@ -321,6 +321,9 @@
                     <option value="failed">Failed</option>
                     <option value="cancelled">Cancelled</option>
                 </select>
+                <button class="btn btn-secondary btn-sm" onclick="VodPage.showUploads()">
+                    <i class="lucide-hard-drive"></i> Uploads
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="VodPage.loadJobs()">
                     <i class="lucide-refresh-cw"></i> Refresh
                 </button>
@@ -333,6 +336,7 @@
                         <th>ID</th>
                         <th>Content ID</th>
                         <th>Title</th>
+                        <th>Source</th>
                         <th>Profile</th>
                         <th>Status</th>
                         <th>Progress</th>
@@ -342,7 +346,7 @@
                     </tr>
                 </thead>
                 <tbody id="jobs-tbody">
-                    <tr><td colspan="9" class="text-center" style="color:var(--text-muted);padding:2rem">Select a server to view jobs</td></tr>
+                    <tr><td colspan="10" class="text-center" style="color:var(--text-muted);padding:2rem">Select a server to view jobs</td></tr>
                 </tbody>
             </table>
         </div>
@@ -917,21 +921,25 @@ const VodPage = {
             const data = await res.json();
 
             if (!data.success) {
-                tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="color:var(--danger);padding:1rem">${this.esc(data.error)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" class="text-center" style="color:var(--danger);padding:1rem">${this.esc(data.error)}</td></tr>`;
                 return;
             }
 
             const items = data.data?.items || [];
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><h3>No jobs</h3><p>Submit a transcode job to get started.</p></div></td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>No jobs</h3><p>Submit a transcode job to get started.</p></div></td></tr>';
                 return;
             }
 
-            tbody.innerHTML = items.map(j => `
+            tbody.innerHTML = items.map(j => {
+                const sourceFile = j.source_path ? j.source_path.split('/').pop() : '-';
+                const sourceIsUpload = j.source_path && j.source_path.includes('/uploads/');
+                return `
                 <tr>
                     <td style="font-family:var(--font-mono);font-size:0.85rem">#${j.id}</td>
                     <td style="font-family:var(--font-mono);font-size:0.8rem">${this.esc(j.content_id)}</td>
                     <td>${this.esc(j.title || '-')}</td>
+                    <td style="font-size:0.8rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${this.esc(j.source_path || '')}">${this.esc(sourceFile)}</td>
                     <td>${this.esc(j.profile || '-')}</td>
                     <td><span class="badge-sm badge-${j.status}">${j.status}</span></td>
                     <td class="progress-cell">
@@ -944,17 +952,42 @@ const VodPage = {
                     </td>
                     <td style="font-size:0.8rem;color:var(--text-muted)">${this.esc(j.current_step || '-')}</td>
                     <td style="font-size:0.8rem;color:var(--text-muted)">${this.timeAgo(j.created_at)}</td>
-                    <td>
+                    <td style="white-space:nowrap">
                         ${['pending','processing','packaging','downloading'].includes(j.status) ?
                             `<button class="btn btn-danger btn-sm" onclick="VodPage.cancelJob(${j.id})">Cancel</button>` : ''}
                         ${j.status === 'failed' ?
                             `<button class="btn btn-secondary btn-sm" onclick="VodPage.showJobError(${j.id})" title="${this.esc(j.error_msg||'')}">Error</button>` : ''}
+                        ${sourceIsUpload && ['complete','failed','cancelled'].includes(j.status) ?
+                            `<button class="btn btn-danger btn-sm" onclick="VodPage.deleteSourceFile('${this.escAttr(sourceFile)}')" title="Delete source file"><i class="lucide-trash-2"></i></button>` : ''}
                     </td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
 
         } catch (err) {
-            tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="color:var(--danger);padding:1rem">${this.esc(err.message)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" class="text-center" style="color:var(--danger);padding:1rem">${this.esc(err.message)}</td></tr>`;
+        }
+    },
+
+    async deleteSourceFile(filename) {
+        if (!confirm('Delete source file "' + filename + '"?')) return;
+
+        const server = this.servers.find(s => s.id == this.selectedServerId);
+        if (!server) return;
+
+        try {
+            const res = await fetch(server.url.replace(/\/$/, '') + '/api/uploads?file=' + encodeURIComponent(filename), {
+                method: 'DELETE',
+                headers: server.api_key ? {'X-API-Key': server.api_key} : {}
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.toast('Source file deleted — freed ' + this.formatBytes(data.freed), 'success');
+                this.loadJobs();
+            } else {
+                this.toast(data.error || 'Delete failed', 'error');
+            }
+        } catch (err) {
+            this.toast(err.message, 'error');
         }
     },
 

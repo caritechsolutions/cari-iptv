@@ -108,7 +108,15 @@ var uploadsPage = {
                 </tr>`;
             }).join('');
         } catch (err) {
-            /* Silent on poll failures */
+            const tbody = document.getElementById('uploads-list');
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="5">
+                    <div class="empty-state">
+                        <h3>Failed to load uploads</h3>
+                        <p>${App.esc(err.message)}</p>
+                    </div>
+                </td></tr>`;
+            }
         }
     },
 
