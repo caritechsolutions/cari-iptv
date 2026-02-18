@@ -35,6 +35,12 @@ typedef struct {
     size_t                post_data_len;
     size_t                post_data_alloc;
     bool                  authenticated;
+
+    /* File upload state (for POST /api/upload) */
+    FILE                 *upload_fp;
+    char                  upload_path[MAX_PATH_LEN];
+    size_t                upload_size;
+    bool                  is_upload;
 } http_request_t;
 
 /* Response helper */

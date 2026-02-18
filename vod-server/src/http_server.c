@@ -231,9 +231,69 @@ request_handler(void *cls,
         req->url        = url;
         req->method     = method;
 
-        /* Pre-allocate POST buffer */
-        if (strcmp(method, HTTP_POST) == 0 ||
-            strcmp(method, HTTP_PUT)  == 0) {
+        /* Check if this is a file upload route — stream to disk instead of RAM */
+        if (strcmp(method, HTTP_POST) == 0 &&
+            strcmp(url, "/api/upload") == 0) {
+
+            /* Validate API key early for uploads */
+            if (g_config && g_config->api_key[0] != '\0') {
+                const char *key = MHD_lookup_connection_value(
+                    connection, MHD_HEADER_KIND, "X-API-Key");
+                if (!key || strcmp(key, g_config->api_key) != 0) {
+                    free(req);
+                    return http_send_error(connection, MHD_HTTP_UNAUTHORIZED,
+                                           "Invalid or missing API key");
+                }
+            }
+            req->authenticated = true;
+
+            /* Get the original filename from query param */
+            const char *fname = MHD_lookup_connection_value(
+                connection, MHD_GET_ARGUMENT_KIND, "filename");
+
+            /* Determine file extension */
+            const char *ext = "mp4";
+            if (fname) {
+                const char *dot = strrchr(fname, '.');
+                if (dot && dot[1]) ext = dot + 1;
+            }
+
+            /* Build upload path: {temp_path}/uploads/upload_{time}_{rand}.{ext} */
+            char upload_dir[MAX_PATH_LEN];
+            snprintf(upload_dir, sizeof(upload_dir), "%s/uploads",
+                     g_config ? g_config->temp_path : "/var/lib/vod-server/tmp");
+
+            /* Ensure uploads directory exists */
+            mkdir(upload_dir, 0775);
+
+            unsigned int rnd = 0;
+            FILE *urand = fopen("/dev/urandom", "rb");
+            if (urand) {
+                fread(&rnd, sizeof(rnd), 1, urand);
+                fclose(urand);
+            }
+            rnd &= 0xFFFFFF;
+
+            snprintf(req->upload_path, sizeof(req->upload_path),
+                     "%s/upload_%lu_%06x.%s",
+                     upload_dir, (unsigned long)time(NULL), rnd, ext);
+
+            req->upload_fp = fopen(req->upload_path, "wb");
+            if (!req->upload_fp) {
+                log_error("Failed to open upload file: %s (%s)",
+                          req->upload_path, strerror(errno));
+                free(req);
+                return http_send_error(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                       "Failed to create upload file");
+            }
+
+            req->is_upload = true;
+            req->upload_size = 0;
+            log_info("Upload started: %s", req->upload_path);
+
+        } else if (strcmp(method, HTTP_POST) == 0 ||
+                   strcmp(method, HTTP_PUT)  == 0) {
+            /* Normal JSON POST — buffer in memory */
             req->post_data = malloc(POST_BUF_INITIAL);
             if (req->post_data) {
                 req->post_data_alloc = POST_BUF_INITIAL;
@@ -250,6 +310,25 @@ request_handler(void *cls,
 
     /* --- Accumulate POST / PUT body --- */
     if (*upload_data_size > 0) {
+
+        /* File upload: stream directly to disk */
+        if (req->is_upload && req->upload_fp) {
+            size_t written = fwrite(upload_data, 1, *upload_data_size, req->upload_fp);
+            if (written != *upload_data_size) {
+                log_error("Upload write error: wrote %zu of %zu bytes",
+                          written, *upload_data_size);
+                fclose(req->upload_fp);
+                req->upload_fp = NULL;
+                unlink(req->upload_path);
+                *upload_data_size = 0;
+                return MHD_NO;
+            }
+            req->upload_size += written;
+            *upload_data_size = 0;
+            return MHD_YES;
+        }
+
+        /* Normal JSON: buffer in memory */
         size_t needed = req->post_data_len + *upload_data_size + 1;
         if (needed > req->post_data_alloc) {
             size_t new_alloc = req->post_data_alloc;
@@ -270,6 +349,13 @@ request_handler(void *cls,
 
         *upload_data_size = 0;  /* Signal that we consumed it */
         return MHD_YES;
+    }
+
+    /* Close upload file handle before routing */
+    if (req->is_upload && req->upload_fp) {
+        fclose(req->upload_fp);
+        req->upload_fp = NULL;
+        log_info("Upload complete: %s (%zu bytes)", req->upload_path, req->upload_size);
     }
 
     /* --- All data received: route the request --- */
@@ -324,6 +410,17 @@ request_completed(void *cls,
     if (!con_cls || !*con_cls) return;
 
     http_request_t *req = (http_request_t *)*con_cls;
+
+    /* Clean up upload file if connection was aborted mid-upload */
+    if (req->upload_fp) {
+        fclose(req->upload_fp);
+        req->upload_fp = NULL;
+        if (req->upload_path[0]) {
+            log_warn("Cleaning up aborted upload: %s", req->upload_path);
+            unlink(req->upload_path);
+        }
+    }
+
     if (req->post_data) {
         free(req->post_data);
     }

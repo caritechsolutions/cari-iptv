@@ -236,6 +236,21 @@
                         <button type="button" class="btn btn-secondary" onclick="VodPage.browseSource()">
                             <i class="lucide-folder-open"></i> Browse
                         </button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-file-input').click()">
+                            <i class="lucide-upload"></i> Upload
+                        </button>
+                        <input type="file" id="upload-file-input" accept="video/*,.mkv,.avi,.mov,.wmv,.flv,.ts,.m2ts,.mpg,.mpeg,.m4v" style="display:none" onchange="VodPage.uploadSource(this)">
+                    </div>
+                    <div id="upload-progress-wrap" style="display:none;margin-top:0.5rem">
+                        <div style="display:flex;align-items:center;gap:0.75rem">
+                            <div class="progress-bar-sm" style="flex:1;height:8px">
+                                <div class="fill" id="upload-progress-bar" style="width:0%"></div>
+                            </div>
+                            <span id="upload-progress-text" style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">0%</span>
+                            <button type="button" class="btn btn-sm" onclick="VodPage.cancelUpload()" id="upload-cancel-btn" style="padding:0.15rem 0.5rem;font-size:0.75rem">
+                                <i class="lucide-x"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1224,6 +1239,89 @@ const VodPage = {
             document.getElementById('job-source-type').value = 'file';
         }
         this.closeModal('browse-modal');
+    },
+
+    /* ===================== Direct Upload to VOD Server ===================== */
+    activeUploadXhr: null,
+
+    uploadSource(input) {
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        input.value = ''; /* Reset so same file can be re-selected */
+
+        if (!this.selectedServerId) { this.toast('Select a server first', 'error'); return; }
+
+        const server = this.servers.find(s => s.id == this.selectedServerId);
+        if (!server) { this.toast('Server not found', 'error'); return; }
+
+        /* Build the upload URL pointing directly at the VOD server */
+        const uploadUrl = server.url.replace(/\/$/, '') + '/api/upload?filename=' + encodeURIComponent(file.name);
+
+        /* Show progress UI */
+        document.getElementById('upload-progress-wrap').style.display = 'block';
+        document.getElementById('upload-progress-bar').style.width = '0%';
+        document.getElementById('upload-progress-text').textContent = '0% — ' + this.formatBytes(0) + ' / ' + this.formatBytes(file.size);
+
+        const xhr = new XMLHttpRequest();
+        this.activeUploadXhr = xhr;
+
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('upload-progress-bar').style.width = pct + '%';
+                document.getElementById('upload-progress-text').textContent = pct + '% — ' + this.formatBytes(e.loaded) + ' / ' + this.formatBytes(e.total);
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            this.activeUploadXhr = null;
+            document.getElementById('upload-progress-wrap').style.display = 'none';
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    if (data.success && data.path) {
+                        document.getElementById('job-source').value = data.path;
+                        document.getElementById('job-source-type').value = 'file';
+                        this.toast('File uploaded: ' + this.formatBytes(data.size), 'success');
+                    } else {
+                        this.toast(data.error || 'Upload failed', 'error');
+                    }
+                } catch (e) {
+                    this.toast('Invalid response from VOD server', 'error');
+                }
+            } else {
+                let msg = 'Upload failed (HTTP ' + xhr.status + ')';
+                try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+                this.toast(msg, 'error');
+            }
+        });
+
+        xhr.addEventListener('error', () => {
+            this.activeUploadXhr = null;
+            document.getElementById('upload-progress-wrap').style.display = 'none';
+            this.toast('Upload failed — cannot reach VOD server', 'error');
+        });
+
+        xhr.addEventListener('abort', () => {
+            this.activeUploadXhr = null;
+            document.getElementById('upload-progress-wrap').style.display = 'none';
+            this.toast('Upload cancelled', 'info');
+        });
+
+        xhr.open('POST', uploadUrl, true);
+        if (server.api_key) {
+            xhr.setRequestHeader('X-API-Key', server.api_key);
+        }
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.send(file);
+    },
+
+    cancelUpload() {
+        if (this.activeUploadXhr) {
+            this.activeUploadXhr.abort();
+            this.activeUploadXhr = null;
+        }
     },
 
     /* ===================== Auto-refresh ===================== */

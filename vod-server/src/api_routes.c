@@ -332,6 +332,11 @@ int api_handle_request(http_request_t *req)
 
     /* --- Utility routes --- */
 
+    /* POST /api/upload?filename=... */
+    if (strcmp(url, "/api/upload") == 0 && strcmp(method, HTTP_POST) == 0) {
+        return api_post_upload(req);
+    }
+
     /* GET /api/browse?path=... */
     if (strcmp(url, "/api/browse") == 0 && strcmp(method, HTTP_GET) == 0) {
         return api_get_browse(req);
@@ -1996,6 +2001,36 @@ int api_post_peer_health(http_request_t *req)
     cJSON_AddStringToObject(root, "version", VOD_SERVER_VERSION);
     cJSON_AddNumberToObject(root, "active_jobs", job_processor_active_count());
     cJSON_AddBoolToObject(root, "peer_known", changes > 0);
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * POST /api/upload  — receive a file upload, streamed to disk
+ * Returns the local file path for use in job submission.
+ * ================================================================ */
+
+int api_post_upload(http_request_t *req)
+{
+    /* The file was already streamed to disk by http_server.c */
+    if (!req->is_upload || req->upload_path[0] == '\0') {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "No file uploaded");
+    }
+
+    if (req->upload_size == 0) {
+        unlink(req->upload_path);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Uploaded file is empty");
+    }
+
+    log_info("Upload received: %s (%zu bytes)", req->upload_path, req->upload_size);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "File uploaded successfully");
+    cJSON_AddStringToObject(root, "path", req->upload_path);
+    cJSON_AddNumberToObject(root, "size", (double)req->upload_size);
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }
