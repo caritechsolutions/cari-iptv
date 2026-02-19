@@ -238,6 +238,9 @@ int main(int argc, char *argv[])
         log_info("Profiles loaded from database (overrides config file)");
     }
 
+    /* Load DRM settings from DB (overrides INI if saved via GUI) */
+    config_load_db_settings(&g_config);
+
     /* Initialize DRM module (creates drm_keys table) */
     if (drm_init() != 0) {
         log_warn("DRM module initialization failed (non-fatal)");

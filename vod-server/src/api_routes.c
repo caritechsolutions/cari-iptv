@@ -38,7 +38,8 @@
 static const vod_config_t *s_config = NULL;
 static time_t              s_start_time = 0;
 
-/* Forward declaration for api_routes_set_config (defined at bottom) */
+/* Forward declarations */
+static vod_config_t *get_mutable_config(void);
 
 /* ---------- helpers ---------- */
 
@@ -666,8 +667,39 @@ int api_post_config(http_request_t *req)
     }
 
     /*
+     * Check for DRM settings object — apply to runtime config immediately
+     * and persist to DB via config_save_db_settings().
+     */
+    cJSON *drm = cJSON_GetObjectItemCaseSensitive(body, "drm");
+    if (cJSON_IsObject(drm)) {
+        vod_config_t *cfg = get_mutable_config();
+        if (cfg) {
+            cJSON *enabled = cJSON_GetObjectItemCaseSensitive(drm, "enabled");
+            if (cJSON_IsBool(enabled)) cfg->drm_enabled = cJSON_IsTrue(enabled);
+
+            cJSON *scheme = cJSON_GetObjectItemCaseSensitive(drm, "scheme");
+            if (cJSON_IsString(scheme) && scheme->valuestring[0])
+                snprintf(cfg->drm_scheme, sizeof(cfg->drm_scheme), "%s", scheme->valuestring);
+
+            cJSON *key_url = cJSON_GetObjectItemCaseSensitive(drm, "key_server_url");
+            if (cJSON_IsString(key_url))
+                snprintf(cfg->drm_key_server_url, sizeof(cfg->drm_key_server_url), "%s", key_url->valuestring);
+
+            cJSON *auto_gen = cJSON_GetObjectItemCaseSensitive(drm, "auto_generate");
+            if (cJSON_IsBool(auto_gen)) cfg->drm_auto_generate = cJSON_IsTrue(auto_gen);
+
+            config_save_db_settings(cfg);
+            log_info("DRM settings updated via API (enabled=%s, scheme=%s, auto_generate=%s)",
+                     cfg->drm_enabled ? "yes" : "no",
+                     cfg->drm_scheme,
+                     cfg->drm_auto_generate ? "yes" : "no");
+        }
+    }
+
+    /*
      * Store each top-level key/value pair into the settings table.
      * This allows runtime-configurable settings to persist across restarts.
+     * Skip the 'drm' key since it's handled above.
      */
     sqlite3_stmt *stmt;
     const char *sql = "INSERT OR REPLACE INTO settings (key, value, updated_at) "
@@ -677,6 +709,7 @@ int api_post_config(http_request_t *req)
     cJSON *item = NULL;
     cJSON_ArrayForEach(item, body) {
         if (!item->string) continue;
+        if (strcmp(item->string, "drm") == 0) { saved++; continue; }
 
         char *val_str = NULL;
         if (cJSON_IsString(item)) {
@@ -700,9 +733,9 @@ int api_post_config(http_request_t *req)
     cJSON_Delete(body);
 
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddBoolToObject(root, "success", saved > 0);
+    cJSON_AddBoolToObject(root, "success", 1);
     cJSON_AddNumberToObject(root, "saved", saved);
-    cJSON_AddStringToObject(root, "message", "Settings updated. Some changes may require restart.");
+    cJSON_AddStringToObject(root, "message", "Settings updated.");
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }
