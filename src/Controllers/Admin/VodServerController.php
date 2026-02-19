@@ -438,16 +438,16 @@ class VodServerController
             if ($movieId > 0) {
                 try {
                     if ($status === 'complete') {
-                        // Transcode done — write the stream URL
+                        // Transcode done — write the stream URL (DASH manifest)
                         $server = $this->vodService->getServer($sid);
                         $contentId = $job['content_id'] ?? ('movie-' . $movieId);
-                        $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+                        $dashUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/manifest.mpd') : '';
 
                         $this->db->execute(
                             "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ? WHERE id = ?",
-                            [$hlsUrl, $movieId]
+                            [$dashUrl, $movieId]
                         );
-                        $job['stream_url'] = $hlsUrl;
+                        $job['stream_url'] = $dashUrl;
                     } elseif ($status === 'failed') {
                         $this->db->execute(
                             "UPDATE movies SET vod_status = 'failed', vod_progress = ?, vod_error = ? WHERE id = ?",
@@ -472,7 +472,7 @@ class VodServerController
                     if ($status === 'complete') {
                         $server = $this->vodService->getServer($sid);
                         $contentId = $job['content_id'] ?? ('movie-' . $movieId);
-                        $job['stream_url'] = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+                        $job['stream_url'] = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/manifest.mpd') : '';
                     }
                 }
             }

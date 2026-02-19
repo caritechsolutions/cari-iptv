@@ -414,10 +414,10 @@ static void handle_job_completed(active_job_t *job)
 
     log_info("Job %d: Content moved to %s", job_id, library_dir);
 
-    /* ---- Determine paths for HLS/DASH manifests ---- */
+    /* ---- Determine paths for DASH manifest ---- */
     char hls_path[MAX_PATH_LEN];
     char dash_path[MAX_PATH_LEN];
-    snprintf(hls_path, sizeof(hls_path), "%s/master.m3u8", job->content_id);
+    hls_path[0] = '\0';  /* DASH-only output, no HLS */
     snprintf(dash_path, sizeof(dash_path), "%s/manifest.mpd", job->content_id);
 
     /* ---- Build renditions JSON ---- */

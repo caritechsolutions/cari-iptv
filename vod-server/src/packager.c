@@ -9,7 +9,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <limits.h>
 
 /* Static state */
 static const vod_config_t *g_config = NULL;
@@ -166,227 +165,8 @@ int packager_init(const vod_config_t *config)
 }
 
 /* ---------------------------------------------------------------------------
- * generate_hls_from_cmaf
- * When MP4Box creates DASH+CMAF output but fails to generate HLS playlists,
- * this function scans the output directory for CMAF init/media segments,
- * probes them with ffprobe, and generates HLS master + variant playlists
- * that reference the existing CMAF segments (no re-packaging needed).
- * ------------------------------------------------------------------------- */
-typedef struct {
-    char prefix[512];        /* Segment filename prefix (e.g., "seg__r1_") */
-    char init_file[256];     /* Init segment filename */
-    bool is_video;           /* true = video, false = audio */
-    int  width, height;      /* Video resolution (0 for audio) */
-    int  bandwidth;          /* Estimated bandwidth in bps */
-    int  seg_count;          /* Number of media segments */
-    int  seg_start;          /* First segment number */
-} hls_rep_t;
-
-static int generate_hls_from_cmaf(const char *output_dir, const vod_config_t *config)
-{
-    hls_rep_t reps[MAX_RENDITIONS + 1];
-    int rep_count = 0;
-
-    /* --- Step 1: Discover representations from init segments --- */
-    DIR *dp = opendir(output_dir);
-    if (!dp) {
-        log_error("HLS gen: cannot open output dir: %s", output_dir);
-        return -1;
-    }
-
-    struct dirent *entry;
-    while ((entry = readdir(dp)) != NULL && rep_count < MAX_RENDITIONS + 1) {
-        const char *name = entry->d_name;
-        size_t nlen = strlen(name);
-
-        /* Look for init segments: files containing "init" with .mp4/.m4s ext */
-        if (strstr(name, "init") == NULL) continue;
-        if (!(nlen > 4 && (strcmp(name + nlen - 4, ".mp4") == 0 ||
-                           strcmp(name + nlen - 4, ".m4s") == 0)))
-            continue;
-
-        /* Extract prefix: everything before "init" */
-        const char *init_pos = strstr(name, "init");
-        if (!init_pos || init_pos == name) continue;
-
-        size_t prefix_len = (size_t)(init_pos - name);
-        if (prefix_len >= sizeof(reps[0].prefix)) continue;
-
-        hls_rep_t *r = &reps[rep_count];
-        memset(r, 0, sizeof(*r));
-        memcpy(r->prefix, name, prefix_len);
-        r->prefix[prefix_len] = '\0';
-        snprintf(r->init_file, sizeof(r->init_file), "%s", name);
-
-        rep_count++;
-    }
-    closedir(dp);
-
-    if (rep_count == 0) {
-        log_error("HLS gen: no init segments found in %s", output_dir);
-        return -1;
-    }
-
-    log_info("HLS gen: found %d representations", rep_count);
-
-    /* --- Step 2: Probe each representation and count segments --- */
-    for (int i = 0; i < rep_count; i++) {
-        hls_rep_t *r = &reps[i];
-
-        /* Probe init segment with ffprobe to detect video/audio */
-        char init_path[MAX_PATH_LEN + 256];
-        snprintf(init_path, sizeof(init_path), "%s/%s", output_dir, r->init_file);
-
-        char cmd[MAX_PATH_LEN + 512];
-        char buf[256] = {0};
-
-        snprintf(cmd, sizeof(cmd),
-                 "%s -v quiet -select_streams v:0 "
-                 "-show_entries stream=width,height "
-                 "-of csv=p=0 \"%s\" 2>/dev/null",
-                 config->ffprobe_path, init_path);
-
-        FILE *probe = popen(cmd, "r");
-        if (probe) {
-            if (fgets(buf, sizeof(buf), probe) && strchr(buf, ',')) {
-                r->is_video = true;
-                sscanf(buf, "%d,%d", &r->width, &r->height);
-            }
-            pclose(probe);
-        }
-
-        /* Estimate bandwidth from resolution */
-        if (r->is_video) {
-            if      (r->height <= 360)  r->bandwidth = 400000;
-            else if (r->height <= 480)  r->bandwidth = 1000000;
-            else if (r->height <= 720)  r->bandwidth = 2800000;
-            else if (r->height <= 1080) r->bandwidth = 5000000;
-            else if (r->height <= 1440) r->bandwidth = 8000000;
-            else                        r->bandwidth = 16000000;
-        } else {
-            r->bandwidth = 128000;
-        }
-
-        /* Count segments and find numbering range */
-        dp = opendir(output_dir);
-        if (dp) {
-            size_t plen = strlen(r->prefix);
-            int min_seg = INT_MAX, max_seg = -1;
-
-            while ((entry = readdir(dp)) != NULL) {
-                const char *nm = entry->d_name;
-                if (strncmp(nm, r->prefix, plen) != 0) continue;
-                if (strstr(nm, "init") != NULL) continue;
-                if (strstr(nm, ".m4s") == NULL) continue;
-
-                int num = atoi(nm + plen);
-                if (num < min_seg) min_seg = num;
-                if (num > max_seg) max_seg = num;
-                r->seg_count++;
-            }
-
-            r->seg_start = (min_seg == INT_MAX) ? 0 : min_seg;
-            closedir(dp);
-        }
-
-        log_info("  Rep %d: %s %dx%d bw=%d segs=%d (start=%d) init=%s",
-                 i, r->is_video ? "video" : "audio",
-                 r->width, r->height, r->bandwidth,
-                 r->seg_count, r->seg_start, r->init_file);
-    }
-
-    int seg_duration = config->segment_duration > 0 ? config->segment_duration : 4;
-
-    /* Find audio representation (if any) */
-    int audio_idx = -1;
-    for (int i = 0; i < rep_count; i++) {
-        if (!reps[i].is_video) { audio_idx = i; break; }
-    }
-
-    /* --- Step 3: Write variant playlists --- */
-    char var_names[MAX_RENDITIONS + 1][256];
-
-    for (int i = 0; i < rep_count; i++) {
-        hls_rep_t *r = &reps[i];
-
-        if (r->is_video) {
-            snprintf(var_names[i], sizeof(var_names[0]),
-                     "stream_%dp.m3u8", r->height);
-        } else {
-            snprintf(var_names[i], sizeof(var_names[0]),
-                     "stream_audio.m3u8");
-        }
-
-        char path[MAX_PATH_LEN + 256];
-        snprintf(path, sizeof(path), "%s/%s", output_dir, var_names[i]);
-
-        FILE *fp = fopen(path, "w");
-        if (!fp) {
-            log_error("HLS gen: cannot create playlist: %s", path);
-            return -1;
-        }
-
-        fprintf(fp, "#EXTM3U\n");
-        fprintf(fp, "#EXT-X-VERSION:7\n");
-        fprintf(fp, "#EXT-X-TARGETDURATION:%d\n", seg_duration);
-        fprintf(fp, "#EXT-X-MEDIA-SEQUENCE:0\n");
-        fprintf(fp, "#EXT-X-PLAYLIST-TYPE:VOD\n");
-        fprintf(fp, "#EXT-X-MAP:URI=\"%s\"\n\n", r->init_file);
-
-        for (int s = r->seg_start; s < r->seg_start + r->seg_count; s++) {
-            fprintf(fp, "#EXTINF:%.6f,\n", (double)seg_duration);
-            fprintf(fp, "%s%d.m4s\n", r->prefix, s);
-        }
-
-        fprintf(fp, "#EXT-X-ENDLIST\n");
-        fclose(fp);
-
-        log_info("HLS gen: wrote variant %s (%d segments)", var_names[i], r->seg_count);
-    }
-
-    /* --- Step 4: Write master playlist --- */
-    char master_path[MAX_PATH_LEN + 64];
-    snprintf(master_path, sizeof(master_path), "%s/master.m3u8", output_dir);
-
-    FILE *master = fopen(master_path, "w");
-    if (!master) {
-        log_error("HLS gen: cannot create master playlist: %s", master_path);
-        return -1;
-    }
-
-    fprintf(master, "#EXTM3U\n");
-    fprintf(master, "#EXT-X-VERSION:7\n\n");
-
-    /* Declare audio group if we have a separate audio track */
-    if (audio_idx >= 0) {
-        fprintf(master,
-                "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\","
-                "NAME=\"Audio\",DEFAULT=YES,AUTOSELECT=YES,"
-                "URI=\"%s\"\n\n",
-                var_names[audio_idx]);
-    }
-
-    /* Video variant streams */
-    for (int i = 0; i < rep_count; i++) {
-        if (!reps[i].is_video) continue;
-
-        fprintf(master, "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d",
-                reps[i].bandwidth, reps[i].width, reps[i].height);
-        if (audio_idx >= 0) {
-            fprintf(master, ",AUDIO=\"audio\"");
-        }
-        fprintf(master, "\n%s\n", var_names[i]);
-    }
-
-    fclose(master);
-    log_info("HLS gen: wrote master playlist %s", master_path);
-
-    return 0;
-}
-
-/* ---------------------------------------------------------------------------
  * packager_run
- * Use MP4Box to create CMAF output with both HLS and DASH manifests.
+ * Use MP4Box to create DASH/CMAF output (manifest.mpd + fMP4 segments).
  * ------------------------------------------------------------------------- */
 int packager_run(package_state_t *state, const vod_config_t *config)
 {
@@ -424,7 +204,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
 
     state->progress = 10.0;
 
-    /* Build MP4Box command for DASH + HLS dual output.
+    /* Build MP4Box command for DASH/CMAF output.
      *
      * Command pattern:
      *   MP4Box -dash <ms> -frag <ms> -rap
@@ -432,8 +212,6 @@ int packager_run(package_state_t *state, const vod_config_t *config)
      *          -segment-name seg_
      *          -out <output_dir>/manifest.mpd
      *          <rendition1.mp4> <rendition2.mp4> ... <audio.m4a>
-     *
-     * The :dual flag (or -hls) tells MP4Box to also generate HLS manifests.
      */
     int segment_ms = config->segment_duration * 1000;
 
@@ -471,9 +249,6 @@ int packager_run(package_state_t *state, const vod_config_t *config)
                         path, track_id);
     }
 
-    /* Add HLS generation flag */
-    pos += snprintf(cmd + pos, sizeof(cmd) - pos, "--hls ");
-
     if (pos >= (int)sizeof(cmd) - 1) {
         log_error("MP4Box command exceeds buffer size");
         return -1;
@@ -481,7 +256,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
 
     state->progress = 20.0;
     snprintf(state->current_step, sizeof(state->current_step),
-             "%s", "Running MP4Box (DASH+HLS)");
+             "%s", "Running MP4Box (DASH/CMAF)");
 
     /* Execute MP4Box */
     if (run_command(cmd) != 0) {
@@ -490,33 +265,6 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         /* Try FFmpeg fallback */
         log_warn("Attempting FFmpeg fallback packaging for job %d", state->job_id);
         return packager_run_ffmpeg_fallback(state, config);
-    }
-
-    state->progress = 80.0;
-    snprintf(state->current_step, sizeof(state->current_step),
-             "%s", "Generating HLS master playlist");
-
-    /* MP4Box with --hls generates an m3u8 file alongside the mpd.
-     * Rename it to master.m3u8 if needed. */
-    char hls_src[MAX_PATH_LEN + 64];
-    char hls_dst[MAX_PATH_LEN + 64];
-    snprintf(hls_src, sizeof(hls_src), "%s/manifest.m3u8", state->output_dir);
-    snprintf(hls_dst, sizeof(hls_dst), "%s/master.m3u8", state->output_dir);
-
-    if (file_exists_nonempty(hls_src)) {
-        if (strcmp(hls_src, hls_dst) != 0) {
-            rename(hls_src, hls_dst);
-        }
-    }
-
-    /* If MP4Box didn't generate HLS playlists, create them from CMAF segments */
-    if (!file_exists_nonempty(hls_dst)) {
-        log_warn("MP4Box did not generate HLS playlists for job %d, "
-                 "generating from CMAF segments", state->job_id);
-        if (generate_hls_from_cmaf(state->output_dir, config) != 0) {
-            log_error("Failed to generate HLS from CMAF for job %d", state->job_id);
-            return -1;
-        }
     }
 
     state->progress = 90.0;
@@ -538,8 +286,8 @@ int packager_run(package_state_t *state, const vod_config_t *config)
 
 /* ---------------------------------------------------------------------------
  * packager_run_ffmpeg_fallback
- * When MP4Box is not available, use FFmpeg HLS muxer with var_stream_map
- * to generate HLS-only output with fMP4 segments and a master playlist.
+ * When MP4Box is not available, use FFmpeg to generate DASH/CMAF output
+ * with fMP4 segments and a DASH manifest.
  * ------------------------------------------------------------------------- */
 int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *config)
 {
@@ -549,7 +297,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
     }
 
     snprintf(state->current_step, sizeof(state->current_step),
-             "%s", "Packaging (FFmpeg HLS fallback)");
+             "%s", "Packaging (FFmpeg DASH fallback)");
     state->progress = 10.0;
 
     /* Ensure output directory exists */
@@ -605,19 +353,18 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
         return -1;
     }
 
-    log_info("FFmpeg HLS packaging: %d video streams, audio=%s",
+    log_info("FFmpeg DASH packaging: %d video streams, audio=%s",
              video_count, has_audio ? "yes" : "no");
 
     state->progress = 20.0;
 
-    /* Build FFmpeg command for multi-variant HLS with fMP4 segments.
+    /* Build FFmpeg command for DASH/CMAF output.
      *
      * Strategy:
      *   - Input each rendition MP4 and the audio file
-     *   - Map each input to its own output variant
-     *   - Use var_stream_map to define the variants
-     *   - Use hls_segment_type fmp4 for CMAF-compatible segments
-     *   - Output a master playlist
+     *   - Map each input to its own adaptation set
+     *   - Use the DASH muxer with fMP4 segments
+     *   - Output manifest.mpd
      */
     char cmd[16384];
     int pos = 0;
@@ -642,155 +389,53 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
     }
     if (has_audio) {
         pos += snprintf(cmd + pos, sizeof(cmd) - pos,
-                        "-map %d:a:0 -c:a:%d copy ",
-                        video_count, 0);
+                        "-map %d:a:0 -c:a copy ",
+                        video_count);
     }
 
-    /* Build var_stream_map.
-     * Each video variant gets "v:N,name:label" or "v:N,a:0,name:label".
-     * If audio is separate, we create an audio-only group.
-     *
-     * Format: "v:0,a:0,name:720p v:1,a:0,name:1080p" (muxed)
-     * Or: "v:0,name:720p v:1,name:1080p a:0,name:audio" (demuxed)
+    /* Build adaptation_sets for DASH muxer.
+     * Format: "id=0,streams=v id=1,streams=a"
+     * Multiple video streams in same adaptation set: "id=0,streams=0,1,2 id=1,streams=a"
      */
-    pos += snprintf(cmd + pos, sizeof(cmd) - pos, "-var_stream_map \"");
+    pos += snprintf(cmd + pos, sizeof(cmd) - pos, "-adaptation_sets \"");
 
+    /* All video renditions in one adaptation set */
+    pos += snprintf(cmd + pos, sizeof(cmd) - pos, "id=0,streams=");
     for (int i = 0; i < video_count; i++) {
-        pos += snprintf(cmd + pos, sizeof(cmd) - pos,
-                        "v:%d,name:%s", i, video_labels[i]);
-        if (has_audio) {
-            pos += snprintf(cmd + pos, sizeof(cmd) - pos,
-                            ",agroup:audio");
-        }
-        if (i < video_count - 1 || has_audio) {
-            pos += snprintf(cmd + pos, sizeof(cmd) - pos, " ");
-        }
+        if (i > 0) pos += snprintf(cmd + pos, sizeof(cmd) - pos, ",");
+        pos += snprintf(cmd + pos, sizeof(cmd) - pos, "%d", i);
     }
     if (has_audio) {
-        pos += snprintf(cmd + pos, sizeof(cmd) - pos,
-                        "a:0,name:audio,agroup:audio,default:yes");
+        pos += snprintf(cmd + pos, sizeof(cmd) - pos, " id=1,streams=%d", video_count);
     }
 
     pos += snprintf(cmd + pos, sizeof(cmd) - pos, "\" ");
 
-    /* HLS output options */
+    /* DASH output options */
     pos += snprintf(cmd + pos, sizeof(cmd) - pos,
-                    "-f hls "
-                    "-hls_time %d "
-                    "-hls_playlist_type vod "
-                    "-hls_flags independent_segments+program_date_time "
-                    "-hls_segment_type fmp4 "
-                    "-hls_segment_filename \"%s/seg_%%v_%%05d.m4s\" "
-                    "-hls_fmp4_init_filename \"init_%%v.mp4\" "
-                    "-master_pl_name master.m3u8 "
-                    "\"%s/stream_%%v.m3u8\"",
+                    "-f dash "
+                    "-seg_duration %d "
+                    "-use_timeline 1 "
+                    "-use_template 1 "
+                    "-init_seg_name \"seg_init_$RepresentationID$.mp4\" "
+                    "-media_seg_name \"seg_$RepresentationID$_$Number$.m4s\" "
+                    "\"%s/manifest.mpd\"",
                     config->segment_duration,
-                    state->output_dir,
                     state->output_dir);
 
     if (pos >= (int)sizeof(cmd) - 1) {
-        log_error("FFmpeg HLS command exceeds buffer size");
+        log_error("FFmpeg DASH command exceeds buffer size");
         return -1;
     }
 
     state->progress = 30.0;
     snprintf(state->current_step, sizeof(state->current_step),
-             "%s", "Running FFmpeg HLS packager");
+             "%s", "Running FFmpeg DASH packager");
 
     /* Execute */
     if (run_command(cmd) != 0) {
-        log_error("FFmpeg HLS packaging failed for job %d", state->job_id);
-
-        /* Try a simpler single-variant approach as last resort */
-        log_warn("Trying single-variant HLS packaging for job %d", state->job_id);
-
-        /* Build master playlist manually for single-file inputs */
-        char master_path[MAX_PATH_LEN + 64];
-        snprintf(master_path, sizeof(master_path),
-                 "%s/master.m3u8", state->output_dir);
-
-        FILE *master = fopen(master_path, "w");
-        if (!master) {
-            log_error("Cannot create master playlist: %s", master_path);
-            return -1;
-        }
-
-        fprintf(master, "#EXTM3U\n");
-        fprintf(master, "#EXT-X-VERSION:7\n\n");
-
-        /* Package each rendition separately */
-        for (int i = 0; i < video_count; i++) {
-            char variant_cmd[16384];
-            char variant_name[128];
-            snprintf(variant_name, sizeof(variant_name),
-                     "stream_%s", video_labels[i]);
-
-            /* Create subdirectory for this variant */
-            char variant_dir[MAX_PATH_LEN + 256];
-            snprintf(variant_dir, sizeof(variant_dir),
-                     "%s/%s", state->output_dir, variant_name);
-            ensure_dir(variant_dir);
-
-            /* Build simple single-rendition HLS command */
-            if (has_audio) {
-                snprintf(variant_cmd, sizeof(variant_cmd),
-                         "%s -y -i \"%s\" -i \"%s\" "
-                         "-map 0:v:0 -map 1:a:0 -c copy "
-                         "-f hls -hls_time %d -hls_playlist_type vod "
-                         "-hls_segment_type fmp4 "
-                         "-hls_segment_filename \"%s/seg_%%05d.m4s\" "
-                         "-hls_fmp4_init_filename \"init.mp4\" "
-                         "\"%s/playlist.m3u8\"",
-                         config->ffmpeg_path,
-                         video_paths[i], audio_path,
-                         config->segment_duration,
-                         variant_dir, variant_dir);
-            } else {
-                snprintf(variant_cmd, sizeof(variant_cmd),
-                         "%s -y -i \"%s\" -c copy "
-                         "-f hls -hls_time %d -hls_playlist_type vod "
-                         "-hls_segment_type fmp4 "
-                         "-hls_segment_filename \"%s/seg_%%05d.m4s\" "
-                         "-hls_fmp4_init_filename \"init.mp4\" "
-                         "\"%s/playlist.m3u8\"",
-                         config->ffmpeg_path, video_paths[i],
-                         config->segment_duration,
-                         variant_dir, variant_dir);
-            }
-
-            if (run_command(variant_cmd) != 0) {
-                log_error("Failed to package rendition %s", video_labels[i]);
-                fclose(master);
-                return -1;
-            }
-
-            /* Guess bandwidth from label for master playlist */
-            int bandwidth = 2000000; /* default 2 Mbps */
-            int resolution_w = 1280, resolution_h = 720;
-
-            if (strstr(video_labels[i], "360") != NULL) {
-                bandwidth = 400000; resolution_w = 640; resolution_h = 360;
-            } else if (strstr(video_labels[i], "480") != NULL) {
-                bandwidth = 1000000; resolution_w = 854; resolution_h = 480;
-            } else if (strstr(video_labels[i], "720") != NULL) {
-                bandwidth = 2800000; resolution_w = 1280; resolution_h = 720;
-            } else if (strstr(video_labels[i], "1080") != NULL) {
-                bandwidth = 5000000; resolution_w = 1920; resolution_h = 1080;
-            } else if (strstr(video_labels[i], "1440") != NULL) {
-                bandwidth = 8000000; resolution_w = 2560; resolution_h = 1440;
-            } else if (strstr(video_labels[i], "2160") != NULL) {
-                bandwidth = 16000000; resolution_w = 3840; resolution_h = 2160;
-            }
-
-            fprintf(master,
-                    "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
-                    bandwidth, resolution_w, resolution_h, video_labels[i]);
-            fprintf(master, "%s/playlist.m3u8\n\n", variant_name);
-
-            state->progress = 30.0 + ((double)(i + 1) / video_count) * 50.0;
-        }
-
-        fclose(master);
+        log_error("FFmpeg DASH packaging failed for job %d", state->job_id);
+        return -1;
     }
 
     state->progress = 90.0;
@@ -807,7 +452,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
     snprintf(state->current_step, sizeof(state->current_step),
              "%s", "Packaging complete");
 
-    log_info("FFmpeg HLS packaging completed for job %d: %s",
+    log_info("FFmpeg DASH packaging completed for job %d: %s",
              state->job_id, state->output_dir);
 
     return 0;
@@ -815,7 +460,7 @@ int packager_run_ffmpeg_fallback(package_state_t *state, const vod_config_t *con
 
 /* ---------------------------------------------------------------------------
  * packager_verify
- * Check that master.m3u8 or manifest.mpd exists and is non-empty.
+ * Check that manifest.mpd exists and is non-empty.
  * Also check for at least one segment file.
  * Returns 0 if valid, -1 if problems found.
  * ------------------------------------------------------------------------- */
@@ -826,19 +471,13 @@ int packager_verify(const char *output_dir)
         return -1;
     }
 
-    /* Check for master playlist (HLS) */
-    char hls_path[MAX_PATH_LEN + 64];
-    snprintf(hls_path, sizeof(hls_path), "%s/master.m3u8", output_dir);
-    bool has_hls = file_exists_nonempty(hls_path);
-
     /* Check for DASH manifest */
     char dash_path[MAX_PATH_LEN + 64];
     snprintf(dash_path, sizeof(dash_path), "%s/manifest.mpd", output_dir);
     bool has_dash = file_exists_nonempty(dash_path);
 
-    if (!has_hls && !has_dash) {
-        log_error("Verification failed: no master.m3u8 or manifest.mpd in %s",
-                  output_dir);
+    if (!has_dash) {
+        log_error("Verification failed: no manifest.mpd in %s", output_dir);
         return -1;
     }
 
@@ -846,8 +485,6 @@ int packager_verify(const char *output_dir)
     int segment_count = 0;
     int init_count = 0;
 
-    /* We do a simple scan of the directory tree */
-    /* First, scan the top-level directory */
     DIR *dp = opendir(output_dir);
     if (!dp) {
         log_error("Cannot open output directory for verification: %s", output_dir);
@@ -899,62 +536,28 @@ int packager_verify(const char *output_dir)
     }
     closedir(dp);
 
-    /* Validate HLS playlist content if it exists */
-    if (has_hls) {
-        FILE *fp = fopen(hls_path, "r");
-        if (fp) {
-            char line[1024];
-            bool has_extm3u = false;
-            bool has_stream_inf = false;
+    /* Validate DASH manifest content */
+    FILE *fp = fopen(dash_path, "r");
+    if (fp) {
+        char line[1024];
+        bool has_mpd = false;
 
-            while (fgets(line, sizeof(line), fp) != NULL) {
-                if (strncmp(line, "#EXTM3U", 7) == 0) {
-                    has_extm3u = true;
-                }
-                if (strstr(line, "#EXT-X-STREAM-INF") != NULL) {
-                    has_stream_inf = true;
-                }
+        while (fgets(line, sizeof(line), fp) != NULL) {
+            if (strstr(line, "<MPD") != NULL) {
+                has_mpd = true;
+                break;
             }
-            fclose(fp);
+        }
+        fclose(fp);
 
-            if (!has_extm3u) {
-                log_error("Verification failed: master.m3u8 missing #EXTM3U header");
-                return -1;
-            }
-            if (!has_stream_inf) {
-                log_error("Verification failed: master.m3u8 has no stream variants");
-                return -1;
-            }
+        if (!has_mpd) {
+            log_error("Verification failed: manifest.mpd missing <MPD root element");
+            return -1;
         }
     }
 
-    /* Validate DASH manifest content if it exists */
-    if (has_dash) {
-        FILE *fp = fopen(dash_path, "r");
-        if (fp) {
-            char line[1024];
-            bool has_mpd = false;
-
-            while (fgets(line, sizeof(line), fp) != NULL) {
-                if (strstr(line, "<MPD") != NULL || strstr(line, "MPD") != NULL) {
-                    has_mpd = true;
-                    break;
-                }
-            }
-            fclose(fp);
-
-            if (!has_mpd) {
-                log_error("Verification failed: manifest.mpd missing MPD root element");
-                return -1;
-            }
-        }
-    }
-
-    log_info("Verification passed: HLS=%s, DASH=%s, segments=%d, inits=%d in %s",
-             has_hls ? "yes" : "no",
-             has_dash ? "yes" : "no",
-             segment_count, init_count,
-             output_dir);
+    log_info("Verification passed: DASH=yes, segments=%d, inits=%d in %s",
+             segment_count, init_count, output_dir);
 
     /* Warn if no segments found (might be okay for very short content) */
     if (segment_count == 0) {

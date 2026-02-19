@@ -197,6 +197,20 @@ int web_handle_request(http_request_t *req)
 
     int result = serve_static_file(req, filepath);
     if (result == MHD_NO) {
+        /* Before SPA fallback, check if this URL matches a file in the
+         * content library.  This handles URLs like /{content_id}/manifest.mpd
+         * that are missing the /content/ prefix (e.g. from stream_url). */
+        const char *library_path = g_http_config
+            ? g_http_config->library_path
+            : "/var/lib/vod-server/library";
+        snprintf(filepath, sizeof(filepath), "%s%s", library_path, req->url);
+
+        struct stat st;
+        if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode)) {
+            log_debug("Serving content file (no /content/ prefix): %s", filepath);
+            return http_send_content_file(req->connection, filepath);
+        }
+
         /* File not found - serve index.html for potential SPA deep links */
         snprintf(filepath, sizeof(filepath), "%s/index.html", www_root);
 

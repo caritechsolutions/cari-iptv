@@ -422,9 +422,8 @@ request_handler(void *cls,
 
     log_debug("%s %s", method, url);
 
-    /* Handle CORS preflight for API and content routes */
-    if (strcmp(method, "OPTIONS") == 0 &&
-        (strncmp(url, "/api/", 5) == 0 || strncmp(url, "/content/", 9) == 0)) {
+    /* Handle CORS preflight for all routes (API, content, library) */
+    if (strcmp(method, "OPTIONS") == 0) {
         struct MHD_Response *response =
             MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
         add_cors_headers(response);
