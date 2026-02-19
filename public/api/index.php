@@ -127,6 +127,10 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     // Episodes
     $router->get('/episodes/{id}', [ContentController::class, 'episode'], ['api_auth']);
 
+    // DRM License Proxy (ClearKey — GET for simple lookup, POST for EME standard)
+    $router->get('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
+    $router->post('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
+
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);
 

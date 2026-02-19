@@ -520,6 +520,9 @@ class ContentApiService
         $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
         $movie['content_type'] = 'movie';
 
+        // DRM info — if movie has a VOD server, check for DRM key
+        $movie['drm'] = $this->getDrmInfo($movie);
+
         // Trailers (video_key, url - not youtube_id, youtube_url)
         $movie['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT id, name as title, video_key, url, is_primary
@@ -541,6 +544,52 @@ class ContentApiService
         ), []);
 
         return $movie;
+    }
+
+    // =========================================================================
+    // DRM
+    // =========================================================================
+
+    /**
+     * Get DRM info for a content item that has a VOD server.
+     * Returns null if no DRM key exists, or a config object for the player.
+     */
+    private function getDrmInfo(array $item): ?array
+    {
+        $serverId = (int)($item['vod_server_id'] ?? 0);
+        if (!$serverId || empty($item['stream_url'])) {
+            return null;
+        }
+
+        try {
+            $vodService = new VodServerService();
+            $server = $vodService->getServer($serverId);
+            if (!$server) return null;
+
+            // Derive content_id from stream_url or movie slug
+            // The VOD server uses content IDs like "movie-123"
+            $contentId = 'movie-' . ($item['id'] ?? 0);
+
+            // Check if a DRM key exists for this content
+            $keyInfo = $vodService->getDrmKey($serverId, $contentId);
+            if (empty($keyInfo) || !empty($keyInfo['error'])) {
+                return null;
+            }
+
+            // Build player-facing DRM config
+            // The license URL points to our middleware proxy (not the VOD server directly)
+            $appUrl = rtrim(getenv('APP_URL') ?: '', '/');
+            return [
+                'scheme'      => $keyInfo['scheme'] ?? 'cenc',
+                'key_id'      => $keyInfo['kid'] ?? '',
+                'license_url' => $appUrl . '/api/v1/drm/license?content_id=' . urlencode($contentId)
+                                        . '&server_id=' . $serverId,
+            ];
+        } catch (\Throwable $e) {
+            // DRM lookup failure is non-fatal — content plays without DRM
+            error_log('DRM info lookup failed for item ' . ($item['id'] ?? '?') . ': ' . $e->getMessage());
+            return null;
+        }
     }
 
     // =========================================================================

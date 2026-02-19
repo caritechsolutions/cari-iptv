@@ -2997,9 +2997,10 @@ const CariApp = (function() {
             // Play the stream
             const streamUrl = item.stream_url || item.video_url || '';
             const video = document.getElementById('mainVideo');
+            const drmConfig = item.drm || null;
 
             if (streamUrl && window.shaka) {
-                await initShakaPlayer(video, streamUrl);
+                await initShakaPlayer(video, streamUrl, drmConfig);
             } else if (streamUrl) {
                 video.src = streamUrl;
                 video.play().catch(() => {});
@@ -3083,7 +3084,7 @@ const CariApp = (function() {
         }, { once: true });
     }
 
-    async function initShakaPlayer(videoEl, url) {
+    async function initShakaPlayer(videoEl, url, drmConfig) {
         // Destroy existing instance
         if (shakaPlayer) {
             try { await shakaPlayer.destroy(); } catch {}
@@ -3107,7 +3108,7 @@ const CariApp = (function() {
         shakaPlayer = new shaka.Player();
         await shakaPlayer.attach(videoEl);
 
-        shakaPlayer.configure({
+        const config = {
             streaming: {
                 bufferingGoal: 15,
                 rebufferingGoal: 1,
@@ -3119,7 +3120,31 @@ const CariApp = (function() {
                 segmentPrefetchLimit: 0,
             },
             preferredTextLanguage: 'en',
-        });
+        };
+
+        // Configure DRM if content is encrypted (ClearKey via license server)
+        if (drmConfig && drmConfig.license_url) {
+            const licenseUrl = drmConfig.license_url;
+            config.drm = {
+                servers: {
+                    'org.w3.clearkey': licenseUrl,
+                },
+            };
+
+            // Add auth token to license requests so the API middleware allows them
+            shakaPlayer.getNetworkingEngine().registerRequestFilter((type, request) => {
+                if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+                    const token = localStorage.getItem('access_token');
+                    if (token) {
+                        request.headers['Authorization'] = 'Bearer ' + token;
+                    }
+                }
+            });
+
+            console.log('[CariApp] DRM enabled: ClearKey, scheme=' + (drmConfig.scheme || 'cenc'));
+        }
+
+        shakaPlayer.configure(config);
 
         shakaPlayer.addEventListener('error', (e) => {
             console.error('Shaka error:', e.detail);
