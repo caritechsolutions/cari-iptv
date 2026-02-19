@@ -414,11 +414,11 @@ static void handle_job_completed(active_job_t *job)
 
     log_info("Job %d: Content moved to %s", job_id, library_dir);
 
-    /* ---- Determine paths for DASH manifest ---- */
+    /* ---- Determine paths for HLS manifest ---- */
     char hls_path[MAX_PATH_LEN];
     char dash_path[MAX_PATH_LEN];
-    hls_path[0] = '\0';  /* DASH-only output, no HLS */
-    snprintf(dash_path, sizeof(dash_path), "%s/manifest.mpd", job->content_id);
+    snprintf(hls_path, sizeof(hls_path), "%s/master.m3u8", job->content_id);
+    dash_path[0] = '\0';  /* HLS-only output, no DASH */
 
     /* ---- Build renditions JSON ---- */
     const transcode_profile_t *profile = config_get_profile(g_config, job->profile_name);

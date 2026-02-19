@@ -282,11 +282,11 @@ class VodServerService
         ];
     }
 
-    public function getStreamUrl(int $serverId, string $contentId, string $format = 'dash'): string
+    public function getStreamUrl(int $serverId, string $contentId, string $format = 'hls'): string
     {
         $server = $this->getServer($serverId);
         if (!$server) return '';
-        $ext = $format === 'hls' ? 'master.m3u8' : 'manifest.mpd';
+        $ext = $format === 'dash' ? 'manifest.mpd' : 'master.m3u8';
         return $server['url'] . '/content/' . urlencode($contentId) . '/' . $ext;
     }
 

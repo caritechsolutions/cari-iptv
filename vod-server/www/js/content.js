@@ -119,7 +119,7 @@ var contentPage = {
                     <tr><td class="text-muted">Codec</td><td>${App.esc(c.codec || '-')}</td></tr>
                     <tr><td class="text-muted">Duration</td><td>${App.formatDuration(c.duration)}</td></tr>
                     <tr><td class="text-muted">Total Size</td><td>${App.formatBytes(c.size_bytes)}</td></tr>
-                    <tr><td class="text-muted">DASH</td><td class="text-mono text-sm">${App.esc(c.dash_path || '-')}</td></tr>
+                    <tr><td class="text-muted">HLS</td><td class="text-mono text-sm">${App.esc(c.hls_path || '-')}</td></tr>
                     <tr><td class="text-muted">Thumbnails</td><td>${c.has_thumbnails ? 'Yes' : 'No'}</td></tr>
                     <tr><td class="text-muted">Created</td><td>${c.created_at || '-'}</td></tr>
                 </table>
