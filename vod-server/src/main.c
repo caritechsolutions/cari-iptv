@@ -10,6 +10,7 @@
 #include "migration.h"
 #include "transcoder.h"
 #include "packager.h"
+#include "drm.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -235,6 +236,11 @@ int main(int argc, char *argv[])
     /* Load profiles saved via API (overrides INI profiles if present) */
     if (config_load_db_profiles(&g_config) > 0) {
         log_info("Profiles loaded from database (overrides config file)");
+    }
+
+    /* Initialize DRM module (creates drm_keys table) */
+    if (drm_init() != 0) {
+        log_warn("DRM module initialization failed (non-fatal)");
     }
 
     /* Initialize SSL if enabled */

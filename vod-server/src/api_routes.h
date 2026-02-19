@@ -61,6 +61,17 @@ int api_post_profile(http_request_t *req);
 int api_put_profile(http_request_t *req, const char *name);
 int api_delete_profile(http_request_t *req, const char *name);
 
+/* DRM key management routes */
+int api_get_drm_keys(http_request_t *req);
+int api_post_drm_key(http_request_t *req);
+int api_get_drm_key(http_request_t *req, const char *content_id);
+int api_delete_drm_key(http_request_t *req, const char *content_id);
+
+/* DRM ClearKey license routes */
+int api_get_drm_license(http_request_t *req);
+int api_post_drm_license(http_request_t *req);
+int api_get_drm_raw_key(http_request_t *req, const char *content_id);
+
 /**
  * Set the configuration pointer used by API routes.
  * Must be called before handling requests (typically at startup).

@@ -587,6 +587,94 @@ class VodServerController
         }
     }
 
+    /* ==============================================================
+     * DRM Key Management
+     * ============================================================== */
+
+    /**
+     * GET /admin/vod-server/drm/keys?server_id=X
+     * List all DRM keys on the selected VOD server
+     */
+    public function drmKeys(): void
+    {
+        try {
+            $sid = $this->getServerId();
+            if ($sid <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'No server selected']);
+                return;
+            }
+            $result = $this->vodService->getDrmKeys($sid);
+            $this->sendJson(['success' => true, 'data' => $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * POST /admin/vod-server/drm/generate
+     * Generate a new DRM key for a content ID
+     * Expects: server_id, content_id, scheme (optional, default 'cenc'), csrf_token
+     */
+    public function drmKeyGenerate(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        try {
+            $sid = (int)($_POST['server_id'] ?? 0);
+            $contentId = trim($_POST['content_id'] ?? '');
+            $scheme = trim($_POST['scheme'] ?? 'cenc');
+
+            if ($sid <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'No server selected']);
+                return;
+            }
+            if (empty($contentId)) {
+                $this->sendJson(['success' => false, 'error' => 'Content ID is required']);
+                return;
+            }
+
+            $result = $this->vodService->generateDrmKey($sid, $contentId, $scheme);
+            $this->sendJson(['success' => true, 'message' => 'DRM key generated', 'data' => $result]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * POST /admin/vod-server/drm/delete
+     * Delete a DRM key for a content ID
+     * Expects: server_id, content_id, csrf_token
+     */
+    public function drmKeyDelete(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        try {
+            $sid = (int)($_POST['server_id'] ?? 0);
+            $contentId = trim($_POST['content_id'] ?? '');
+
+            if ($sid <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'No server selected']);
+                return;
+            }
+            if (empty($contentId)) {
+                $this->sendJson(['success' => false, 'error' => 'Content ID is required']);
+                return;
+            }
+
+            $this->vodService->deleteDrmKey($sid, $contentId);
+            $this->sendJson(['success' => true, 'message' => 'DRM key deleted']);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
     private function sendJson(array $data): void
     {
         header('Content-Type: application/json');

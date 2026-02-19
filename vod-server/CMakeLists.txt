@@ -55,6 +55,7 @@ set(SOURCES
     src/storage.c
     src/thumbnails.c
     src/ssl.c
+    src/drm.c
     src/cluster.c
     src/migration.c
     include/cjson/cJSON.c

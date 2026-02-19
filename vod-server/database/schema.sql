@@ -112,6 +112,18 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- DRM encryption keys (ClearKey / CENC)
+CREATE TABLE IF NOT EXISTS drm_keys (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_id  TEXT UNIQUE NOT NULL,            -- External content reference
+    key_hex     TEXT NOT NULL,                   -- AES-128 key in hex (32 chars)
+    kid_hex     TEXT NOT NULL,                   -- Key ID in hex (32 chars)
+    scheme      INTEGER DEFAULT 1,              -- 1=CENC (AES-CTR), 2=CBCS (AES-CBC)
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_drm_keys_content ON drm_keys(content_id);
+
 -- API keys for authentication
 CREATE TABLE IF NOT EXISTS api_keys (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

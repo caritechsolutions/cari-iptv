@@ -239,6 +239,47 @@ class VodServerService
         return $this->request($server, 'GET', '/api/profiles');
     }
 
+    /* =========== DRM Key Management =========== */
+
+    /**
+     * Get all DRM keys from the VOD server
+     */
+    public function getDrmKeys(int $serverId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/drm/keys');
+    }
+
+    /**
+     * Get a single DRM key by content ID
+     */
+    public function getDrmKey(int $serverId, string $contentId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'GET', '/api/drm/keys/' . urlencode($contentId));
+    }
+
+    /**
+     * Generate a new DRM key for a content ID
+     */
+    public function generateDrmKey(int $serverId, string $contentId, string $scheme = 'cenc'): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'POST', '/api/drm/keys', [
+            'content_id' => $contentId,
+            'scheme'     => $scheme,
+        ]);
+    }
+
+    /**
+     * Delete a DRM key by content ID
+     */
+    public function deleteDrmKey(int $serverId, string $contentId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'DELETE', '/api/drm/keys/' . urlencode($contentId));
+    }
+
     /**
      * Test connection to a VOD server
      * First checks /api/status (public), then verifies API key via /api/config (authenticated)

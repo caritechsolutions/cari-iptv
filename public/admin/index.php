@@ -368,6 +368,11 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->get('/vod-server/profiles', [VodServerController::class, 'getProfiles']);
     $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
     $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
+
+    // VOD Server - DRM Key Management
+    $router->get('/vod-server/drm/keys', [VodServerController::class, 'drmKeys']);
+    $router->post('/vod-server/drm/generate', [VodServerController::class, 'drmKeyGenerate']);
+    $router->post('/vod-server/drm/delete', [VodServerController::class, 'drmKeyDelete']);
 });
 
 // Dispatch the request

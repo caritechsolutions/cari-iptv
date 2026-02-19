@@ -162,6 +162,12 @@ static int config_ini_callback(void *user, const char *section, const char *name
     else if (MATCH("cluster", "offline_threshold"))      config->offline_threshold = atoi(value);
     else if (MATCH("cluster", "max_concurrent_migrations")) config->max_concurrent_migrations = atoi(value);
 
+    /* [drm] */
+    else if (MATCH("drm", "enabled"))          config->drm_enabled = (atoi(value) || strcasecmp(value, "true") == 0);
+    else if (MATCH("drm", "scheme"))           COPY_STR(config->drm_scheme);
+    else if (MATCH("drm", "key_server_url"))   COPY_STR(config->drm_key_server_url);
+    else if (MATCH("drm", "auto_generate"))    config->drm_auto_generate = (atoi(value) || strcasecmp(value, "true") == 0);
+
     /* [profile:*] sections */
     else if (strncmp(section, "profile:", 8) == 0) {
         const char *profile_name = section + 8;
@@ -232,6 +238,12 @@ void config_set_defaults(vod_config_t *config)
     config->health_check_interval = 30;
     config->offline_threshold = 3;
     config->max_concurrent_migrations = 1;
+
+    /* DRM */
+    config->drm_enabled = false;
+    snprintf(config->drm_scheme, sizeof(config->drm_scheme), "%s", "cenc");
+    config->drm_key_server_url[0] = '\0';
+    config->drm_auto_generate = true;
 }
 
 int config_load(vod_config_t *config, const char *path)
@@ -287,6 +299,13 @@ void config_dump(const vod_config_t *config)
         }
     }
     log_info("Cluster node: %s", config->node_name);
+    log_info("DRM: %s (scheme=%s, auto_generate=%s)",
+             config->drm_enabled ? "enabled" : "disabled",
+             config->drm_scheme,
+             config->drm_auto_generate ? "yes" : "no");
+    if (config->drm_key_server_url[0]) {
+        log_info("DRM key server: %s", config->drm_key_server_url);
+    }
     log_info("=====================");
 }
 

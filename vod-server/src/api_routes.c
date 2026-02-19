@@ -9,6 +9,7 @@
 #include "http_server.h"
 #include "config.h"
 #include "database.h"
+#include "drm.h"
 #include "storage.h"
 #include "job_processor.h"
 #include "cluster.h"
@@ -387,6 +388,45 @@ int api_handle_request(http_request_t *req)
         return api_post_ssl_self_signed(req);
     }
 
+    /* --- DRM routes --- */
+
+    /* GET /api/drm/keys - List all DRM keys */
+    if (strcmp(url, "/api/drm/keys") == 0 && strcmp(method, HTTP_GET) == 0) {
+        return api_get_drm_keys(req);
+    }
+
+    /* POST /api/drm/keys - Generate a new DRM key */
+    if (strcmp(url, "/api/drm/keys") == 0 && strcmp(method, HTTP_POST) == 0) {
+        return api_post_drm_key(req);
+    }
+
+    /* GET /api/drm/keys/{content_id} */
+    if (strncmp(url, "/api/drm/keys/", 14) == 0 && strlen(url) > 14) {
+        const char *content_id = url + 14;
+        if (strcmp(method, HTTP_GET) == 0)    return api_get_drm_key(req, content_id);
+        if (strcmp(method, HTTP_DELETE) == 0)  return api_delete_drm_key(req, content_id);
+        return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                               "Method not allowed");
+    }
+
+    /* GET /api/drm/license?content_id=... - ClearKey license (EME format) */
+    if (strcmp(url, "/api/drm/license") == 0 && strcmp(method, HTTP_GET) == 0) {
+        return api_get_drm_license(req);
+    }
+
+    /* POST /api/drm/license - ClearKey license (EME key IDs in body) */
+    if (strcmp(url, "/api/drm/license") == 0 && strcmp(method, HTTP_POST) == 0) {
+        return api_post_drm_license(req);
+    }
+
+    /* GET /api/drm/key/{content_id} - Raw key delivery (for HLS EXT-X-KEY) */
+    if (strncmp(url, "/api/drm/key/", 13) == 0 && strlen(url) > 13) {
+        const char *content_id = url + 13;
+        if (strcmp(method, HTTP_GET) == 0) return api_get_drm_raw_key(req, content_id);
+        return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                               "Method not allowed");
+    }
+
     /* No matching API route */
     return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
                            "API endpoint not found");
@@ -485,6 +525,21 @@ int api_get_status(http_request_t *req)
     cJSON_AddBoolToObject(root, "ssl_enabled",
                           s_config ? s_config->ssl_enabled : false);
 
+    /* DRM status */
+    cJSON_AddBoolToObject(root, "drm_enabled",
+                          s_config ? s_config->drm_enabled : false);
+    if (db) {
+        int drm_key_count = 0;
+        sqlite3_stmt *drm_stmt;
+        if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM drm_keys", -1, &drm_stmt, NULL) == SQLITE_OK) {
+            if (sqlite3_step(drm_stmt) == SQLITE_ROW) {
+                drm_key_count = sqlite3_column_int(drm_stmt, 0);
+            }
+            sqlite3_finalize(drm_stmt);
+        }
+        cJSON_AddNumberToObject(root, "drm_key_count", drm_key_count);
+    }
+
     /* Port */
     cJSON_AddNumberToObject(root, "port",
                             s_config ? s_config->port : 8090);
@@ -577,6 +632,16 @@ int api_get_config(http_request_t *req)
     cJSON_AddNumberToObject(cluster, "offline_threshold", s_config->offline_threshold);
     cJSON_AddNumberToObject(cluster, "max_concurrent_migrations", s_config->max_concurrent_migrations);
     cJSON_AddItemToObject(root, "cluster", cluster);
+
+    /* DRM */
+    cJSON *drm = cJSON_CreateObject();
+    cJSON_AddBoolToObject(drm, "enabled", s_config->drm_enabled);
+    cJSON_AddStringToObject(drm, "scheme", s_config->drm_scheme);
+    cJSON_AddStringToObject(drm, "key_server_url", s_config->drm_key_server_url);
+    cJSON_AddBoolToObject(drm, "auto_generate", s_config->drm_auto_generate);
+    cJSON_AddStringToObject(drm, "clearkey_system_id", CLEARKEY_SYSTEM_ID);
+    cJSON_AddStringToObject(drm, "widevine_system_id", WIDEVINE_SYSTEM_ID);
+    cJSON_AddItemToObject(root, "drm", drm);
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }
@@ -2847,6 +2912,243 @@ int api_post_ssl_self_signed(http_request_t *req)
 /* ================================================================
  * Module initialisation (called from main or http_server)
  * ================================================================ */
+
+/* ================================================================
+ * DRM Key Management Endpoints
+ * ================================================================ */
+
+/* GET /api/drm/keys - List all DRM keys */
+int api_get_drm_keys(http_request_t *req)
+{
+    drm_key_list_t list;
+    if (drm_list_keys(&list) != 0) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Failed to list DRM keys");
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *items = cJSON_CreateArray();
+
+    for (int i = 0; i < list.count; i++) {
+        drm_key_t *k = &list.keys[i];
+        cJSON *obj = cJSON_CreateObject();
+        cJSON_AddNumberToObject(obj, "id", k->id);
+        cJSON_AddStringToObject(obj, "content_id", k->content_id);
+        cJSON_AddStringToObject(obj, "kid", k->kid_uuid);
+        cJSON_AddStringToObject(obj, "kid_hex", k->kid_hex);
+        cJSON_AddStringToObject(obj, "scheme", drm_scheme_name((drm_scheme_t)k->scheme));
+        cJSON_AddStringToObject(obj, "created_at", k->created_at);
+        /* Note: key_hex is intentionally NOT exposed in list view for security */
+        cJSON_AddItemToArray(items, obj);
+    }
+
+    cJSON_AddItemToObject(root, "items", items);
+    cJSON_AddNumberToObject(root, "total", list.count);
+    cJSON_AddBoolToObject(root, "drm_enabled", s_config ? s_config->drm_enabled : false);
+    cJSON_AddStringToObject(root, "default_scheme",
+                            s_config ? s_config->drm_scheme : "cenc");
+
+    drm_free_key_list(&list);
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* POST /api/drm/keys - Generate a new DRM key */
+int api_post_drm_key(http_request_t *req)
+{
+    cJSON *body = parse_request_body(req);
+    if (!body) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid JSON body");
+    }
+
+    const char *content_id = json_str(body, "content_id", NULL);
+    if (!content_id || content_id[0] == '\0') {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "content_id is required");
+    }
+
+    const char *scheme_str = json_str(body, "scheme",
+                                       s_config ? s_config->drm_scheme : "cenc");
+    drm_scheme_t scheme = drm_parse_scheme(scheme_str);
+    if (scheme == DRM_SCHEME_NONE) scheme = DRM_SCHEME_CENC;
+
+    drm_key_t key;
+    if (drm_generate_key(content_id, scheme, &key) != 0) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Failed to generate DRM key");
+    }
+
+    cJSON_Delete(body);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "id", key.id);
+    cJSON_AddStringToObject(root, "content_id", key.content_id);
+    cJSON_AddStringToObject(root, "kid", key.kid_uuid);
+    cJSON_AddStringToObject(root, "kid_hex", key.kid_hex);
+    cJSON_AddStringToObject(root, "key_hex", key.key_hex);  /* Shown on creation only */
+    cJSON_AddStringToObject(root, "scheme", drm_scheme_name(scheme));
+    cJSON_AddStringToObject(root, "system_id", CLEARKEY_SYSTEM_ID);
+
+    return send_json_obj(req->connection, MHD_HTTP_CREATED, root);
+}
+
+/* GET /api/drm/keys/{content_id} - Get DRM key details */
+int api_get_drm_key(http_request_t *req, const char *content_id)
+{
+    drm_key_t key;
+    if (drm_get_key(content_id, &key) != 0) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "No DRM key found for this content");
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "id", key.id);
+    cJSON_AddStringToObject(root, "content_id", key.content_id);
+    cJSON_AddStringToObject(root, "kid", key.kid_uuid);
+    cJSON_AddStringToObject(root, "kid_hex", key.kid_hex);
+    cJSON_AddStringToObject(root, "key_hex", key.key_hex);
+    cJSON_AddStringToObject(root, "scheme", drm_scheme_name((drm_scheme_t)key.scheme));
+    cJSON_AddStringToObject(root, "system_id", CLEARKEY_SYSTEM_ID);
+    cJSON_AddStringToObject(root, "created_at", key.created_at);
+
+    /* Include base64url-encoded versions for player integration */
+    uint8_t key_bin[DRM_KEY_SIZE], kid_bin[DRM_KEY_ID_SIZE];
+    char key_b64[32], kid_b64[32];
+    if (drm_hex_to_bin(key.key_hex, key_bin, sizeof(key_bin)) == DRM_KEY_SIZE &&
+        drm_hex_to_bin(key.kid_hex, kid_bin, sizeof(kid_bin)) == DRM_KEY_ID_SIZE) {
+        drm_base64url_encode(key_bin, DRM_KEY_SIZE, key_b64, sizeof(key_b64));
+        drm_base64url_encode(kid_bin, DRM_KEY_ID_SIZE, kid_b64, sizeof(kid_b64));
+        cJSON_AddStringToObject(root, "key_b64url", key_b64);
+        cJSON_AddStringToObject(root, "kid_b64url", kid_b64);
+        memset(key_bin, 0, sizeof(key_bin));
+    }
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* DELETE /api/drm/keys/{content_id} - Delete DRM key */
+int api_delete_drm_key(http_request_t *req, const char *content_id)
+{
+    if (drm_delete_key(content_id) != 0) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "No DRM key found for this content");
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "success", 1);
+    cJSON_AddStringToObject(root, "message", "DRM key deleted");
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * ClearKey License Server Endpoints
+ * ================================================================ */
+
+/* GET /api/drm/license?content_id=... - Simple ClearKey license */
+int api_get_drm_license(http_request_t *req)
+{
+    const char *content_id = http_get_param(req->connection, "content_id");
+    if (!content_id || content_id[0] == '\0') {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "content_id parameter required");
+    }
+
+    char *license_json = drm_build_clearkey_response_for_content(content_id);
+    if (!license_json) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "No DRM key found for this content");
+    }
+
+    int ret = http_send_json(req->connection, MHD_HTTP_OK, license_json);
+    free(license_json);
+    return ret;
+}
+
+/* POST /api/drm/license - Standard ClearKey license (EME key IDs in body) */
+int api_post_drm_license(http_request_t *req)
+{
+    /*
+     * The EME ClearKey license request format is:
+     * { "kids": ["<base64url-encoded key ID>", ...], "type": "temporary" }
+     *
+     * We extract the kids array and look up each key in our database.
+     */
+    cJSON *body = parse_request_body(req);
+    if (!body) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid JSON body");
+    }
+
+    cJSON *kids = cJSON_GetObjectItemCaseSensitive(body, "kids");
+    if (!kids || !cJSON_IsArray(kids)) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Missing 'kids' array in request");
+    }
+
+    /* Convert kids array back to JSON string for drm_build_clearkey_response */
+    char *kids_json = cJSON_PrintUnformatted(kids);
+    cJSON_Delete(body);
+
+    if (!kids_json) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "JSON serialization failed");
+    }
+
+    char *license_json = drm_build_clearkey_response(kids_json);
+    free(kids_json);
+
+    if (!license_json) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "No matching DRM keys found");
+    }
+
+    int ret = http_send_json(req->connection, MHD_HTTP_OK, license_json);
+    free(license_json);
+    return ret;
+}
+
+/* GET /api/drm/key/{content_id} - Raw binary key (for HLS #EXT-X-KEY) */
+int api_get_drm_raw_key(http_request_t *req, const char *content_id)
+{
+    drm_key_t key;
+    if (drm_get_key(content_id, &key) != 0) {
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "No DRM key found");
+    }
+
+    /* Convert hex key to binary */
+    uint8_t key_bin[DRM_KEY_SIZE];
+    if (drm_hex_to_bin(key.key_hex, key_bin, sizeof(key_bin)) != DRM_KEY_SIZE) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Key decode error");
+    }
+
+    /* Send raw binary key with appropriate content type */
+    struct MHD_Response *response = MHD_create_response_from_buffer(
+        DRM_KEY_SIZE, key_bin, MHD_RESPMEM_MUST_COPY);
+
+    if (!response) {
+        memset(key_bin, 0, sizeof(key_bin));
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Response creation failed");
+    }
+
+    MHD_add_response_header(response, "Content-Type", "application/octet-stream");
+    MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Cache-Control", "no-store");
+
+    int ret = MHD_queue_response(req->connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+
+    /* Clear sensitive data */
+    memset(key_bin, 0, sizeof(key_bin));
+
+    return ret;
+}
 
 /*
  * The config pointer is obtained from the extern declared at file scope.

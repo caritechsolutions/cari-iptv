@@ -7,11 +7,13 @@
 /* Packaging state */
 typedef struct {
     int     job_id;
-    char    input_dir[MAX_PATH_LEN];    /* Dir with encoded files */
-    char    output_dir[MAX_PATH_LEN];   /* Final content directory */
+    char    content_id[256];                /* Content ID (for DRM key lookup) */
+    char    input_dir[MAX_PATH_LEN];        /* Dir with encoded files */
+    char    output_dir[MAX_PATH_LEN];       /* Final content directory */
     double  progress;           /* 0.0 to 100.0 */
     char    current_step[256];
     bool    cancelled;
+    bool    drm_encrypted;      /* Set to true if DRM encryption was applied */
 } package_state_t;
 
 /**

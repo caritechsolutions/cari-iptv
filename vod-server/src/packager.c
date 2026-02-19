@@ -1,4 +1,5 @@
 #include "packager.h"
+#include "drm.h"
 #include "logger.h"
 
 #include <stdio.h>
@@ -172,8 +173,9 @@ int packager_init(const vod_config_t *config)
         return -1;
     }
 
-    log_info("Packager initialized: FFmpeg=%s, segment_duration=%ds",
-             config->ffmpeg_path, config->segment_duration);
+    log_info("Packager initialized: FFmpeg=%s, segment_duration=%ds, DRM=%s",
+             config->ffmpeg_path, config->segment_duration,
+             config->drm_enabled ? "enabled" : "disabled");
 
     return 0;
 }
@@ -182,14 +184,19 @@ int packager_init(const vod_config_t *config)
  * packager_run
  * Use FFmpeg to create HLS output with muxed audio+video .ts segments.
  *
- * For each video rendition, mux it with the audio track into a single HLS
- * variant stream.  Each .ts segment contains both audio and video.
- * Then write a master.m3u8 that references all variant playlists.
+ * When DRM is enabled and a key exists for the content, FFmpeg's HLS
+ * AES-128 encryption is used via -hls_key_info_file. This produces
+ * standard HLS with #EXT-X-KEY tags that reference the ClearKey
+ * license server for key delivery.
+ *
+ * The encryption is CENC-compatible AES-128 — the same encryption
+ * used by Widevine, so switching DRM providers later does not require
+ * re-encoding or re-encrypting content.
  *
  * Output structure:
  *   {output_dir}/master.m3u8          (master playlist)
- *   {output_dir}/stream_720p.m3u8     (variant playlist)
- *   {output_dir}/stream_720p_001.ts   (muxed audio+video segments)
+ *   {output_dir}/stream_720p.m3u8     (variant playlist, with #EXT-X-KEY if DRM)
+ *   {output_dir}/stream_720p_001.ts   (muxed audio+video segments, encrypted if DRM)
  *   ...
  * ------------------------------------------------------------------------- */
 int packager_run(package_state_t *state, const vod_config_t *config)
@@ -202,11 +209,38 @@ int packager_run(package_state_t *state, const vod_config_t *config)
     snprintf(state->current_step, sizeof(state->current_step),
              "%s", "Packaging (HLS)");
     state->progress = 0.0;
+    state->drm_encrypted = false;
 
     /* Ensure output directory exists */
     if (ensure_dir(state->output_dir) != 0) {
         log_error("Cannot create output directory: %s", state->output_dir);
         return -1;
+    }
+
+    /* --- DRM: prepare encryption key files if enabled --- */
+    char key_file[MAX_PATH_LEN] = {0};
+    char key_info_file[MAX_PATH_LEN] = {0};
+    bool use_drm = false;
+
+    if (config->drm_enabled && state->content_id[0] != '\0') {
+        int drm_rc = drm_get_ffmpeg_hls_key_files(
+            state->content_id, state->input_dir,
+            config->drm_key_server_url,
+            key_file, sizeof(key_file),
+            key_info_file, sizeof(key_info_file));
+
+        if (drm_rc == 0) {
+            use_drm = true;
+            log_info("DRM: encryption enabled for job %d (content=%s)",
+                     state->job_id, state->content_id);
+        } else if (drm_rc == 1) {
+            log_info("DRM: no key for content '%s', packaging without encryption",
+                     state->content_id);
+        } else {
+            log_error("DRM: failed to prepare key files for content '%s'",
+                      state->content_id);
+            return -1;
+        }
     }
 
     /* Collect rendition files from input directory */
@@ -256,8 +290,9 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         return -1;
     }
 
-    log_info("HLS packaging: %d video renditions, audio=%s, output=%s",
-             video_count, has_audio ? "yes" : "no", state->output_dir);
+    log_info("HLS packaging: %d video renditions, audio=%s, drm=%s, output=%s",
+             video_count, has_audio ? "yes" : "no",
+             use_drm ? "encrypted" : "clear", state->output_dir);
 
     state->progress = 10.0;
 
@@ -284,7 +319,8 @@ int packager_run(package_state_t *state, const vod_config_t *config)
                  "stream_%s.m3u8", video_labels[i]);
 
         snprintf(state->current_step, sizeof(state->current_step),
-                 "Packaging %s (%d/%d)", video_labels[i], i + 1, video_count);
+                 "Packaging %s (%d/%d)%s", video_labels[i], i + 1, video_count,
+                 use_drm ? " [encrypted]" : "");
 
         /* Build FFmpeg command to produce a single HLS variant with muxed
          * audio+video .ts segments.
@@ -292,6 +328,7 @@ int packager_run(package_state_t *state, const vod_config_t *config)
          * ffmpeg -i video.mp4 -i audio.m4a
          *        -map 0:v:0 -map 1:a:0 -c copy
          *        -f hls -hls_time 4 -hls_playlist_type vod
+         *        [-hls_key_info_file key_info.txt]  (if DRM enabled)
          *        -hls_segment_filename "output/stream_720p_%04d.ts"
          *        "output/stream_720p.m3u8"
          */
@@ -314,10 +351,19 @@ int packager_run(package_state_t *state, const vod_config_t *config)
                         "-f hls "
                         "-hls_time %d "
                         "-hls_playlist_type vod "
-                        "-hls_flags independent_segments "
+                        "-hls_flags independent_segments ",
+                        config->segment_duration);
+
+        /* Add DRM encryption if key files are available */
+        if (use_drm) {
+            pos += snprintf(cmd + pos, sizeof(cmd) - pos,
+                            "-hls_key_info_file \"%s\" ",
+                            key_info_file);
+        }
+
+        pos += snprintf(cmd + pos, sizeof(cmd) - pos,
                         "-hls_segment_filename \"%s/stream_%s_%%04d.ts\" "
                         "\"%s/%s\"",
-                        config->segment_duration,
                         state->output_dir, video_labels[i],
                         state->output_dir, variant_playlist);
 
@@ -345,11 +391,22 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         fprintf(master, "%s\n", variant_playlist);
 
         state->progress = 10.0 + ((double)(i + 1) / video_count) * 80.0;
-        log_info("HLS: packaged rendition %s (%d/%d)",
-                 video_labels[i], i + 1, video_count);
+        log_info("HLS: packaged rendition %s (%d/%d)%s",
+                 video_labels[i], i + 1, video_count,
+                 use_drm ? " [encrypted]" : "");
     }
 
     fclose(master);
+
+    if (use_drm) {
+        state->drm_encrypted = true;
+
+        /* Clean up temporary DRM key files from input/temp directory */
+        if (key_file[0]) unlink(key_file);
+        if (key_info_file[0]) unlink(key_info_file);
+
+        log_info("DRM: HLS encryption applied for job %d", state->job_id);
+    }
 
     state->progress = 90.0;
     snprintf(state->current_step, sizeof(state->current_step),
@@ -365,8 +422,9 @@ int packager_run(package_state_t *state, const vod_config_t *config)
     snprintf(state->current_step, sizeof(state->current_step),
              "%s", "Packaging complete");
 
-    log_info("HLS packaging completed for job %d: %s",
-             state->job_id, state->output_dir);
+    log_info("HLS packaging completed for job %d: %s%s",
+             state->job_id, state->output_dir,
+             state->drm_encrypted ? " (DRM encrypted)" : "");
 
     return 0;
 }

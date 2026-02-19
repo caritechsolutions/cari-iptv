@@ -9,6 +9,7 @@
 #include "job_processor.h"
 #include "transcoder.h"
 #include "packager.h"
+#include "drm.h"
 #include "thumbnails.h"
 #include "storage.h"
 #include "database.h"
@@ -333,12 +334,29 @@ static void handle_job_completed(active_job_t *job)
         }
     }
 
+    /* ---- DRM: Auto-generate key if enabled ---- */
+    if (g_config->drm_enabled && g_config->drm_auto_generate) {
+        drm_key_t existing_key;
+        if (drm_get_key(job->content_id, &existing_key) != 0) {
+            drm_key_t new_key;
+            drm_scheme_t scheme = drm_parse_scheme(g_config->drm_scheme);
+            if (scheme == DRM_SCHEME_NONE) scheme = DRM_SCHEME_CENC;
+
+            if (drm_generate_key(job->content_id, scheme, &new_key) == 0) {
+                log_info("Job %d: Auto-generated DRM key (kid=%s)", job_id, new_key.kid_uuid);
+            } else {
+                log_warn("Job %d: Failed to auto-generate DRM key (non-fatal)", job_id);
+            }
+        }
+    }
+
     /* ---- Packaging ---- */
     log_info("Job %d: Packaging output for streaming", job_id);
 
     package_state_t pkg;
     memset(&pkg, 0, sizeof(pkg));
     pkg.job_id = job_id;
+    snprintf(pkg.content_id, sizeof(pkg.content_id), "%s", job->content_id);
     snprintf(pkg.input_dir, sizeof(pkg.input_dir), "%s", st->output_dir);
     snprintf(pkg.output_dir, sizeof(pkg.output_dir), "%s", st->output_dir);
 
@@ -353,7 +371,8 @@ static void handle_job_completed(active_job_t *job)
         return;
     }
 
-    log_info("Job %d: Packaging complete", job_id);
+    log_info("Job %d: Packaging complete%s", job_id,
+             pkg.drm_encrypted ? " (DRM encrypted)" : "");
 
     /* ---- Thumbnails ---- */
     int has_thumbnails = 0;
@@ -448,14 +467,28 @@ static void handle_job_completed(active_job_t *job)
     /* ---- Register content in database ---- */
     log_info("Job %d: Registering content in database", job_id);
 
+    /* Build metadata JSON with DRM info */
+    char metadata_json[1024] = "{}";
+    if (pkg.drm_encrypted) {
+        drm_key_t drm_info;
+        if (drm_get_key(job->content_id, &drm_info) == 0) {
+            snprintf(metadata_json, sizeof(metadata_json),
+                "{\"drm\":{\"encrypted\":true,\"scheme\":\"%s\",\"kid\":\"%s\"}}",
+                drm_scheme_name((drm_scheme_t)drm_info.scheme), drm_info.kid_uuid);
+        } else {
+            snprintf(metadata_json, sizeof(metadata_json),
+                "%s", "{\"drm\":{\"encrypted\":true}}");
+        }
+    }
+
     {
         sqlite3_stmt *stmt = NULL;
         int rc = sqlite3_prepare_v2(db,
             "INSERT OR REPLACE INTO content "
             "(content_id, title, path, source_file, codec, renditions, "
             " duration, size_bytes, has_thumbnails, has_subtitles, "
-            " hls_path, dash_path, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'ready', "
+            " hls_path, dash_path, metadata, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'ready', "
             " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             -1, &stmt, NULL);
         if (rc == SQLITE_OK) {
@@ -470,6 +503,7 @@ static void handle_job_completed(active_job_t *job)
             sqlite3_bind_int(stmt, 9, has_thumbnails);
             sqlite3_bind_text(stmt, 10, hls_path, -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(stmt, 11, dash_path, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 12, metadata_json, -1, SQLITE_TRANSIENT);
             rc = sqlite3_step(stmt);
             sqlite3_finalize(stmt);
 

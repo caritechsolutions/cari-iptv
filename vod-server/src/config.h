@@ -83,6 +83,12 @@ typedef struct {
     int          health_check_interval;
     int          offline_threshold;
     int          max_concurrent_migrations;
+
+    /* [drm] */
+    bool         drm_enabled;
+    char         drm_scheme[16];            /* cenc or cbcs */
+    char         drm_key_server_url[512];   /* Base URL for key delivery */
+    bool         drm_auto_generate;         /* Auto-generate keys for new jobs */
 } vod_config_t;
 
 /**
