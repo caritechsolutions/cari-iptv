@@ -36,7 +36,35 @@ fi
 log "Current version: $CURRENT_VERSION"
 
 # ========================
-# 2. Download latest source
+# 2. Ensure build dependencies
+# ========================
+log "Checking build dependencies..."
+MISSING_DEPS=""
+for cmd in cmake make gcc; do
+    if ! command -v "$cmd" &>/dev/null; then
+        MISSING_DEPS="$MISSING_DEPS $cmd"
+    fi
+done
+
+if [ -n "$MISSING_DEPS" ]; then
+    log "Installing missing build tools:$MISSING_DEPS"
+    if command -v apt-get &>/dev/null; then
+        apt-get update -qq
+        apt-get install -y -qq cmake build-essential pkg-config \
+            libmicrohttpd-dev libsqlite3-dev libgnutls28-dev 2>/dev/null
+    elif command -v dnf &>/dev/null; then
+        dnf install -y cmake gcc make pkg-config \
+            libmicrohttpd-devel sqlite-devel gnutls-devel 2>/dev/null
+    elif command -v yum &>/dev/null; then
+        yum install -y cmake gcc make pkg-config \
+            libmicrohttpd-devel sqlite-devel gnutls-devel 2>/dev/null
+    else
+        err "Cannot install build dependencies: unknown package manager. Install cmake, gcc, make manually."
+    fi
+fi
+
+# ========================
+# 3. Download latest source
 # ========================
 TEMP_DIR=$(mktemp -d)
 log "Downloading latest source from branch: $BRANCH"
