@@ -131,6 +131,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
     $router->post('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
 
+    // DRM Raw Key Proxy (for HLS #EXT-X-KEY — returns 16-byte binary key)
+    $router->get('/drm/key/{contentId}', [ContentController::class, 'drmRawKey'], ['api_auth']);
+
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);
 

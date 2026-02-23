@@ -282,6 +282,71 @@ class ContentController extends BaseApiController
         }
     }
 
+    /**
+     * GET /api/v1/drm/key/{content_id}
+     * Proxies raw binary key requests from HLS #EXT-X-KEY tags.
+     * The HLS playlist references this URL; the player fetches 16 raw bytes.
+     * ?server_id=1  (optional — if not given, uses the default VOD server)
+     */
+    public function drmRawKey(string $contentId): void
+    {
+        $serverId = (int)$this->query('server_id', 0);
+
+        if (empty($contentId)) {
+            $this->error('content_id is required', 400);
+        }
+
+        try {
+            $vodService = new VodServerService();
+
+            // If no server_id provided, try to find it from the content_id
+            if (!$serverId) {
+                $server = $vodService->getDefaultServer();
+                if ($server) $serverId = (int)$server['id'];
+            }
+            if (!$serverId) {
+                $this->error('No VOD server available', 404);
+            }
+
+            $server = $vodService->getServer($serverId);
+            if (!$server) {
+                $this->error('VOD server not found', 404);
+            }
+
+            $vodUrl = rtrim($server['url'], '/') . '/api/drm/key/' . urlencode($contentId);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $vodUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            curl_close($ch);
+
+            if ($response === false) {
+                $this->error('VOD server unreachable', 502);
+            }
+
+            // Forward the raw binary key response
+            http_response_code($httpCode ?: 200);
+            header('Content-Type: ' . ($contentType ?: 'application/octet-stream'));
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, OPTIONS');
+            header('Cache-Control: no-cache');
+            echo $response;
+            exit;
+        } catch (\Throwable $e) {
+            error_log('DRM raw key proxy error: ' . $e->getMessage());
+            $this->error('Key request failed', 500);
+        }
+    }
+
     // =========================================================================
     // CATEGORIES
     // =========================================================================

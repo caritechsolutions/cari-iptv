@@ -434,8 +434,18 @@ request_handler(void *cls,
 
     /* --- API routes (/api/...) --- */
     if (strncmp(url, "/api/", 5) == 0) {
-        /* /api/status is public (no key needed) */
-        bool needs_auth = (strcmp(url, "/api/status") != 0);
+        /* Public endpoints (no API key needed):
+         *   /api/status           - health check
+         *   /api/drm/license      - ClearKey license (EME format, called by players)
+         *   /api/drm/key/...      - raw binary key (HLS #EXT-X-KEY, called by players)
+         */
+        bool needs_auth = true;
+        if (strcmp(url, "/api/status") == 0)
+            needs_auth = false;
+        else if (strcmp(url, "/api/drm/license") == 0)
+            needs_auth = false;
+        else if (strncmp(url, "/api/drm/key/", 13) == 0)
+            needs_auth = false;
 
         if (needs_auth) {
             if (!validate_api_key(connection)) {

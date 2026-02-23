@@ -631,11 +631,19 @@ int drm_get_ffmpeg_hls_key_files(const char *content_id, const char *temp_dir,
         return -1;
     }
 
-    /* Line 1: Key URI that the player will use to fetch the key */
+    /* Line 1: Key URI that the player will use to fetch the key.
+     *
+     * When key_server_url is set (e.g. https://iptv.example.com), the URI
+     * points through the IPTV middleware proxy at /api/v1/drm/key/{id}.
+     * This keeps the VOD server internal and ensures same-origin delivery.
+     *
+     * When key_server_url is empty, a relative /api/drm/key/{id} is used
+     * which resolves against the VOD server's own URL.
+     */
     if (key_server_url && key_server_url[0]) {
-        fprintf(fp, "%s/api/drm/key/%s\n", key_server_url, content_id);
+        fprintf(fp, "%s/api/v1/drm/key/%s\n", key_server_url, content_id);
     } else {
-        /* Relative URI - player needs to resolve against base URL */
+        /* Relative URI - resolves against VOD server base URL */
         fprintf(fp, "/api/drm/key/%s\n", content_id);
     }
 
