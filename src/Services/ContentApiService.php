@@ -566,9 +566,10 @@ class ContentApiService
             $server = $vodService->getServer($serverId);
             if (!$server) return null;
 
-            // Derive content_id from stream_url or movie slug
-            // The VOD server uses content IDs like "movie-123"
-            $contentId = 'movie-' . ($item['id'] ?? 0);
+            // Use stored content_id if available, otherwise fall back to movie-{id}
+            $contentId = !empty($item['vod_content_id'])
+                ? $item['vod_content_id']
+                : 'movie-' . ($item['id'] ?? 0);
 
             // Check if a DRM key exists for this content
             $keyInfo = $vodService->getDrmKey($serverId, $contentId);

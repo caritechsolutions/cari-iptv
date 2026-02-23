@@ -366,8 +366,8 @@ class VodServerController
             if ($movieId > 0 && $jobId > 0) {
                 try {
                     $this->db->execute(
-                        "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
-                        [$serverId, $jobId, $movieId]
+                        "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_content_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
+                        [$serverId, $jobId, $contentId, $movieId]
                     );
                     error_log('[VOD Upload] DB save SUCCESS for movie ' . $movieId . ' jobId=' . $jobId);
                 } catch (\Exception $dbErr) {
@@ -438,14 +438,14 @@ class VodServerController
             if ($movieId > 0) {
                 try {
                     if ($status === 'complete') {
-                        // Transcode done — write the stream URL (HLS)
+                        // Transcode done — write the stream URL (HLS) and content_id
                         $server = $this->vodService->getServer($sid);
                         $contentId = $job['content_id'] ?? ('movie-' . $movieId);
                         $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
 
                         $this->db->execute(
-                            "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ? WHERE id = ?",
-                            [$hlsUrl, $movieId]
+                            "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ?, vod_content_id = ? WHERE id = ?",
+                            [$hlsUrl, $contentId, $movieId]
                         );
                         $job['stream_url'] = $hlsUrl;
                     } elseif ($status === 'failed') {
@@ -531,7 +531,7 @@ class VodServerController
         // 3. Clear all VOD fields on the movie record
         try {
             $this->db->execute(
-                "UPDATE movies SET vod_server_id = NULL, vod_job_id = NULL, vod_status = NULL, vod_progress = 0, vod_error = NULL, stream_url = NULL WHERE id = ?",
+                "UPDATE movies SET vod_server_id = NULL, vod_job_id = NULL, vod_content_id = NULL, vod_status = NULL, vod_progress = 0, vod_error = NULL, stream_url = NULL WHERE id = ?",
                 [$movieId]
             );
         } catch (\Exception $e) {
