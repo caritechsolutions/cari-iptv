@@ -281,99 +281,74 @@ var settingsPage = {
     },
 
     showLetsEncryptModal() {
-        App.showModal("Let's Encrypt Certificate", `
-            <div class="form-group">
-                <label>Challenge Type *</label>
-                <select class="form-control" id="le-challenge" onchange="settingsPage.toggleDnsFields()">
-                    <option value="dns">DNS-01 (works behind NAT/firewall)</option>
-                    <option value="http">HTTP-01 (requires port 80 open)</option>
-                </select>
-            </div>
+        App.showModal("Let's Encrypt SSL Certificate", `
+            <p class="text-sm text-muted mb-3">
+                Get a free SSL certificate. Uses Cloudflare DNS validation so it works behind NAT/firewalls.
+                SSL will be auto-enabled and the server will restart automatically.
+            </p>
             <div class="form-group">
                 <label>Domain Name *</label>
-                <input type="text" class="form-control" id="le-domain" placeholder="e.g. vod.example.com">
+                <input type="text" class="form-control" id="le-domain" placeholder="e.g. vod1.example.com">
             </div>
             <div class="form-group">
-                <label>Email (optional, for renewal notices)</label>
-                <input type="email" class="form-control" id="le-email" placeholder="admin@example.com">
+                <label>Cloudflare API Token *</label>
+                <input type="password" class="form-control" id="le-cf-token" placeholder="Paste your Cloudflare API token">
+                <small class="text-muted">Create at <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" style="color:var(--primary)">Cloudflare Dashboard</a> &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS" template. Token is saved securely for auto-renewal.</small>
             </div>
-            <div id="le-dns-fields">
-                <div class="form-group">
-                    <label>DNS Provider *</label>
-                    <select class="form-control" id="le-dns-plugin">
-                        <option value="cloudflare">Cloudflare</option>
-                        <option value="digitalocean">DigitalOcean</option>
-                        <option value="route53">AWS Route53</option>
-                        <option value="google">Google Cloud DNS</option>
-                        <option value="linode">Linode</option>
-                        <option value="ovh">OVH</option>
-                    </select>
-                    <small class="text-muted">Requires certbot DNS plugin: <code>pip install certbot-dns-<em>provider</em></code></small>
-                </div>
-                <div class="form-group">
-                    <label>DNS API Credentials *</label>
-                    <textarea class="form-control" id="le-dns-creds" rows="3" placeholder="dns_cloudflare_api_token = YOUR_TOKEN_HERE" style="font-family:monospace;font-size:12px"></textarea>
-                    <small class="text-muted">Credentials in INI format. See <a href="https://certbot-dns-cloudflare.readthedocs.io" target="_blank" style="color:var(--primary)">plugin docs</a> for format.</small>
-                </div>
+            <div class="form-group">
+                <label>Email (optional)</label>
+                <input type="email" class="form-control" id="le-email" placeholder="For renewal notices">
             </div>
             <div id="le-status" class="mt-2" style="display:none"></div>
         `, `
             <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
-            <button class="btn btn-primary" id="le-submit" onclick="settingsPage.requestLetsEncrypt()">Request Certificate</button>
+            <button class="btn btn-primary" id="le-submit" onclick="settingsPage.requestLetsEncrypt()">Get Certificate</button>
         `);
     },
 
-    toggleDnsFields() {
-        const challenge = document.getElementById('le-challenge').value;
-        const dnsFields = document.getElementById('le-dns-fields');
-        dnsFields.style.display = challenge === 'dns' ? '' : 'none';
-    },
-
     async requestLetsEncrypt() {
-        const challenge = document.getElementById('le-challenge').value;
         const domain = document.getElementById('le-domain').value.trim();
+        const cfToken = document.getElementById('le-cf-token').value.trim();
         const email = document.getElementById('le-email').value.trim();
         const statusEl = document.getElementById('le-status');
         const btn = document.getElementById('le-submit');
 
-        if (!domain) {
-            App.toast('Domain name is required', 'warning');
-            return;
-        }
-
-        const payload = { domain, email, challenge };
-
-        if (challenge === 'dns') {
-            const plugin = document.getElementById('le-dns-plugin').value;
-            const creds = document.getElementById('le-dns-creds').value.trim();
-            if (!creds) {
-                App.toast('DNS API credentials are required for DNS challenge', 'warning');
-                return;
-            }
-            payload.dns_plugin = plugin;
-            payload.dns_credentials = creds;
-        }
+        if (!domain) { App.toast('Domain name is required', 'warning'); return; }
+        if (!cfToken) { App.toast('Cloudflare API token is required', 'warning'); return; }
 
         statusEl.style.display = 'block';
         statusEl.className = 'mt-2 text-sm';
-        statusEl.innerHTML = '<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div> Requesting certificate... this may take a minute.';
+        statusEl.innerHTML = '<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div> Requesting certificate via Cloudflare DNS... this may take 1-2 minutes.';
         btn.disabled = true;
 
         try {
-            const result = await App.post('/ssl/letsencrypt', payload);
+            const result = await App.post('/ssl/letsencrypt', {
+                domain,
+                email,
+                cloudflare_token: cfToken
+            });
             if (result.success) {
                 statusEl.className = 'mt-2 text-sm text-success';
-                statusEl.textContent = result.message || 'Certificate obtained!';
-                App.toast('Certificate obtained!', 'success');
-                /* Refresh SSL status */
+                statusEl.textContent = result.message || 'Certificate obtained! Server restarting...';
+                App.toast('SSL enabled! Server restarting...', 'success');
+                /* Server is restarting — wait a moment then reload */
                 setTimeout(() => {
                     App.closeModal();
-                    this.loadSSLStatus();
-                }, 2000);
+                    /* Try HTTPS URL if we're on HTTP */
+                    const loc = window.location;
+                    if (loc.protocol === 'http:') {
+                        statusEl.textContent = 'Switching to HTTPS...';
+                        setTimeout(() => {
+                            window.location.href = 'https://' + loc.hostname + ':' + loc.port + loc.pathname;
+                        }, 5000);
+                    } else {
+                        setTimeout(() => window.location.reload(), 5000);
+                    }
+                }, 3000);
             } else {
                 statusEl.className = 'mt-2 text-sm text-danger';
                 statusEl.innerHTML = `<strong>Failed:</strong> ${App.esc(result.error || 'Unknown error')}` +
-                    (result.output ? `<pre style="margin-top:8px;max-height:150px;overflow:auto;font-size:11px;padding:8px;background:var(--bg-input);border-radius:4px">${App.esc(result.output)}</pre>` : '');
+                    (result.output ? `<pre style="margin-top:8px;max-height:200px;overflow:auto;font-size:11px;padding:8px;background:var(--bg-input);border-radius:4px">${App.esc(result.output)}</pre>` : '');
             }
         } catch (err) {
             statusEl.className = 'mt-2 text-sm text-danger';

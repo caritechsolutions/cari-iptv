@@ -2788,8 +2788,12 @@ int api_get_ssl_status(http_request_t *req)
 }
 
 /* ================================================================
- * POST /api/ssl/letsencrypt  — obtain cert via certbot
- * Body: { "domain": "example.com", "email": "admin@example.com" }
+ * POST /api/ssl/letsencrypt  — one-click SSL via Let's Encrypt
+ * Body: { "domain": "vod.example.com",
+ *         "email":  "admin@example.com"  (optional),
+ *         "cloudflare_token": "xxx"      (for DNS-01, works behind NAT) }
+ *
+ * Flow: get cert → enable SSL in config → install renewal timer → restart
  * ================================================================ */
 
 int api_post_ssl_letsencrypt(http_request_t *req)
@@ -2800,11 +2804,9 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                                "Invalid JSON body");
     }
 
-    const char *domain    = json_str(body, "domain", "");
-    const char *email     = json_str(body, "email", "");
-    const char *challenge = json_str(body, "challenge", "http");  /* "http" or "dns" */
-    const char *dns_plugin     = json_str(body, "dns_plugin", "");      /* e.g. "cloudflare" */
-    const char *dns_credentials = json_str(body, "dns_credentials", ""); /* API token */
+    const char *domain           = json_str(body, "domain", "");
+    const char *email            = json_str(body, "email", "");
+    const char *cloudflare_token = json_str(body, "cloudflare_token", "");
 
     if (domain[0] == '\0') {
         cJSON_Delete(body);
@@ -2812,24 +2814,13 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                                "Domain is required");
     }
 
-    /* Security: validate domain contains only safe chars */
+    /* Security: validate domain — alphanumeric, dots, hyphens only */
     for (const char *p = domain; *p; p++) {
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-' || *p == '*')) {
+              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-')) {
             cJSON_Delete(body);
             return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
                                    "Invalid domain name");
-        }
-    }
-
-    /* Security: validate email (basic check for safe chars) */
-    for (const char *p = email; *p; p++) {
-        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-' ||
-              *p == '@' || *p == '_' || *p == '+')) {
-            cJSON_Delete(body);
-            return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
-                                   "Invalid email address");
         }
     }
 
@@ -2846,69 +2837,73 @@ int api_post_ssl_letsencrypt(http_request_t *req)
     }
 
     char cmd[4096];
-    bool use_dns = (strcmp(challenge, "dns") == 0);
+    bool use_cloudflare = (cloudflare_token[0] != '\0');
+    const char *creds_file = "/etc/vod-server/ssl/cloudflare.ini";
 
-    if (use_dns) {
-        /* DNS-01 challenge — works behind NAT, no port 80 needed.
-         * Requires certbot DNS plugin (e.g. certbot-dns-cloudflare).
-         * The plugin name maps to certbot arg --dns-<plugin>.
-         * Credentials are written to a temp file and deleted after. */
-        if (dns_plugin[0] == '\0') {
+    if (use_cloudflare) {
+        /* Write Cloudflare API token to credentials file (kept for renewals) */
+        FILE *cfp = fopen(creds_file, "w");
+        if (!cfp) {
+            log_error("Cannot write Cloudflare credentials: %s", strerror(errno));
             cJSON_Delete(body);
-            return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
-                                   "dns_plugin is required for DNS challenge (e.g. 'cloudflare')");
+            return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                   "Cannot write Cloudflare credentials file");
         }
+        fprintf(cfp, "dns_cloudflare_api_token = %s\n", cloudflare_token);
+        fclose(cfp);
+        chmod(creds_file, 0600);
 
-        /* Validate plugin name — alphanumeric + hyphens only */
-        for (const char *p = dns_plugin; *p; p++) {
-            if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-')) {
-                cJSON_Delete(body);
-                return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
-                                       "Invalid dns_plugin name");
-            }
-        }
-
-        /* Write credentials to a temp file */
-        char creds_file[MAX_PATH_LEN];
-        snprintf(creds_file, sizeof(creds_file), "/etc/vod-server/ssl/.dns_credentials.ini");
-
-        if (dns_credentials[0] != '\0') {
-            FILE *cfp = fopen(creds_file, "w");
-            if (!cfp) {
-                log_error("Cannot write DNS credentials file: %s", strerror(errno));
-                cJSON_Delete(body);
-                return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                                       "Cannot write DNS credentials file");
-            }
-            fputs(dns_credentials, cfp);
-            fclose(cfp);
-            chmod(creds_file, 0600);
-        }
-
-        if (email[0] != '\0') {
+        /* DNS-01 via Cloudflare — works behind NAT, fully automatic.
+         * certbot places certs in /etc/letsencrypt/live/<domain>/
+         * deploy-hook copies them to our paths after issue + renewal. */
+        snprintf(cmd, sizeof(cmd),
+                 "certbot certonly --non-interactive --agree-tos "
+                 "--dns-cloudflare "
+                 "--dns-cloudflare-credentials '%s' "
+                 "-d '%s' %s%s "
+                 "--deploy-hook '"
+                 "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s && "
+                 "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s && "
+                 "chmod 644 %s && chmod 600 %s && "
+                 "chown vod-server:vod-server %s %s"
+                 "' 2>&1",
+                 creds_file, domain,
+                 email[0] ? "--email '" : "--register-unsafely-without-email",
+                 email[0] ? email : "",
+                 domain, cert_path, domain, key_path,
+                 cert_path, key_path, cert_path, key_path);
+        /* Close the email quote if used */
+        if (email[0]) {
+            /* Rebuild with proper quoting */
             snprintf(cmd, sizeof(cmd),
                      "certbot certonly --non-interactive --agree-tos "
-                     "--preferred-challenges dns "
-                     "--dns-%s "
-                     "--dns-%s-credentials '%s' "
+                     "--dns-cloudflare "
+                     "--dns-cloudflare-credentials '%s' "
                      "-d '%s' --email '%s' "
-                     "--cert-path '%s' --key-path '%s' "
-                     "--fullchain-path '%s' "
-                     "2>&1",
-                     dns_plugin, dns_plugin, creds_file,
-                     domain, email, cert_path, key_path, cert_path);
+                     "--deploy-hook '"
+                     "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s && "
+                     "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s && "
+                     "chmod 644 %s && chmod 600 %s && "
+                     "chown vod-server:vod-server %s %s"
+                     "' 2>&1",
+                     creds_file, domain, email,
+                     domain, cert_path, domain, key_path,
+                     cert_path, key_path, cert_path, key_path);
         } else {
             snprintf(cmd, sizeof(cmd),
                      "certbot certonly --non-interactive --agree-tos "
-                     "--preferred-challenges dns --register-unsafely-without-email "
-                     "--dns-%s "
-                     "--dns-%s-credentials '%s' "
+                     "--dns-cloudflare --register-unsafely-without-email "
+                     "--dns-cloudflare-credentials '%s' "
                      "-d '%s' "
-                     "--cert-path '%s' --key-path '%s' "
-                     "--fullchain-path '%s' "
-                     "2>&1",
-                     dns_plugin, dns_plugin, creds_file,
-                     domain, cert_path, key_path, cert_path);
+                     "--deploy-hook '"
+                     "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s && "
+                     "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s && "
+                     "chmod 644 %s && chmod 600 %s && "
+                     "chown vod-server:vod-server %s %s"
+                     "' 2>&1",
+                     creds_file, domain,
+                     domain, cert_path, domain, key_path,
+                     cert_path, key_path, cert_path, key_path);
         }
     } else {
         /* HTTP-01 challenge — requires port 80 reachable from internet */
@@ -2935,8 +2930,8 @@ int api_post_ssl_letsencrypt(http_request_t *req)
 
     cJSON_Delete(body);
 
-    log_info("Requesting Let's Encrypt certificate for %s (challenge: %s)",
-             domain, use_dns ? "dns" : "http");
+    log_info("Requesting Let's Encrypt certificate for %s (%s)",
+             domain, use_cloudflare ? "dns-cloudflare" : "http-01");
 
     FILE *fp = popen(cmd, "r");
     if (!fp) {
@@ -2945,7 +2940,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
     }
 
     /* Capture output */
-    char output[4096] = {0};
+    char output[8192] = {0};
     size_t olen = 0;
     while (!feof(fp) && olen < sizeof(output) - 1) {
         size_t n = fread(output + olen, 1, sizeof(output) - olen - 1, fp);
@@ -2956,28 +2951,73 @@ int api_post_ssl_letsencrypt(http_request_t *req)
 
     int status = pclose(fp);
 
-    /* Clean up DNS credentials file */
-    if (use_dns) {
-        char creds_file[MAX_PATH_LEN];
-        snprintf(creds_file, sizeof(creds_file), "/etc/vod-server/ssl/.dns_credentials.ini");
-        unlink(creds_file);
-    }
-
     cJSON *root = cJSON_CreateObject();
 
     if (status == 0) {
         log_info("Let's Encrypt certificate obtained for %s", domain);
+
+        /* Load certs into memory */
+        ssl_load_files(cert_path, key_path);
+
+        /* Enable SSL in vod-server.conf */
+        system("sed -i 's/^\\s*enabled\\s*=.*$/enabled = true/' "
+               "/etc/vod-server/vod-server.conf 2>/dev/null");
+        log_info("SSL auto-enabled in vod-server.conf");
+
+        /* Create renewal script that copies certs and restarts service */
+        FILE *sfp = fopen("/etc/vod-server/ssl/renew.sh", "w");
+        if (sfp) {
+            fprintf(sfp,
+                "#!/bin/bash\n"
+                "certbot renew --quiet --deploy-hook '"
+                "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s; "
+                "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s; "
+                "chmod 644 %s; chmod 600 %s; "
+                "chown vod-server:vod-server %s %s; "
+                "systemctl restart vod-server"
+                "'\n",
+                domain, cert_path, domain, key_path,
+                cert_path, key_path, cert_path, key_path);
+            fclose(sfp);
+            chmod("/etc/vod-server/ssl/renew.sh", 0755);
+        }
+
+        /* Install systemd timer for auto-renewal (twice daily) */
+        FILE *tfp = fopen("/etc/systemd/system/vod-server-renew.timer", "w");
+        if (tfp) {
+            fputs("[Unit]\n"
+                  "Description=VOD Server SSL certificate renewal\n\n"
+                  "[Timer]\n"
+                  "OnCalendar=*-*-* 02,14:30:00\n"
+                  "RandomizedDelaySec=3600\n"
+                  "Persistent=true\n\n"
+                  "[Install]\n"
+                  "WantedBy=timers.target\n", tfp);
+            fclose(tfp);
+        }
+        tfp = fopen("/etc/systemd/system/vod-server-renew.service", "w");
+        if (tfp) {
+            fputs("[Unit]\n"
+                  "Description=VOD Server SSL certificate renewal\n\n"
+                  "[Service]\n"
+                  "Type=oneshot\n"
+                  "ExecStart=/etc/vod-server/ssl/renew.sh\n", tfp);
+            fclose(tfp);
+        }
+
+        system("systemctl daemon-reload 2>/dev/null");
+        system("systemctl enable --now vod-server-renew.timer 2>/dev/null");
+        log_info("Auto-renewal timer installed (twice daily)");
+
         cJSON_AddBoolToObject(root, "success", 1);
         cJSON_AddStringToObject(root, "message",
-                                "Certificate obtained. Restart the server to activate SSL.");
+                                "Certificate obtained! SSL enabled. Server restarting...");
         cJSON_AddStringToObject(root, "cert_path", cert_path);
         cJSON_AddStringToObject(root, "key_path", key_path);
 
-        /* Try to reload the cert immediately */
-        if (ssl_load_files(cert_path, key_path) == 0) {
-            cJSON_AddStringToObject(root, "note",
-                                    "Certificate loaded. Full activation requires restart.");
-        }
+        /* Schedule restart after we send the response */
+        system("(sleep 2 && systemctl restart vod-server) &");
+
     } else {
         log_error("certbot failed for %s (exit %d): %.512s", domain, status, output);
         cJSON_AddBoolToObject(root, "success", 0);

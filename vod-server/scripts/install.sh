@@ -294,7 +294,52 @@ if grep -q "change-me-on-first-run" /etc/vod-server/vod-server.conf; then
 fi
 
 # ========================
-# 7. Start service
+# 7. Install certbot + Cloudflare DNS plugin (for Let's Encrypt behind NAT)
+# ========================
+log "Installing certbot for Let's Encrypt SSL..."
+
+case "$OS" in
+    ubuntu|debian)
+        # Try snap first (recommended by certbot), fall back to pip
+        if command -v snap &>/dev/null; then
+            snap install certbot --classic > /dev/null 2>&1 || true
+            snap set certbot trust-plugin-with-root=ok > /dev/null 2>&1 || true
+            snap install certbot-dns-cloudflare > /dev/null 2>&1 || true
+            if command -v certbot &>/dev/null; then
+                log "certbot installed via snap with Cloudflare DNS plugin"
+            else
+                # Snap failed, try pip
+                apt-get install -y -qq python3-pip > /dev/null 2>&1 || true
+                pip3 install certbot certbot-dns-cloudflare > /dev/null 2>&1 || true
+                log "certbot installed via pip with Cloudflare DNS plugin"
+            fi
+        else
+            apt-get install -y -qq python3-pip > /dev/null 2>&1 || true
+            pip3 install certbot certbot-dns-cloudflare > /dev/null 2>&1 || true
+            log "certbot installed via pip with Cloudflare DNS plugin"
+        fi
+        ;;
+    centos|rhel|rocky|almalinux|fedora)
+        if command -v snap &>/dev/null; then
+            snap install certbot --classic > /dev/null 2>&1 || true
+            snap set certbot trust-plugin-with-root=ok > /dev/null 2>&1 || true
+            snap install certbot-dns-cloudflare > /dev/null 2>&1 || true
+        else
+            pip3 install certbot certbot-dns-cloudflare > /dev/null 2>&1 || true
+        fi
+        log "certbot installed with Cloudflare DNS plugin"
+        ;;
+esac
+
+if command -v certbot &>/dev/null; then
+    log "certbot ready: $(certbot --version 2>&1 | head -1)"
+else
+    warn "certbot installation failed. You can install it manually later."
+    warn "  snap install certbot --classic && snap install certbot-dns-cloudflare"
+fi
+
+# ========================
+# 8. Start service
 # ========================
 log "Starting VOD Server..."
 systemctl enable vod-server > /dev/null 2>&1
