@@ -376,16 +376,69 @@ class SubscriberAuthService
     }
 
     /**
-     * Get continue watching list
+     * Get watch progress for a single content item
+     */
+    public function getWatchProgress(int $subscriberId, string $contentType, int $contentId): ?array
+    {
+        $row = $this->db->fetch(
+            "SELECT progress_seconds, duration_seconds, completed, last_watched_at
+             FROM subscriber_watch_history
+             WHERE subscriber_id = ? AND content_type = ? AND content_id = ?",
+            [$subscriberId, $contentType, $contentId]
+        );
+
+        return $row ?: null;
+    }
+
+    /**
+     * Get continue watching list with enriched content metadata
      */
     public function getContinueWatching(int $subscriberId, int $limit = 20): array
     {
-        return $this->db->fetchAll(
-            "SELECT * FROM subscriber_watch_history
-             WHERE subscriber_id = ? AND completed = 0 AND progress_seconds > 0
-             ORDER BY last_watched_at DESC LIMIT ?",
+        $items = $this->db->fetchAll(
+            "SELECT wh.content_type, wh.content_id, wh.progress_seconds, wh.duration_seconds,
+                    wh.completed, wh.last_watched_at
+             FROM subscriber_watch_history wh
+             WHERE wh.subscriber_id = ? AND wh.completed = 0 AND wh.progress_seconds > 0
+             ORDER BY wh.last_watched_at DESC LIMIT ?",
             [$subscriberId, $limit]
         ) ?: [];
+
+        // Enrich with content metadata
+        foreach ($items as &$item) {
+            if ($item['content_type'] === 'movie') {
+                $movie = $this->db->fetch(
+                    "SELECT id, title, slug, year, poster_url, backdrop_url, runtime, vote_average, stream_url
+                     FROM movies WHERE id = ? AND status = 'published'",
+                    [$item['content_id']]
+                );
+                if ($movie) {
+                    $item = array_merge($item, $movie);
+                } else {
+                    $item['title'] = 'Unknown Movie';
+                }
+            } elseif ($item['content_type'] === 'episode') {
+                $episode = $this->db->fetch(
+                    "SELECT e.id, e.title, e.season_number, e.episode_number, e.still_url,
+                            s.title as series_title, s.poster_url, s.id as series_id
+                     FROM episodes e
+                     LEFT JOIN series s ON e.series_id = s.id
+                     WHERE e.id = ?",
+                    [$item['content_id']]
+                );
+                if ($episode) {
+                    $item = array_merge($item, $episode);
+                    // Use series poster as fallback for episode poster
+                    if (empty($item['poster_url']) && !empty($episode['poster_url'])) {
+                        $item['poster_url'] = $episode['poster_url'];
+                    }
+                } else {
+                    $item['title'] = 'Unknown Episode';
+                }
+            }
+        }
+
+        return $items;
     }
 
     /**

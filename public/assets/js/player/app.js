@@ -381,6 +381,7 @@ const CariApp = (function() {
             }
 
             el.innerHTML = '';
+            await renderContinueWatchingRow(el);
             renderLayoutSections(el, layout.sections);
         } catch (err) {
             console.error('[CariApp] Home layout failed:', err);
@@ -413,6 +414,7 @@ const CariApp = (function() {
                 el.appendChild(hero);
             }
 
+            await renderContinueWatchingRow(el);
             appendContentRow(el, 'Popular Movies', movies, 'poster', 'movie');
             appendContentRow(el, 'TV Shows', series, 'poster', 'series');
             appendContentRow(el, 'Live Channels', channels, 'channel', 'channel');
@@ -464,6 +466,8 @@ const CariApp = (function() {
             } else if (type === 'text_divider') {
                 const divider = CariUI.renderTextDivider(title);
                 el.appendChild(divider);
+            } else if (type === 'continue_watching') {
+                renderContinueWatchingRow(el);
             } else if (type === 'category_grid') {
                 renderCategorySection(el, title);
             } else if (type === 'packages_list') {
@@ -503,6 +507,17 @@ const CariApp = (function() {
 
         section.appendChild(CariUI.wrapWithScrollNav(row));
         el.appendChild(section);
+    }
+
+    async function renderContinueWatchingRow(el) {
+        if (!CariAPI.isAuthenticated()) return;
+        try {
+            const res = await CariAPI.getContinueWatching();
+            const items = res?.data || [];
+            if (!items.length) return;
+
+            appendContentRow(el, 'Continue Watching', items, 'backdrop');
+        } catch {}
     }
 
     function handleItemClick(item, type) {
@@ -643,6 +658,7 @@ const CariApp = (function() {
                 const layout = res?.data;
                 if (layout && layout.sections && layout.sections.length) {
                     el.innerHTML = '';
+                    await renderContinueWatchingRow(el);
                     renderLayoutSections(el, layout.sections);
                     return;
                 }
@@ -654,9 +670,14 @@ const CariApp = (function() {
         // Fallback: default movies grid with filters
         el.innerHTML = `
             <div class="page-hero"><h1 class="page-hero-title">Movies</h1><p class="page-hero-subtitle">Browse our collection</p></div>
+            <div id="continueWatchingSlot"></div>
             <div id="movieFilters" class="filter-bar"></div>
             <div id="movieGrid" class="content-grid">${CariUI.loading()}</div>
         `;
+
+        // Inject continue watching row
+        const cwSlot = document.getElementById('continueWatchingSlot');
+        if (cwSlot) renderContinueWatchingRow(cwSlot);
 
         // Load categories for filters
         try {
@@ -2999,11 +3020,28 @@ const CariApp = (function() {
             const video = document.getElementById('mainVideo');
             const drmConfig = item.drm || null;
 
+            // Check for saved watch progress (movies/episodes only)
+            let savedProgress = null;
+            if ((type === 'movie' || type === 'episode') && CariAPI.isAuthenticated()) {
+                try {
+                    const contentType = type === 'episode' ? 'episode' : 'movie';
+                    const res = await CariAPI.getWatchProgress(contentType, item.id);
+                    if (res?.data && res.data.progress_seconds > 30 && !res.data.completed) {
+                        savedProgress = res.data;
+                    }
+                } catch {}
+            }
+
             if (streamUrl && window.shaka) {
                 await initShakaPlayer(video, streamUrl, drmConfig);
             } else if (streamUrl) {
                 video.src = streamUrl;
                 video.play().catch(() => {});
+            }
+
+            // Show resume prompt if we have saved progress
+            if (savedProgress) {
+                showResumePrompt(video, savedProgress.progress_seconds, savedProgress.duration_seconds);
             }
 
             // CC toggle for VOD
@@ -3203,6 +3241,64 @@ const CariApp = (function() {
             btn.classList.toggle('cc-active', ccEnabled);
             btn.title = ccEnabled ? 'Captions On' : 'Captions Off';
         });
+    }
+
+    function formatTime(seconds) {
+        seconds = Math.floor(seconds);
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        return m + ':' + String(s).padStart(2, '0');
+    }
+
+    function showResumePrompt(video, progressSeconds, durationSeconds) {
+        const container = document.getElementById('playerContainer');
+        if (!container) return;
+
+        const pct = durationSeconds > 0 ? Math.round((progressSeconds / durationSeconds) * 100) : 0;
+
+        const prompt = document.createElement('div');
+        prompt.className = 'resume-prompt';
+        prompt.innerHTML = `
+            <div class="resume-prompt-inner">
+                <div class="resume-prompt-text">Resume from ${formatTime(progressSeconds)}?</div>
+                ${durationSeconds > 0 ? '<div class="resume-prompt-bar"><div class="resume-prompt-bar-fill" style="width:' + pct + '%"></div></div>' : ''}
+                <div class="resume-prompt-actions">
+                    <button class="btn btn-play resume-btn" id="resumeYes"><i class="lucide-play"></i> Resume</button>
+                    <button class="btn btn-secondary resume-btn" id="resumeNo"><i class="lucide-rotate-ccw"></i> Start Over</button>
+                </div>
+            </div>
+        `;
+        container.appendChild(prompt);
+
+        // Pause until user decides
+        video.pause();
+
+        function dismiss() {
+            prompt.classList.add('resume-prompt-hide');
+            setTimeout(() => prompt.remove(), 300);
+        }
+
+        document.getElementById('resumeYes').addEventListener('click', () => {
+            video.currentTime = progressSeconds;
+            dismiss();
+            video.play().catch(() => {});
+        });
+
+        document.getElementById('resumeNo').addEventListener('click', () => {
+            dismiss();
+            video.play().catch(() => {});
+        });
+
+        // Auto-dismiss after 10 seconds — resume by default
+        setTimeout(() => {
+            if (prompt.parentNode) {
+                video.currentTime = progressSeconds;
+                dismiss();
+                video.play().catch(() => {});
+            }
+        }, 10000);
     }
 
     function setupProgressTracking(video, contentType, contentId) {

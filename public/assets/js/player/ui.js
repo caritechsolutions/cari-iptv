@@ -20,6 +20,15 @@ const CariUI = (function() {
 
     let _castNavSource = null;
 
+    function formatDuration(seconds) {
+        seconds = Math.floor(seconds);
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        return m + ':' + String(s).padStart(2, '0');
+    }
+
     // ---- Scroll Navigation ----
 
     function wrapWithScrollNav(row) {
@@ -90,6 +99,14 @@ const CariUI = (function() {
 
     // ---- Cards ----
 
+    function progressBarHtml(item) {
+        const progress = parseInt(item.progress_seconds || 0);
+        const duration = parseInt(item.duration_seconds || 0);
+        if (progress <= 0 || duration <= 0) return '';
+        const pct = Math.min(Math.round((progress / duration) * 100), 100);
+        return '<div class="card-progress-bar"><div class="card-progress-bar-fill" style="width:' + pct + '%"></div></div>';
+    }
+
     function posterCard(item, onclick, isLocked) {
         const img = item.poster || item.poster_url || item.image_url || item.logo_url || placeholderImg;
         const title = item.title || item.name || '';
@@ -103,6 +120,7 @@ const CariUI = (function() {
             <img class="card-poster-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderImg}'">
             ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
+            ${progressBarHtml(item)}
             <div class="card-poster-title">${esc(title)}</div>
             <div class="card-poster-meta">${esc(year)}${rating ? ' &middot; ' + esc(String(rating)) : ''}</div>
         `;
@@ -122,6 +140,7 @@ const CariUI = (function() {
             <img class="card-backdrop-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderBackdrop}'">
             ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
+            ${progressBarHtml(item)}
             <div class="card-backdrop-title">${esc(title)}</div>
             <div class="card-backdrop-meta">${esc(meta)}</div>
         `;
@@ -346,10 +365,13 @@ const CariUI = (function() {
                     ${genres ? '<span>' + esc(genres) + '</span>' : ''}
                 </div>
                 ${desc ? '<p class="detail-desc">' + esc(desc) + '</p>' : ''}
+                ${item.progress_seconds > 0 && item.duration_seconds > 0 && !item.completed ? '<div class="detail-progress"><div class="detail-progress-bar"><div class="detail-progress-fill" style="width:' + Math.min(Math.round((item.progress_seconds / item.duration_seconds) * 100), 100) + '%"></div></div><span class="detail-progress-text">' + formatDuration(item.progress_seconds) + ' / ' + formatDuration(item.duration_seconds) + '</span></div>' : ''}
                 <div class="detail-actions">
                     ${locked
                         ? '<button class="btn btn-subscribe" id="detailSubscribe"><i class="lucide-credit-card"></i> Subscribe to Watch</button>'
-                        : '<button class="btn btn-play" id="detailPlay"><i class="lucide-play"></i> Play</button>'}
+                        : item.progress_seconds > 0 && !item.completed
+                            ? '<button class="btn btn-play" id="detailPlay"><i class="lucide-play"></i> Resume</button>'
+                            : '<button class="btn btn-play" id="detailPlay"><i class="lucide-play"></i> Play</button>'}
                     <button class="btn btn-secondary" id="detailTrailer" style="display:none"><i class="lucide-clapperboard"></i> Trailer</button>
                     <button class="btn btn-icon" id="detailWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
                 </div>
