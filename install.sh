@@ -606,16 +606,21 @@ configure_php() {
         PHP_FPM_SERVICE="php-fpm"
     fi
 
-    # Configure PHP settings
+    # Configure PHP settings (FPM + CLI for dev server support)
     log_info "Optimizing PHP settings..."
-    if [ -f "$PHP_INI" ]; then
-        sed -i 's/^upload_max_filesize.*/upload_max_filesize = 2G/' "$PHP_INI"
-        sed -i 's/^post_max_size.*/post_max_size = 2G/' "$PHP_INI"
-        sed -i 's/^memory_limit.*/memory_limit = 256M/' "$PHP_INI"
-        sed -i 's/^max_execution_time.*/max_execution_time = 600/' "$PHP_INI"
-        sed -i 's/^max_input_time.*/max_input_time = 600/' "$PHP_INI"
-        sed -i 's/^;date.timezone.*/date.timezone = UTC/' "$PHP_INI"
-    fi
+    PHP_INI_DIR=$(dirname "$PHP_INI")
+    CLI_INI="${PHP_INI_DIR}/../cli/php.ini"
+    for ini in "$PHP_INI" "$CLI_INI"; do
+        if [ -f "$ini" ]; then
+            sed -i 's/^upload_max_filesize.*/upload_max_filesize = 2G/' "$ini"
+            sed -i 's/^post_max_size.*/post_max_size = 2G/' "$ini"
+            sed -i 's/^memory_limit.*/memory_limit = 256M/' "$ini"
+            sed -i 's/^max_execution_time.*/max_execution_time = 600/' "$ini"
+            sed -i 's/^max_input_time.*/max_input_time = 600/' "$ini"
+            sed -i 's/^;date.timezone.*/date.timezone = UTC/' "$ini"
+            log_info "Updated PHP limits in $ini"
+        fi
+    done
 
     # Restart PHP-FPM
     systemctl restart $PHP_FPM_SERVICE

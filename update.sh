@@ -305,6 +305,7 @@ apply_update() {
     else
         # Fallback to cp
         cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
+        cp public/.user.ini "$INSTALL_DIR/public/.user.ini" 2>/dev/null || true
         cp -r src/* "$INSTALL_DIR/src/" 2>/dev/null || true
         cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
         # Copy scripts directory
@@ -512,8 +513,11 @@ CRONEOF
 restart_services() {
     log_step "Restarting Services"
 
-    # Update PHP upload limits for VOD file uploads
-    for PHP_INI in /etc/php/8.2/fpm/php.ini /etc/php/8.1/fpm/php.ini /etc/php.ini; do
+    # Update PHP upload limits for VOD file uploads (all SAPI: fpm, cli, apache2)
+    for PHP_INI in /etc/php/8.3/fpm/php.ini /etc/php/8.2/fpm/php.ini /etc/php/8.1/fpm/php.ini \
+                   /etc/php/8.3/cli/php.ini /etc/php/8.2/cli/php.ini /etc/php/8.1/cli/php.ini \
+                   /etc/php/8.3/apache2/php.ini /etc/php/8.2/apache2/php.ini /etc/php/8.1/apache2/php.ini \
+                   /etc/php.ini; do
         if [ -f "$PHP_INI" ]; then
             current_upload=$(grep -oP '(?<=^upload_max_filesize = )\S+' "$PHP_INI" 2>/dev/null || echo "")
             if [ "$current_upload" != "2G" ]; then
@@ -523,7 +527,6 @@ restart_services() {
                 sed -i 's/^max_input_time.*/max_input_time = 600/' "$PHP_INI"
                 log_info "Updated PHP upload limits in $PHP_INI"
             fi
-            break
         fi
     done
 

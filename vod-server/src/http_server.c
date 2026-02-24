@@ -515,11 +515,17 @@ int http_server_start(const vod_config_t *config)
     unsigned int flags = MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_ERROR_LOG;
 
     /* Build the options array dynamically */
-    struct MHD_OptionItem ops[8];
+    struct MHD_OptionItem ops[10];
     int nops = 0;
 
     ops[nops].option = MHD_OPTION_CONNECTION_TIMEOUT;
-    ops[nops].value  = 30;   /* 30 seconds */
+    ops[nops].value  = 600;  /* 10 minutes — large video uploads need time */
+    ops[nops].ptr_value = NULL;
+    nops++;
+
+    /* Allow large POST bodies (64KB buffer for streaming uploads) */
+    ops[nops].option = MHD_OPTION_CONNECTION_MEMORY_LIMIT;
+    ops[nops].value  = (intptr_t)(64 * 1024);
     ops[nops].ptr_value = NULL;
     nops++;
 
