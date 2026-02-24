@@ -68,7 +68,7 @@
                         <input type="url" id="site_url" name="site_url" class="form-input"
                                placeholder="https://example.com"
                                value="<?= htmlspecialchars($settings['general']['site_url'] ?? '') ?>">
-                        <small class="form-help">Base URL of your site (used in emails)</small>
+                        <small class="form-help">Public URL of your site (used for emails, player API, and DRM license URLs)</small>
                     </div>
 
                     <div class="form-group">

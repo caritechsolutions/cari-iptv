@@ -579,7 +579,9 @@ class ContentApiService
 
             // Build player-facing DRM config
             // The license URL points to our middleware proxy (not the VOD server directly)
-            $appUrl = rtrim(getenv('APP_URL') ?: '', '/');
+            // Prefer site_url from DB settings (admin GUI), fall back to APP_URL env var
+            $settings = new SettingsService();
+            $appUrl = rtrim($settings->get('site_url', '', 'general') ?: getenv('APP_URL') ?: '', '/');
             return [
                 'scheme'      => $keyInfo['scheme'] ?? 'cenc',
                 'key_id'      => $keyInfo['kid'] ?? '',
