@@ -272,7 +272,12 @@ class VodServerController
      */
     public function uploadSource(): void
     {
+        error_log('[VOD UploadSource] === Request received ===');
+        error_log('[VOD UploadSource] POST keys: ' . implode(', ', array_keys($_POST)));
+        error_log('[VOD UploadSource] FILES keys: ' . implode(', ', array_keys($_FILES)));
+
         if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            error_log('[VOD UploadSource] CSRF validation failed');
             $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
             return;
         }
@@ -283,6 +288,7 @@ class VodServerController
         $title     = trim($_POST['title'] ?? '');
         $profile   = trim($_POST['profile'] ?? 'standard');
         $overwrite = ($_POST['overwrite'] ?? '') === '1';
+        error_log("[VOD UploadSource] serverId=$serverId contentId=$contentId entityType=" . ($_POST['entity_type'] ?? '') . " file=" . ($_FILES['video_file']['name'] ?? 'N/A') . " size=" . ($_FILES['video_file']['size'] ?? 0));
 
         // Generic entity support (episodes, etc.) — falls back to movie_id for backward compat
         $entityType = trim($_POST['entity_type'] ?? '');
@@ -411,7 +417,10 @@ class VodServerController
      */
     public function submitDirectUploadJob(): void
     {
+        error_log('[VOD DirectJob] === Request received === POST: ' . json_encode(array_diff_key($_POST, ['csrf_token' => 1])));
+
         if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            error_log('[VOD DirectJob] CSRF validation failed');
             $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
             return;
         }

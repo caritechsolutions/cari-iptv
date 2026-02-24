@@ -1562,6 +1562,9 @@ function epVodSubmit() {
 
     // Upload directly to VOD server (bypasses IPTV Nginx/PHP file size limits)
     const uploadUrl = vodUrl.replace(/\/+$/, '') + '/api/upload?filename=' + encodeURIComponent(file.name);
+    console.log('[VOD Upload] Target URL:', uploadUrl);
+    console.log('[VOD Upload] File:', file.name, '(' + file.size + ' bytes)');
+    console.log('[VOD Upload] Server ID:', serverId, '| Profile:', profile, '| Content ID:', contentId);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl, true);
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -1578,6 +1581,7 @@ function epVodSubmit() {
     };
 
     xhr.onload = function() {
+        console.log('[VOD Upload] Response: HTTP', xhr.status, xhr.responseText.substring(0, 500));
         if (xhr.status === 0 || xhr.responseText === '') {
             document.getElementById('ep-vod-upload-progress').style.display = 'none';
             btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
@@ -1662,6 +1666,7 @@ function epVodSubmit() {
     };
 
     xhr.onerror = function() {
+        console.error('[VOD Upload] XHR error event fired. readyState:', xhr.readyState, 'status:', xhr.status);
         document.getElementById('ep-vod-upload-progress').style.display = 'none';
         btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
         btn.disabled = false;

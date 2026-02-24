@@ -392,6 +392,9 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
                     // Upload directly to VOD server (bypasses IPTV Nginx/PHP file size limits)
                     var uploadUrl = vodUrl.replace(/\/+$/, '') + '/api/upload?filename=' + encodeURIComponent(file.name);
+                    console.log('[VOD Upload] Target URL:', uploadUrl);
+                    console.log('[VOD Upload] File:', file.name, '(' + fmt(file.size) + ')');
+                    console.log('[VOD Upload] Server ID:', serverId, '| Profile:', profile, '| Content ID:', contentId);
                     var xhr = new XMLHttpRequest();
                     xhr.open('POST', uploadUrl, true);
                     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -410,6 +413,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     });
 
                     xhr.addEventListener('load', function() {
+                        console.log('[VOD Upload] Response: HTTP', xhr.status, xhr.responseText.substring(0, 500));
                         if (xhr.status === 0 || xhr.responseText === '') {
                             showMsg('Upload failed: VOD server returned empty response.', 'error');
                             resetButtons();
@@ -495,6 +499,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     });
 
                     xhr.addEventListener('error', function() {
+                        console.error('[VOD Upload] XHR error event fired. readyState:', xhr.readyState, 'status:', xhr.status);
                         showMsg('Upload failed: Cannot connect to VOD server. Check CORS config on the VOD proxy host.', 'error');
                         resetButtons();
                     });

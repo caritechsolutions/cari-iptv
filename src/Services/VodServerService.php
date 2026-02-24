@@ -367,11 +367,14 @@ class VodServerService
         $baseUrl = $server['url'] ?? '';
         $apiKey  = $server['api_key'] ?? '';
 
+        error_log("[VOD uploadFile] serverId=$serverId baseUrl=$baseUrl filename=$filename localPath=$localPath");
+
         if (empty($baseUrl)) {
             throw new \RuntimeException('VOD Server URL not configured');
         }
 
         $fileSize = filesize($localPath);
+        error_log("[VOD uploadFile] fileSize=$fileSize");
         $fh = fopen($localPath, 'rb');
         if (!$fh) {
             throw new \RuntimeException('Cannot open local file for reading');
@@ -399,12 +402,18 @@ class VodServerService
             ]),
         ]);
 
+        $startTime = microtime(true);
         $response = curl_exec($ch);
+        $elapsed = round(microtime(true) - $startTime, 1);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $effectiveUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         $error = curl_error($ch);
         $errno = curl_errno($ch);
         curl_close($ch);
         fclose($fh);
+
+        error_log("[VOD uploadFile] cURL complete: HTTP $httpCode in {$elapsed}s effectiveUrl=$effectiveUrl errno=$errno error=$error");
+        error_log("[VOD uploadFile] Response body: " . substr($response ?: '', 0, 500));
 
         if ($errno) throw new \RuntimeException('Upload failed: ' . $error);
         if ($httpCode >= 400) {
