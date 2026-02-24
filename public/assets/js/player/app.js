@@ -381,7 +381,6 @@ const CariApp = (function() {
             }
 
             el.innerHTML = '';
-            await renderContinueWatchingRow(el);
             renderLayoutSections(el, layout.sections);
         } catch (err) {
             console.error('[CariApp] Home layout failed:', err);
@@ -414,7 +413,6 @@ const CariApp = (function() {
                 el.appendChild(hero);
             }
 
-            await renderContinueWatchingRow(el);
             appendContentRow(el, 'Popular Movies', movies, 'poster', 'movie');
             appendContentRow(el, 'TV Shows', series, 'poster', 'series');
             appendContentRow(el, 'Live Channels', channels, 'channel', 'channel');
@@ -658,7 +656,6 @@ const CariApp = (function() {
                 const layout = res?.data;
                 if (layout && layout.sections && layout.sections.length) {
                     el.innerHTML = '';
-                    await renderContinueWatchingRow(el);
                     renderLayoutSections(el, layout.sections);
                     return;
                 }
@@ -670,14 +667,9 @@ const CariApp = (function() {
         // Fallback: default movies grid with filters
         el.innerHTML = `
             <div class="page-hero"><h1 class="page-hero-title">Movies</h1><p class="page-hero-subtitle">Browse our collection</p></div>
-            <div id="continueWatchingSlot"></div>
             <div id="movieFilters" class="filter-bar"></div>
             <div id="movieGrid" class="content-grid">${CariUI.loading()}</div>
         `;
-
-        // Inject continue watching row
-        const cwSlot = document.getElementById('continueWatchingSlot');
-        if (cwSlot) renderContinueWatchingRow(cwSlot);
 
         // Load categories for filters
         try {
