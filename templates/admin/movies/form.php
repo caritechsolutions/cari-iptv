@@ -242,7 +242,10 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                 <label class="form-label">VOD Server</label>
                                 <select class="form-input" id="vod-transcode-server">
                                     <?php foreach ($vodServers as $vs): ?>
-                                        <option value="<?= $vs['id'] ?>" data-url="<?= htmlspecialchars($vs['url']) ?>" data-api-key="<?= htmlspecialchars($vs['api_key'] ?? '') ?>"
+                                        <option value="<?= $vs['id'] ?>"
+                                            data-url="<?= htmlspecialchars($vs['url']) ?>"
+                                            data-public-url="<?= htmlspecialchars($vs['public_url'] ?? '') ?>"
+                                            data-api-key="<?= htmlspecialchars($vs['api_key'] ?? '') ?>"
                                             <?= ($vodServerId && $vs['id'] == $vodServerId) ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($vs['name']) ?><?= $vs['is_default'] ? ' (default)' : '' ?>
                                         </option>
@@ -364,7 +367,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     var serverSel = document.getElementById('vod-transcode-server');
                     var serverId = serverSel.value;
                     var serverOpt = serverSel.options[serverSel.selectedIndex];
-                    var vodUrl = serverOpt.getAttribute('data-url');
+                    var vodUrl = serverOpt.getAttribute('data-public-url') || serverOpt.getAttribute('data-url');
                     var vodApiKey = serverOpt.getAttribute('data-api-key');
                     var profile = document.getElementById('vod-transcode-profile').value;
                     var contentId = 'movie-' + MOVIE_ID;

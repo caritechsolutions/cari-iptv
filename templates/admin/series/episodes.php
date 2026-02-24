@@ -423,7 +423,10 @@ $episodeCount = count($episodes);
                                 <label class="form-label">VOD Server</label>
                                 <select class="form-input" id="ep-vod-server">
                                     <?php foreach ($vodServers as $vs): ?>
-                                        <option value="<?= $vs['id'] ?>" data-url="<?= htmlspecialchars($vs['url']) ?>" data-api-key="<?= htmlspecialchars($vs['api_key'] ?? '') ?>"
+                                        <option value="<?= $vs['id'] ?>"
+                                            data-url="<?= htmlspecialchars($vs['url']) ?>"
+                                            data-public-url="<?= htmlspecialchars($vs['public_url'] ?? '') ?>"
+                                            data-api-key="<?= htmlspecialchars($vs['api_key'] ?? '') ?>"
                                             <?= $vs['is_default'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($vs['name']) ?><?= $vs['is_default'] ? ' (default)' : '' ?>
                                         </option>
@@ -1544,7 +1547,7 @@ function epVodSubmit() {
     const serverSel = document.getElementById('ep-vod-server');
     const serverId = serverSel.value;
     const serverOpt = serverSel.options[serverSel.selectedIndex];
-    const vodUrl = serverOpt.getAttribute('data-url');
+    const vodUrl = serverOpt.getAttribute('data-public-url') || serverOpt.getAttribute('data-url');
     const vodApiKey = serverOpt.getAttribute('data-api-key');
     const profile = document.getElementById('ep-vod-profile').value;
     const title = '<?= htmlspecialchars($show['title'], ENT_QUOTES, 'UTF-8') ?> S<?= $season['season_number'] ?? '' ?>E' + epNum;
