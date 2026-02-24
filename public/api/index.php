@@ -132,7 +132,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
 
     // DRM Raw Key Proxy (for HLS #EXT-X-KEY — returns 16-byte binary key)
-    $router->get('/drm/key/{contentId}', [ContentController::class, 'drmRawKey'], ['api_auth']);
+    // NOTE: Public (no api_auth) — HLS players fetch #EXT-X-KEY URIs as plain GET
+    // requests with no way to add Authorization headers.
+    $router->get('/drm/key/{contentId}', [ContentController::class, 'drmRawKey']);
 
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);

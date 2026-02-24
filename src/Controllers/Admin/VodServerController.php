@@ -59,6 +59,7 @@ class VodServerController
             $id = $this->vodService->createServer([
                 'name'       => $name,
                 'url'        => $url,
+                'public_url' => trim($_POST['public_url'] ?? ''),
                 'api_key'    => $apiKey,
                 'is_default' => !empty($_POST['is_default']),
                 'notes'      => trim($_POST['notes'] ?? ''),
@@ -88,6 +89,7 @@ class VodServerController
             $this->vodService->updateServer($id, [
                 'name'       => $name,
                 'url'        => $url,
+                'public_url' => trim($_POST['public_url'] ?? ''),
                 'api_key'    => trim($_POST['api_key'] ?? ''),
                 'is_active'  => isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1,
                 'is_default' => !empty($_POST['is_default']),
@@ -439,9 +441,11 @@ class VodServerController
                 try {
                     if ($status === 'complete') {
                         // Transcode done — write the stream URL (HLS) and content_id
+                        // Use public_url for browser-facing stream URLs, fall back to internal url
                         $server = $this->vodService->getServer($sid);
                         $contentId = $job['content_id'] ?? ('movie-' . $movieId);
-                        $hlsUrl = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+                        $baseUrl = !empty($server['public_url']) ? $server['public_url'] : ($server['url'] ?? '');
+                        $hlsUrl = $baseUrl ? ($baseUrl . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
 
                         $this->db->execute(
                             "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ?, vod_content_id = ? WHERE id = ?",
@@ -472,7 +476,8 @@ class VodServerController
                     if ($status === 'complete') {
                         $server = $this->vodService->getServer($sid);
                         $contentId = $job['content_id'] ?? ('movie-' . $movieId);
-                        $job['stream_url'] = $server ? ($server['url'] . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
+                        $baseUrl = !empty($server['public_url']) ? $server['public_url'] : ($server['url'] ?? '');
+                        $job['stream_url'] = $baseUrl ? ($baseUrl . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
                     }
                 }
             }

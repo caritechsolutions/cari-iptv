@@ -422,9 +422,15 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Server URL *</label>
+                    <label>Internal URL *</label>
                     <input type="url" class="form-control" name="url" id="srv-url" placeholder="http://192.168.1.100:8090" required>
-                    <small style="color:var(--text-muted)">Full URL including port (default: 8090)</small>
+                    <small style="color:var(--text-muted)">Internal/LAN URL for API communication (not exposed to browsers)</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Public URL</label>
+                    <input type="url" class="form-control" name="public_url" id="srv-public-url" placeholder="https://vod1.example.com">
+                    <small style="color:var(--text-muted)">External URL for browser HLS streaming (via Nginx proxy). Leave blank to use Internal URL.</small>
                 </div>
 
                 <div class="form-group">
@@ -636,7 +642,7 @@ const VodPage = {
                         ${s.is_default ? '<span class="badge-default">default</span>' : ''}
                         ${!s.is_active ? '<span class="badge-inactive">inactive</span>' : ''}
                     </div>
-                    <div class="url">${this.esc(s.url)}</div>
+                    <div class="url">${this.esc(s.url)}${s.public_url ? ' &rarr; <span style="color:var(--success)">' + this.esc(s.public_url) + '</span>' : ''}</div>
                 </div>
                 <div class="actions">
                     <button class="btn btn-secondary btn-sm" onclick="VodPage.editServer(${s.id})" title="Edit">
@@ -670,6 +676,7 @@ const VodPage = {
         document.getElementById('server-edit-id').value = id;
         document.getElementById('srv-name').value = server.name;
         document.getElementById('srv-url').value = server.url;
+        document.getElementById('srv-public-url').value = server.public_url || '';
         document.getElementById('srv-apikey').value = server.api_key || '';
         document.getElementById('srv-default').checked = !!server.is_default;
         document.getElementById('srv-active').checked = server.is_active !== 0;

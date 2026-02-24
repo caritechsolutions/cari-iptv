@@ -108,7 +108,7 @@ class VodServerService
             $this->db->execute("UPDATE vod_servers SET is_default = 0");
         }
 
-        $this->db->insert('vod_servers', [
+        $row = [
             'name'       => $data['name'],
             'url'        => rtrim($data['url'], '/'),
             'api_key'    => $data['api_key'] ?? '',
@@ -116,7 +116,14 @@ class VodServerService
             'is_default' => $isDefault ? 1 : 0,
             'sort_order' => (int)($data['sort_order'] ?? 0),
             'notes'      => $data['notes'] ?? null,
-        ]);
+        ];
+
+        // public_url — only include if column exists (migration 027)
+        if ($this->hasPublicUrlColumn()) {
+            $row['public_url'] = !empty($data['public_url']) ? rtrim($data['public_url'], '/') : null;
+        }
+
+        $this->db->insert('vod_servers', $row);
 
         return (int) $this->db->lastInsertId();
     }
@@ -130,7 +137,7 @@ class VodServerService
             $this->db->execute("UPDATE vod_servers SET is_default = 0");
         }
 
-        $this->db->update('vod_servers', [
+        $row = [
             'name'       => $data['name'],
             'url'        => rtrim($data['url'], '/'),
             'api_key'    => $data['api_key'] ?? '',
@@ -138,7 +145,14 @@ class VodServerService
             'is_default' => !empty($data['is_default']) ? 1 : 0,
             'sort_order' => (int)($data['sort_order'] ?? 0),
             'notes'      => $data['notes'] ?? null,
-        ], 'id = ?', [$id]);
+        ];
+
+        // public_url — only include if column exists (migration 027)
+        if ($this->hasPublicUrlColumn()) {
+            $row['public_url'] = !empty($data['public_url']) ? rtrim($data['public_url'], '/') : null;
+        }
+
+        $this->db->update('vod_servers', $row, 'id = ?', [$id]);
     }
 
     /**
@@ -328,7 +342,19 @@ class VodServerService
         $server = $this->getServer($serverId);
         if (!$server) return '';
         $ext = $format === 'dash' ? 'manifest.mpd' : 'master.m3u8';
-        return $server['url'] . '/content/' . urlencode($contentId) . '/' . $ext;
+        // Prefer public_url (browser-facing) over url (internal API)
+        $baseUrl = !empty($server['public_url']) ? $server['public_url'] : $server['url'];
+        return $baseUrl . '/content/' . urlencode($contentId) . '/' . $ext;
+    }
+
+    /**
+     * Get the public-facing base URL for a server (prefers public_url, falls back to url)
+     */
+    public function getPublicUrl(int $serverId): string
+    {
+        $server = $this->getServer($serverId);
+        if (!$server) return '';
+        return !empty($server['public_url']) ? $server['public_url'] : $server['url'];
     }
 
     /**
@@ -418,6 +444,25 @@ class VodServerService
         $server = $this->getServer($serverId);
         if (!$server) throw new \RuntimeException('VOD Server not found');
         return $server;
+    }
+
+    private static bool $hasPublicUrl = false;
+    private static bool $hasPublicUrlChecked = false;
+
+    private function hasPublicUrlColumn(): bool
+    {
+        if (self::$hasPublicUrlChecked) return self::$hasPublicUrl;
+        self::$hasPublicUrlChecked = true;
+        try {
+            $row = $this->db->fetch(
+                "SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vod_servers' AND COLUMN_NAME = 'public_url'"
+            );
+            self::$hasPublicUrl = ((int)($row['cnt'] ?? 0)) > 0;
+        } catch (\Exception $e) {
+            self::$hasPublicUrl = false;
+        }
+        return self::$hasPublicUrl;
     }
 
     private function request(array $server, string $method, string $path, ?array $body = null): array
