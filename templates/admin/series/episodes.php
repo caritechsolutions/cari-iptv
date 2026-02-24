@@ -1563,6 +1563,7 @@ function epVodSubmit() {
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/admin/vod-server/upload-source');
+    xhr.setRequestHeader('Accept', 'application/json');
 
     xhr.upload.onprogress = function(e) {
         if (e.lengthComputable) {
@@ -1576,6 +1577,12 @@ function epVodSubmit() {
         document.getElementById('ep-vod-upload-progress').style.display = 'none';
         btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
         btn.disabled = false;
+
+        // Check for empty/failed responses (file too large, Nginx 413, etc.)
+        if (xhr.status === 0 || xhr.responseText === '') {
+            showVodMsg('Upload failed: File too large. Check PHP upload_max_filesize and Nginx client_max_body_size.', 'danger');
+            return;
+        }
 
         try {
             const data = JSON.parse(xhr.responseText);
@@ -1598,7 +1605,14 @@ function epVodSubmit() {
                 showVodMsg(data.error || 'Upload failed', 'danger');
             }
         } catch (e) {
-            showVodMsg('Upload failed: ' + e.message, 'danger');
+            // Response is not JSON — likely an HTML error page from Nginx or session timeout
+            let msg = 'Invalid server response (HTTP ' + xhr.status + ')';
+            if (xhr.responseText.indexOf('413') !== -1 || xhr.responseText.indexOf('Too Large') !== -1) {
+                msg = 'File too large. Increase upload_max_filesize in PHP and client_max_body_size in Nginx.';
+            } else if (xhr.status === 302 || xhr.responseText.indexOf('login') !== -1) {
+                msg = 'Session expired. Please refresh the page and try again.';
+            }
+            showVodMsg('Upload failed: ' + msg, 'danger');
         }
     };
 
@@ -1606,7 +1620,7 @@ function epVodSubmit() {
         document.getElementById('ep-vod-upload-progress').style.display = 'none';
         btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
         btn.disabled = false;
-        showVodMsg('Network error during upload', 'danger');
+        showVodMsg('Upload failed: Network error or file too large', 'danger');
     };
 
     xhr.send(formData);
