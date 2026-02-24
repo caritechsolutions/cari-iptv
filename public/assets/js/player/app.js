@@ -465,9 +465,13 @@ const CariApp = (function() {
                 const divider = CariUI.renderTextDivider(title);
                 el.appendChild(divider);
             } else if (type === 'continue_watching') {
-                renderContinueWatchingRow(el);
+                const cwPlaceholder = document.createElement('div');
+                el.appendChild(cwPlaceholder);
+                renderContinueWatchingRow(cwPlaceholder);
             } else if (type === 'category_grid') {
-                renderCategorySection(el, title);
+                const catPlaceholder = document.createElement('div');
+                el.appendChild(catPlaceholder);
+                renderCategorySection(catPlaceholder, title);
             } else if (type === 'packages_list') {
                 renderPackagesSection(el, title, settings);
             }
