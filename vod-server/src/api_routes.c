@@ -389,6 +389,11 @@ int api_handle_request(http_request_t *req)
         return api_post_ssl_self_signed(req);
     }
 
+    /* POST /api/ssl/upload — upload cert+key PEM */
+    if (strcmp(url, "/api/ssl/upload") == 0 && strcmp(method, HTTP_POST) == 0) {
+        return api_post_ssl_upload(req);
+    }
+
     /* --- DRM routes --- */
 
     /* GET /api/drm/keys - List all DRM keys */
@@ -2795,8 +2800,11 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                                "Invalid JSON body");
     }
 
-    const char *domain = json_str(body, "domain", "");
-    const char *email  = json_str(body, "email", "");
+    const char *domain    = json_str(body, "domain", "");
+    const char *email     = json_str(body, "email", "");
+    const char *challenge = json_str(body, "challenge", "http");  /* "http" or "dns" */
+    const char *dns_plugin     = json_str(body, "dns_plugin", "");      /* e.g. "cloudflare" */
+    const char *dns_credentials = json_str(body, "dns_credentials", ""); /* API token */
 
     if (domain[0] == '\0') {
         cJSON_Delete(body);
@@ -2807,10 +2815,21 @@ int api_post_ssl_letsencrypt(http_request_t *req)
     /* Security: validate domain contains only safe chars */
     for (const char *p = domain; *p; p++) {
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-')) {
+              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-' || *p == '*')) {
             cJSON_Delete(body);
             return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
                                    "Invalid domain name");
+        }
+    }
+
+    /* Security: validate email (basic check for safe chars) */
+    for (const char *p = email; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-' ||
+              *p == '@' || *p == '_' || *p == '+')) {
+            cJSON_Delete(body);
+            return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                                   "Invalid email address");
         }
     }
 
@@ -2826,34 +2845,98 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         snprintf(key_path,  sizeof(key_path),  "/etc/vod-server/ssl/key.pem");
     }
 
-    /* Run certbot in standalone mode.
-     * We need to temporarily free port 80 if occupied, but certbot
-     * --standalone handles its own HTTP server on :80 for the ACME challenge.
-     * The --preferred-challenges http flag ensures HTTP-01 validation. */
     char cmd[4096];
-    if (email[0] != '\0') {
-        snprintf(cmd, sizeof(cmd),
-                 "certbot certonly --standalone --non-interactive --agree-tos "
-                 "--preferred-challenges http "
-                 "-d '%s' --email '%s' "
-                 "--cert-path '%s' --key-path '%s' "
-                 "--fullchain-path '%s' "
-                 "2>&1",
-                 domain, email, cert_path, key_path, cert_path);
+    bool use_dns = (strcmp(challenge, "dns") == 0);
+
+    if (use_dns) {
+        /* DNS-01 challenge — works behind NAT, no port 80 needed.
+         * Requires certbot DNS plugin (e.g. certbot-dns-cloudflare).
+         * The plugin name maps to certbot arg --dns-<plugin>.
+         * Credentials are written to a temp file and deleted after. */
+        if (dns_plugin[0] == '\0') {
+            cJSON_Delete(body);
+            return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                                   "dns_plugin is required for DNS challenge (e.g. 'cloudflare')");
+        }
+
+        /* Validate plugin name — alphanumeric + hyphens only */
+        for (const char *p = dns_plugin; *p; p++) {
+            if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-')) {
+                cJSON_Delete(body);
+                return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                                       "Invalid dns_plugin name");
+            }
+        }
+
+        /* Write credentials to a temp file */
+        char creds_file[MAX_PATH_LEN];
+        snprintf(creds_file, sizeof(creds_file), "/etc/vod-server/ssl/.dns_credentials.ini");
+
+        if (dns_credentials[0] != '\0') {
+            FILE *cfp = fopen(creds_file, "w");
+            if (!cfp) {
+                log_error("Cannot write DNS credentials file: %s", strerror(errno));
+                cJSON_Delete(body);
+                return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                       "Cannot write DNS credentials file");
+            }
+            fputs(dns_credentials, cfp);
+            fclose(cfp);
+            chmod(creds_file, 0600);
+        }
+
+        if (email[0] != '\0') {
+            snprintf(cmd, sizeof(cmd),
+                     "certbot certonly --non-interactive --agree-tos "
+                     "--preferred-challenges dns "
+                     "--dns-%s "
+                     "--dns-%s-credentials '%s' "
+                     "-d '%s' --email '%s' "
+                     "--cert-path '%s' --key-path '%s' "
+                     "--fullchain-path '%s' "
+                     "2>&1",
+                     dns_plugin, dns_plugin, creds_file,
+                     domain, email, cert_path, key_path, cert_path);
+        } else {
+            snprintf(cmd, sizeof(cmd),
+                     "certbot certonly --non-interactive --agree-tos "
+                     "--preferred-challenges dns --register-unsafely-without-email "
+                     "--dns-%s "
+                     "--dns-%s-credentials '%s' "
+                     "-d '%s' "
+                     "--cert-path '%s' --key-path '%s' "
+                     "--fullchain-path '%s' "
+                     "2>&1",
+                     dns_plugin, dns_plugin, creds_file,
+                     domain, cert_path, key_path, cert_path);
+        }
     } else {
-        snprintf(cmd, sizeof(cmd),
-                 "certbot certonly --standalone --non-interactive --agree-tos "
-                 "--preferred-challenges http --register-unsafely-without-email "
-                 "-d '%s' "
-                 "--cert-path '%s' --key-path '%s' "
-                 "--fullchain-path '%s' "
-                 "2>&1",
-                 domain, cert_path, key_path, cert_path);
+        /* HTTP-01 challenge — requires port 80 reachable from internet */
+        if (email[0] != '\0') {
+            snprintf(cmd, sizeof(cmd),
+                     "certbot certonly --standalone --non-interactive --agree-tos "
+                     "--preferred-challenges http "
+                     "-d '%s' --email '%s' "
+                     "--cert-path '%s' --key-path '%s' "
+                     "--fullchain-path '%s' "
+                     "2>&1",
+                     domain, email, cert_path, key_path, cert_path);
+        } else {
+            snprintf(cmd, sizeof(cmd),
+                     "certbot certonly --standalone --non-interactive --agree-tos "
+                     "--preferred-challenges http --register-unsafely-without-email "
+                     "-d '%s' "
+                     "--cert-path '%s' --key-path '%s' "
+                     "--fullchain-path '%s' "
+                     "2>&1",
+                     domain, cert_path, key_path, cert_path);
+        }
     }
 
     cJSON_Delete(body);
 
-    log_info("Requesting Let's Encrypt certificate for %s", domain);
+    log_info("Requesting Let's Encrypt certificate for %s (challenge: %s)",
+             domain, use_dns ? "dns" : "http");
 
     FILE *fp = popen(cmd, "r");
     if (!fp) {
@@ -2872,6 +2955,13 @@ int api_post_ssl_letsencrypt(http_request_t *req)
     output[olen] = '\0';
 
     int status = pclose(fp);
+
+    /* Clean up DNS credentials file */
+    if (use_dns) {
+        char creds_file[MAX_PATH_LEN];
+        snprintf(creds_file, sizeof(creds_file), "/etc/vod-server/ssl/.dns_credentials.ini");
+        unlink(creds_file);
+    }
 
     cJSON *root = cJSON_CreateObject();
 
@@ -2937,6 +3027,103 @@ int api_post_ssl_self_signed(http_request_t *req)
     } else {
         cJSON_AddBoolToObject(root, "success", 0);
         cJSON_AddStringToObject(root, "error", "Failed to generate certificate");
+    }
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * POST /api/ssl/upload  — upload cert + key PEM text
+ * Body: { "cert": "-----BEGIN CERTIFICATE-----\n...",
+ *         "key":  "-----BEGIN PRIVATE KEY-----\n..." }
+ * ================================================================ */
+
+int api_post_ssl_upload(http_request_t *req)
+{
+    cJSON *body = parse_request_body(req);
+    if (!body) {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Invalid JSON body");
+    }
+
+    const char *cert_pem = json_str(body, "cert", "");
+    const char *key_pem  = json_str(body, "key", "");
+
+    if (cert_pem[0] == '\0' || key_pem[0] == '\0') {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Both 'cert' and 'key' PEM fields are required");
+    }
+
+    /* Basic validation — check PEM markers */
+    if (!strstr(cert_pem, "-----BEGIN CERTIFICATE-----") &&
+        !strstr(cert_pem, "-----BEGIN TRUSTED CERTIFICATE-----")) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "cert does not look like PEM certificate data");
+    }
+    if (!strstr(key_pem, "-----BEGIN") || !strstr(key_pem, "KEY-----")) {
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "key does not look like PEM private key data");
+    }
+
+    /* Determine output paths */
+    char cert_path[MAX_PATH_LEN];
+    char key_path[MAX_PATH_LEN];
+
+    if (s_config && s_config->ssl_cert_file[0]) {
+        snprintf(cert_path, sizeof(cert_path), "%s", s_config->ssl_cert_file);
+        snprintf(key_path,  sizeof(key_path),  "%s", s_config->ssl_key_file);
+    } else {
+        snprintf(cert_path, sizeof(cert_path), "/etc/vod-server/ssl/cert.pem");
+        snprintf(key_path,  sizeof(key_path),  "/etc/vod-server/ssl/key.pem");
+    }
+
+    log_info("Uploading SSL certificate and key...");
+
+    /* Write key file first (more restrictive permissions) */
+    FILE *fp = fopen(key_path, "w");
+    if (!fp) {
+        log_error("Cannot write key file: %s (%s)", key_path, strerror(errno));
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Cannot write key file");
+    }
+    fputs(key_pem, fp);
+    fclose(fp);
+    chmod(key_path, 0600);
+
+    /* Write cert file */
+    fp = fopen(cert_path, "w");
+    if (!fp) {
+        log_error("Cannot write cert file: %s (%s)", cert_path, strerror(errno));
+        cJSON_Delete(body);
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Cannot write cert file");
+    }
+    fputs(cert_pem, fp);
+    fclose(fp);
+    chmod(cert_path, 0644);
+
+    cJSON_Delete(body);
+
+    log_info("SSL certificate and key written:");
+    log_info("  Certificate: %s", cert_path);
+    log_info("  Private key: %s", key_path);
+
+    /* Reload into memory */
+    cJSON *root = cJSON_CreateObject();
+    if (ssl_load_files(cert_path, key_path) == 0) {
+        cJSON_AddBoolToObject(root, "success", 1);
+        cJSON_AddStringToObject(root, "message",
+                                "Certificate uploaded and loaded. Restart to activate SSL.");
+        cJSON_AddStringToObject(root, "cert_path", cert_path);
+        cJSON_AddStringToObject(root, "key_path", key_path);
+    } else {
+        cJSON_AddBoolToObject(root, "success", 0);
+        cJSON_AddStringToObject(root, "error",
+                                "Files written but failed to load. Check PEM format.");
     }
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);

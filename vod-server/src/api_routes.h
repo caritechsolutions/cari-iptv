@@ -54,6 +54,7 @@ int api_get_browse(http_request_t *req);
 int api_get_ssl_status(http_request_t *req);
 int api_post_ssl_letsencrypt(http_request_t *req);
 int api_post_ssl_self_signed(http_request_t *req);
+int api_post_ssl_upload(http_request_t *req);
 
 /* Profile routes */
 int api_get_profiles(http_request_t *req);

@@ -258,6 +258,9 @@ var settingsPage = {
                         <button class="btn btn-primary btn-sm" onclick="settingsPage.showLetsEncryptModal()">
                             Let's Encrypt
                         </button>
+                        <button class="btn btn-outline btn-sm" onclick="settingsPage.showUploadCertModal()">
+                            Upload Certificate
+                        </button>
                         <button class="btn btn-outline btn-sm" onclick="settingsPage.generateSelfSigned()">
                             Self-Signed
                         </button>
@@ -279,9 +282,13 @@ var settingsPage = {
 
     showLetsEncryptModal() {
         App.showModal("Let's Encrypt Certificate", `
-            <p class="text-sm text-muted mb-3">
-                Obtain a free SSL certificate from Let's Encrypt. Your server must be reachable on port 80 from the internet.
-            </p>
+            <div class="form-group">
+                <label>Challenge Type *</label>
+                <select class="form-control" id="le-challenge" onchange="settingsPage.toggleDnsFields()">
+                    <option value="dns">DNS-01 (works behind NAT/firewall)</option>
+                    <option value="http">HTTP-01 (requires port 80 open)</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label>Domain Name *</label>
                 <input type="text" class="form-control" id="le-domain" placeholder="e.g. vod.example.com">
@@ -290,6 +297,25 @@ var settingsPage = {
                 <label>Email (optional, for renewal notices)</label>
                 <input type="email" class="form-control" id="le-email" placeholder="admin@example.com">
             </div>
+            <div id="le-dns-fields">
+                <div class="form-group">
+                    <label>DNS Provider *</label>
+                    <select class="form-control" id="le-dns-plugin">
+                        <option value="cloudflare">Cloudflare</option>
+                        <option value="digitalocean">DigitalOcean</option>
+                        <option value="route53">AWS Route53</option>
+                        <option value="google">Google Cloud DNS</option>
+                        <option value="linode">Linode</option>
+                        <option value="ovh">OVH</option>
+                    </select>
+                    <small class="text-muted">Requires certbot DNS plugin: <code>pip install certbot-dns-<em>provider</em></code></small>
+                </div>
+                <div class="form-group">
+                    <label>DNS API Credentials *</label>
+                    <textarea class="form-control" id="le-dns-creds" rows="3" placeholder="dns_cloudflare_api_token = YOUR_TOKEN_HERE" style="font-family:monospace;font-size:12px"></textarea>
+                    <small class="text-muted">Credentials in INI format. See <a href="https://certbot-dns-cloudflare.readthedocs.io" target="_blank" style="color:var(--primary)">plugin docs</a> for format.</small>
+                </div>
+            </div>
             <div id="le-status" class="mt-2" style="display:none"></div>
         `, `
             <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
@@ -297,7 +323,14 @@ var settingsPage = {
         `);
     },
 
+    toggleDnsFields() {
+        const challenge = document.getElementById('le-challenge').value;
+        const dnsFields = document.getElementById('le-dns-fields');
+        dnsFields.style.display = challenge === 'dns' ? '' : 'none';
+    },
+
     async requestLetsEncrypt() {
+        const challenge = document.getElementById('le-challenge').value;
         const domain = document.getElementById('le-domain').value.trim();
         const email = document.getElementById('le-email').value.trim();
         const statusEl = document.getElementById('le-status');
@@ -308,13 +341,26 @@ var settingsPage = {
             return;
         }
 
+        const payload = { domain, email, challenge };
+
+        if (challenge === 'dns') {
+            const plugin = document.getElementById('le-dns-plugin').value;
+            const creds = document.getElementById('le-dns-creds').value.trim();
+            if (!creds) {
+                App.toast('DNS API credentials are required for DNS challenge', 'warning');
+                return;
+            }
+            payload.dns_plugin = plugin;
+            payload.dns_credentials = creds;
+        }
+
         statusEl.style.display = 'block';
         statusEl.className = 'mt-2 text-sm';
         statusEl.innerHTML = '<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div> Requesting certificate... this may take a minute.';
         btn.disabled = true;
 
         try {
-            const result = await App.post('/ssl/letsencrypt', { domain, email });
+            const result = await App.post('/ssl/letsencrypt', payload);
             if (result.success) {
                 statusEl.className = 'mt-2 text-sm text-success';
                 statusEl.textContent = result.message || 'Certificate obtained!';
@@ -332,6 +378,64 @@ var settingsPage = {
         } catch (err) {
             statusEl.className = 'mt-2 text-sm text-danger';
             statusEl.textContent = 'Request failed: ' + err.message;
+        }
+        btn.disabled = false;
+    },
+
+    showUploadCertModal() {
+        App.showModal("Upload SSL Certificate", `
+            <p class="text-sm text-muted mb-3">
+                Paste your certificate and private key in PEM format. You can copy these from Nginx Proxy Manager,
+                another server, or any certificate provider.
+            </p>
+            <div class="form-group">
+                <label>Certificate (PEM) *</label>
+                <textarea class="form-control" id="cert-pem" rows="6" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" style="font-family:monospace;font-size:11px"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Private Key (PEM) *</label>
+                <textarea class="form-control" id="key-pem" rows="6" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" style="font-family:monospace;font-size:11px"></textarea>
+            </div>
+            <div id="upload-cert-status" class="mt-2" style="display:none"></div>
+        `, `
+            <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="upload-cert-btn" onclick="settingsPage.uploadCert()">Upload Certificate</button>
+        `);
+    },
+
+    async uploadCert() {
+        const cert = document.getElementById('cert-pem').value.trim();
+        const key = document.getElementById('key-pem').value.trim();
+        const statusEl = document.getElementById('upload-cert-status');
+        const btn = document.getElementById('upload-cert-btn');
+
+        if (!cert || !key) {
+            App.toast('Both certificate and private key are required', 'warning');
+            return;
+        }
+
+        statusEl.style.display = 'block';
+        statusEl.className = 'mt-2 text-sm';
+        statusEl.textContent = 'Uploading...';
+        btn.disabled = true;
+
+        try {
+            const result = await App.post('/ssl/upload', { cert, key });
+            if (result.success) {
+                statusEl.className = 'mt-2 text-sm text-success';
+                statusEl.textContent = result.message || 'Certificate uploaded!';
+                App.toast('Certificate uploaded!', 'success');
+                setTimeout(() => {
+                    App.closeModal();
+                    this.loadSSLStatus();
+                }, 2000);
+            } else {
+                statusEl.className = 'mt-2 text-sm text-danger';
+                statusEl.textContent = 'Failed: ' + (result.error || 'Unknown error');
+            }
+        } catch (err) {
+            statusEl.className = 'mt-2 text-sm text-danger';
+            statusEl.textContent = 'Failed: ' + err.message;
         }
         btn.disabled = false;
     },
