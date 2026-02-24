@@ -284,6 +284,14 @@ class VodServerController
         $profile   = trim($_POST['profile'] ?? 'standard');
         $overwrite = ($_POST['overwrite'] ?? '') === '1';
 
+        // Generic entity support (episodes, etc.) — falls back to movie_id for backward compat
+        $entityType = trim($_POST['entity_type'] ?? '');
+        $entityId   = (int)($_POST['entity_id'] ?? 0);
+        if (!$entityType && $movieId > 0) {
+            $entityType = 'movie';
+            $entityId = $movieId;
+        }
+
         if ($serverId <= 0) {
             $this->sendJson(['success' => false, 'error' => 'No VOD server selected']);
             return;
@@ -362,31 +370,34 @@ class VodServerController
                 }
             }
 
-            error_log('[VOD Upload] movieId=' . $movieId . ' serverId=' . $serverId . ' jobId=' . $jobId . ' contentId=' . $contentId);
+            error_log('[VOD Upload] entityType=' . $entityType . ' entityId=' . $entityId . ' serverId=' . $serverId . ' jobId=' . $jobId . ' contentId=' . $contentId);
 
-            // Save job reference on the movie record (fail gracefully if columns don't exist yet)
-            if ($movieId > 0 && $jobId > 0) {
+            // Save job reference on the entity record (fail gracefully if columns don't exist yet)
+            if ($entityId > 0 && $jobId > 0) {
                 try {
+                    $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
                     $this->db->execute(
-                        "UPDATE movies SET vod_server_id = ?, vod_job_id = ?, vod_content_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
-                        [$serverId, $jobId, $contentId, $movieId]
+                        "UPDATE {$table} SET vod_server_id = ?, vod_job_id = ?, vod_content_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
+                        [$serverId, $jobId, $contentId, $entityId]
                     );
-                    error_log('[VOD Upload] DB save SUCCESS for movie ' . $movieId . ' jobId=' . $jobId);
+                    error_log('[VOD Upload] DB save SUCCESS for ' . $entityType . ' ' . $entityId . ' jobId=' . $jobId);
                 } catch (\Exception $dbErr) {
                     error_log('[VOD Upload] DB save FAILED: ' . $dbErr->getMessage());
                 }
             } else {
-                error_log('[VOD Upload] SKIPPED DB save — movieId=' . $movieId . ' jobId=' . $jobId);
+                error_log('[VOD Upload] SKIPPED DB save — entityType=' . $entityType . ' entityId=' . $entityId . ' jobId=' . $jobId);
             }
 
             $this->sendJson([
-                'success'    => true,
-                'message'    => 'File uploaded and transcode job submitted',
+                'success'     => true,
+                'message'     => 'File uploaded and transcode job submitted',
                 'upload_path' => $uploadResult['path'],
-                'job'        => $job,
-                'job_id'     => $jobId,
-                'server_id'  => $serverId,
-                'movie_id'   => $movieId,
+                'job'         => $job,
+                'job_id'      => $jobId,
+                'server_id'   => $serverId,
+                'movie_id'    => $movieId,
+                'entity_type' => $entityType,
+                'entity_id'   => $entityId,
             ]);
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
@@ -426,6 +437,15 @@ class VodServerController
             $sid = (int)($_GET['server_id'] ?? 0);
             $jobId = (int)($_GET['job_id'] ?? 0);
             $movieId = (int)($_GET['movie_id'] ?? 0);
+
+            // Generic entity support — falls back to movie_id for backward compat
+            $entityType = trim($_GET['entity_type'] ?? '');
+            $entityId   = (int)($_GET['entity_id'] ?? 0);
+            if (!$entityType && $movieId > 0) {
+                $entityType = 'movie';
+                $entityId = $movieId;
+            }
+
             if ($sid <= 0 || $jobId <= 0) {
                 $this->sendJson(['success' => false, 'error' => 'Server ID and Job ID required']);
                 return;
@@ -436,46 +456,44 @@ class VodServerController
             $progress = (float)($job['progress'] ?? 0);
             $errorMsg = $job['error_msg'] ?? null;
 
-            // Persist status to movie record (fail gracefully if columns don't exist yet)
-            if ($movieId > 0) {
+            // Persist status to entity record (fail gracefully if columns don't exist yet)
+            if ($entityId > 0) {
+                $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
                 try {
                     if ($status === 'complete') {
                         // Transcode done — write the stream URL (HLS) and content_id
-                        // Use public_url for browser-facing stream URLs, fall back to internal url
                         $server = $this->vodService->getServer($sid);
-                        $contentId = $job['content_id'] ?? ('movie-' . $movieId);
+                        $contentId = $job['content_id'] ?? ($entityType . '-' . $entityId);
                         $baseUrl = !empty($server['public_url']) ? $server['public_url'] : ($server['url'] ?? '');
                         $hlsUrl = $baseUrl ? ($baseUrl . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
 
                         $this->db->execute(
-                            "UPDATE movies SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ?, vod_content_id = ? WHERE id = ?",
-                            [$hlsUrl, $contentId, $movieId]
+                            "UPDATE {$table} SET vod_status = 'complete', vod_progress = 100, vod_error = NULL, stream_url = ?, vod_content_id = ? WHERE id = ?",
+                            [$hlsUrl, $contentId, $entityId]
                         );
                         $job['stream_url'] = $hlsUrl;
                     } elseif ($status === 'failed') {
                         $this->db->execute(
-                            "UPDATE movies SET vod_status = 'failed', vod_progress = ?, vod_error = ? WHERE id = ?",
-                            [$progress, $errorMsg, $movieId]
+                            "UPDATE {$table} SET vod_status = 'failed', vod_progress = ?, vod_error = ? WHERE id = ?",
+                            [$progress, $errorMsg, $entityId]
                         );
                     } elseif ($status === 'cancelled') {
                         $this->db->execute(
-                            "UPDATE movies SET vod_status = 'cancelled', vod_job_id = NULL, vod_error = 'Cancelled' WHERE id = ?",
-                            [$movieId]
+                            "UPDATE {$table} SET vod_status = 'cancelled', vod_job_id = NULL, vod_error = 'Cancelled' WHERE id = ?",
+                            [$entityId]
                         );
                     } else {
                         // In progress — update progress
                         $this->db->execute(
-                            "UPDATE movies SET vod_status = ?, vod_progress = ? WHERE id = ?",
-                            [$status, $progress, $movieId]
+                            "UPDATE {$table} SET vod_status = ?, vod_progress = ? WHERE id = ?",
+                            [$status, $progress, $entityId]
                         );
                     }
                 } catch (\Exception $dbErr) {
-                    // Migration may not have run yet — non-fatal
                     error_log('VOD status poll save failed: ' . $dbErr->getMessage());
-                    // Still compute stream_url for the JS response
                     if ($status === 'complete') {
                         $server = $this->vodService->getServer($sid);
-                        $contentId = $job['content_id'] ?? ('movie-' . $movieId);
+                        $contentId = $job['content_id'] ?? ($entityType . '-' . $entityId);
                         $baseUrl = !empty($server['public_url']) ? $server['public_url'] : ($server['url'] ?? '');
                         $job['stream_url'] = $baseUrl ? ($baseUrl . '/content/' . urlencode($contentId) . '/master.m3u8') : '';
                     }
@@ -490,8 +508,9 @@ class VodServerController
 
     /**
      * POST /admin/vod-server/movie-vod-delete
-     * Delete VOD content from the server AND clear all VOD fields on the movie record.
-     * Expects: server_id, content_id, movie_id, csrf_token
+     * Delete VOD content from the server AND clear all VOD fields on the entity record.
+     * Supports movies (movie_id) and episodes (entity_type=episode, entity_id).
+     * Expects: server_id, content_id, movie_id|entity_id, csrf_token
      */
     public function movieVodDelete(): void
     {
@@ -504,8 +523,16 @@ class VodServerController
         $contentId = trim($_POST['content_id'] ?? '');
         $movieId   = (int)($_POST['movie_id'] ?? 0);
 
-        if ($movieId <= 0) {
-            $this->sendJson(['success' => false, 'error' => 'Movie ID required']);
+        // Generic entity support
+        $entityType = trim($_POST['entity_type'] ?? '');
+        $entityId   = (int)($_POST['entity_id'] ?? 0);
+        if (!$entityType && $movieId > 0) {
+            $entityType = 'movie';
+            $entityId = $movieId;
+        }
+
+        if ($entityId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'Entity ID required']);
             return;
         }
 
@@ -517,7 +544,6 @@ class VodServerController
                 $this->vodService->deleteContentItem($serverId, $contentId);
                 $vodDeleted = true;
             } catch (\Exception $e) {
-                // Content may not exist on the server — that's fine
                 error_log('[VOD Delete] Server delete failed (may not exist): ' . $e->getMessage());
             }
         }
@@ -528,27 +554,27 @@ class VodServerController
             try {
                 $this->vodService->cancelJob($serverId, $vodJobId);
             } catch (\Exception $e) {
-                // Job may already be finished or not exist
                 error_log('[VOD Delete] Job cancel failed (may not exist): ' . $e->getMessage());
             }
         }
 
-        // 3. Clear all VOD fields on the movie record
+        // 3. Clear all VOD fields on the entity record
         try {
+            $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
             $this->db->execute(
-                "UPDATE movies SET vod_server_id = NULL, vod_job_id = NULL, vod_content_id = NULL, vod_status = NULL, vod_progress = 0, vod_error = NULL, stream_url = NULL WHERE id = ?",
-                [$movieId]
+                "UPDATE {$table} SET vod_server_id = NULL, vod_job_id = NULL, vod_content_id = NULL, vod_status = NULL, vod_progress = 0, vod_error = NULL, stream_url = NULL WHERE id = ?",
+                [$entityId]
             );
         } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => 'Failed to update movie record: ' . $e->getMessage()]);
+            $this->sendJson(['success' => false, 'error' => 'Failed to update record: ' . $e->getMessage()]);
             return;
         }
 
         $this->sendJson([
             'success' => true,
             'message' => $vodDeleted
-                ? 'Content deleted from VOD server and movie record cleared'
-                : 'Movie VOD data cleared' . ($serverId > 0 ? ' (content may already be removed from server)' : ''),
+                ? 'Content deleted from VOD server and record cleared'
+                : 'VOD data cleared' . ($serverId > 0 ? ' (content may already be removed from server)' : ''),
         ]);
     }
 
@@ -678,6 +704,104 @@ class VodServerController
         } catch (\Exception $e) {
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
+    }
+
+    /* ==============================================================
+     * Content Markers (intro, credits, ad cue points)
+     * ============================================================== */
+
+    /**
+     * GET /admin/vod-server/markers?content_type=movie&content_id=123
+     */
+    public function getMarkers(): void
+    {
+        $contentType = trim($_GET['content_type'] ?? '');
+        $contentId   = (int)($_GET['content_id'] ?? 0);
+
+        if (!in_array($contentType, ['movie', 'episode']) || $contentId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'content_type and content_id required']);
+            return;
+        }
+
+        $markers = $this->db->fetchAll(
+            "SELECT * FROM content_markers WHERE content_type = ? AND content_id = ? ORDER BY position_seconds ASC",
+            [$contentType, $contentId]
+        ) ?: [];
+
+        $this->sendJson(['success' => true, 'markers' => $markers]);
+    }
+
+    /**
+     * POST /admin/vod-server/markers/save
+     * Body: content_type, content_id, marker_type, position_seconds, label?, csrf_token
+     */
+    public function saveMarker(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $contentType = trim($_POST['content_type'] ?? '');
+        $contentId   = (int)($_POST['content_id'] ?? 0);
+        $markerType  = trim($_POST['marker_type'] ?? '');
+        $position    = (float)($_POST['position_seconds'] ?? 0);
+        $label       = trim($_POST['label'] ?? '');
+
+        $validTypes = ['intro_start', 'intro_end', 'credits_start', 'ad_cue'];
+        if (!in_array($contentType, ['movie', 'episode']) || $contentId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'content_type and content_id required']);
+            return;
+        }
+        if (!in_array($markerType, $validTypes)) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid marker_type. Valid: ' . implode(', ', $validTypes)]);
+            return;
+        }
+
+        // For intro_start, intro_end, credits_start — only one per content item (upsert)
+        // For ad_cue — multiple allowed
+        if ($markerType !== 'ad_cue') {
+            $existing = $this->db->fetch(
+                "SELECT id FROM content_markers WHERE content_type = ? AND content_id = ? AND marker_type = ?",
+                [$contentType, $contentId, $markerType]
+            );
+            if ($existing) {
+                $this->db->execute(
+                    "UPDATE content_markers SET position_seconds = ?, label = ?, updated_at = NOW() WHERE id = ?",
+                    [$position, $label ?: null, $existing['id']]
+                );
+                $this->sendJson(['success' => true, 'id' => (int)$existing['id'], 'updated' => true]);
+                return;
+            }
+        }
+
+        $this->db->execute(
+            "INSERT INTO content_markers (content_type, content_id, marker_type, position_seconds, label) VALUES (?, ?, ?, ?, ?)",
+            [$contentType, $contentId, $markerType, $position, $label ?: null]
+        );
+
+        $this->sendJson(['success' => true, 'id' => (int)$this->db->lastInsertId(), 'updated' => false]);
+    }
+
+    /**
+     * POST /admin/vod-server/markers/delete
+     * Body: id, csrf_token
+     */
+    public function deleteMarker(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'Marker ID required']);
+            return;
+        }
+
+        $this->db->execute("DELETE FROM content_markers WHERE id = ?", [$id]);
+        $this->sendJson(['success' => true]);
     }
 
     private function sendJson(array $data): void

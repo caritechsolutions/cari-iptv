@@ -4432,6 +4432,214 @@ img { max-width: 100%; display: block; }
     white-space: nowrap;
 }
 
+/* =========================================================================
+   Skip Intro Button
+   ========================================================================= */
+
+.skip-intro-btn {
+    position: absolute;
+    bottom: 5rem;
+    right: 2rem;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.625rem 1.25rem;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    backdrop-filter: blur(8px);
+    transition: background 0.2s, border-color 0.2s, opacity 0.4s;
+    animation: skipIntroSlideIn 0.3s ease-out;
+}
+
+.skip-intro-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.7);
+}
+
+.skip-intro-btn i {
+    font-size: 1rem;
+}
+
+.skip-intro-fade {
+    /* no-op — just marks the button as ready to auto-remove */
+}
+
+@keyframes skipIntroSlideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* =========================================================================
+   Auto-Play Countdown Overlay
+   ========================================================================= */
+
+.autoplay-countdown {
+    position: absolute;
+    bottom: 5rem;
+    right: 1.5rem;
+    z-index: 50;
+    animation: autoplaySlideIn 0.4s ease-out;
+}
+
+.autoplay-countdown-inner {
+    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid var(--p-border, rgba(255,255,255,0.1));
+    border-radius: var(--p-radius-lg, 12px);
+    padding: 1.25rem;
+    min-width: 260px;
+    max-width: 320px;
+    backdrop-filter: blur(12px);
+    text-align: center;
+}
+
+.autoplay-next-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--p-text-muted, #94a3b8);
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+.autoplay-next-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: left;
+    margin-bottom: 0.875rem;
+}
+
+.autoplay-next-thumb {
+    width: 80px;
+    height: 45px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.05);
+}
+
+.autoplay-next-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--p-text, #e2e8f0);
+    line-height: 1.3;
+}
+
+.autoplay-next-meta {
+    font-size: 0.75rem;
+    color: var(--p-text-muted, #94a3b8);
+    margin-top: 0.125rem;
+}
+
+.autoplay-timer {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 0.875rem;
+}
+
+.autoplay-ring {
+    width: 48px;
+    height: 48px;
+}
+
+.autoplay-seconds {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--p-text, #e2e8f0);
+}
+
+.autoplay-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.autoplay-play-btn,
+.autoplay-cancel-btn {
+    padding: 0.5rem 0.875rem !important;
+    font-size: 0.8125rem !important;
+    border-radius: 6px !important;
+}
+
+@keyframes autoplaySlideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =========================================================================
+   Next Episode Preview (below player details)
+   ========================================================================= */
+
+.next-episode-preview {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--p-border, rgba(255,255,255,0.1));
+}
+
+.next-ep-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--p-text-muted, #94a3b8);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.next-ep-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.75rem;
+    border-radius: var(--p-radius, 8px);
+    background: rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.next-ep-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.next-ep-thumb {
+    width: 100px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.05);
+}
+
+.next-ep-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.next-ep-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--p-text, #e2e8f0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.next-ep-meta {
+    font-size: 0.75rem;
+    color: var(--p-text-muted, #94a3b8);
+    margin-top: 0.125rem;
+}
+
 @media (max-width: 640px) {
     .card-poster .card-progress-bar {
         top: 192px;
@@ -4440,5 +4648,22 @@ img { max-width: 100%; display: block; }
     .resume-prompt-inner {
         min-width: 240px;
         padding: 0.875rem 1rem;
+    }
+
+    .skip-intro-btn {
+        bottom: 4rem;
+        right: 1rem;
+        font-size: 0.8125rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .autoplay-countdown {
+        bottom: 4rem;
+        right: 0.75rem;
+        left: 0.75rem;
+    }
+
+    .autoplay-countdown-inner {
+        min-width: auto;
     }
 }
