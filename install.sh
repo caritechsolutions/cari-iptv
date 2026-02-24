@@ -612,8 +612,8 @@ configure_php() {
     CLI_INI="${PHP_INI_DIR}/../cli/php.ini"
     for ini in "$PHP_INI" "$CLI_INI"; do
         if [ -f "$ini" ]; then
-            sed -i 's/^upload_max_filesize.*/upload_max_filesize = 2G/' "$ini"
-            sed -i 's/^post_max_size.*/post_max_size = 2G/' "$ini"
+            sed -i 's/^upload_max_filesize.*/upload_max_filesize = 12G/' "$ini"
+            sed -i 's/^post_max_size.*/post_max_size = 12G/' "$ini"
             sed -i 's/^memory_limit.*/memory_limit = 256M/' "$ini"
             sed -i 's/^max_execution_time.*/max_execution_time = 600/' "$ini"
             sed -i 's/^max_input_time.*/max_input_time = 600/' "$ini"
@@ -676,7 +676,7 @@ server {
     index index.php index.html;
 
     # Allow large file uploads (VOD source files)
-    client_max_body_size 2G;
+    client_max_body_size 12G;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;

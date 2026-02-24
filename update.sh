@@ -520,9 +520,9 @@ restart_services() {
                    /etc/php.ini; do
         if [ -f "$PHP_INI" ]; then
             current_upload=$(grep -oP '(?<=^upload_max_filesize = )\S+' "$PHP_INI" 2>/dev/null || echo "")
-            if [ "$current_upload" != "2G" ]; then
-                sed -i 's/^upload_max_filesize.*/upload_max_filesize = 2G/' "$PHP_INI"
-                sed -i 's/^post_max_size.*/post_max_size = 2G/' "$PHP_INI"
+            if [ "$current_upload" != "12G" ]; then
+                sed -i 's/^upload_max_filesize.*/upload_max_filesize = 12G/' "$PHP_INI"
+                sed -i 's/^post_max_size.*/post_max_size = 12G/' "$PHP_INI"
                 sed -i 's/^max_execution_time.*/max_execution_time = 600/' "$PHP_INI"
                 sed -i 's/^max_input_time.*/max_input_time = 600/' "$PHP_INI"
                 log_info "Updated PHP upload limits in $PHP_INI"
@@ -537,7 +537,7 @@ restart_services() {
     fi
     if [ -f "$NGINX_CONF" ]; then
         if ! grep -q "client_max_body_size" "$NGINX_CONF"; then
-            sed -i '/index index.php/a\    \n    # Allow large file uploads (VOD source files)\n    client_max_body_size 2G;' "$NGINX_CONF"
+            sed -i '/index index.php/a\    \n    # Allow large file uploads (VOD source files)\n    client_max_body_size 12G;' "$NGINX_CONF"
             log_info "Added client_max_body_size to Nginx config"
         fi
     fi
