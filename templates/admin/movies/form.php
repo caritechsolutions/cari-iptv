@@ -366,15 +366,10 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     var file = vodPendingFile;
                     var serverSel = document.getElementById('vod-transcode-server');
                     var serverId = serverSel.value;
-                    var serverOpt = serverSel.options[serverSel.selectedIndex];
-                    var vodUrl = serverOpt.getAttribute('data-public-url') || serverOpt.getAttribute('data-url');
-                    var vodApiKey = serverOpt.getAttribute('data-api-key');
                     var profile = document.getElementById('vod-transcode-profile').value;
                     var contentId = 'movie-' + MOVIE_ID;
                     var uploadBtn = document.getElementById('vod-upload-btn');
                     var browseBtn = document.getElementById('vod-browse-btn');
-
-                    if (!vodUrl) { showMsg('VOD server URL not configured', 'error'); return; }
 
                     uploadBtn.disabled = true;
                     uploadBtn.innerHTML = '<i class="lucide-loader"></i> Uploading...';
@@ -390,12 +385,20 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     document.getElementById('vod-upload-bar').style.background = 'var(--primary)';
                     document.getElementById('vod-upload-size').textContent = '0 / ' + fmt(file.size);
 
-                    // Upload directly to VOD server (bypasses Nginx/PHP file size limits)
-                    var uploadUrl = vodUrl.replace(/\/+$/, '') + '/api/upload?filename=' + encodeURIComponent(file.name);
+                    // Upload via IPTV backend which proxies to VOD server (avoids CORS issues with proxy managers)
+                    var formData = new FormData();
+                    formData.append('csrf_token', CSRF);
+                    formData.append('video_file', file);
+                    formData.append('server_id', serverId);
+                    formData.append('content_id', contentId);
+                    formData.append('title', MOVIE_TITLE);
+                    formData.append('profile', profile);
+                    formData.append('entity_type', 'movie');
+                    formData.append('entity_id', MOVIE_ID);
+                    if (overwrite) formData.append('overwrite', '1');
+
                     var xhr = new XMLHttpRequest();
-                    xhr.open('POST', uploadUrl, true);
-                    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-                    if (vodApiKey) xhr.setRequestHeader('X-API-Key', vodApiKey);
+                    xhr.open('POST', '/admin/vod-server/upload-source', true);
 
                     xhr.upload.addEventListener('progress', function(e) {
                         if (e.lengthComputable) {
@@ -411,95 +414,60 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
                     xhr.addEventListener('load', function() {
                         if (xhr.status === 0 || xhr.responseText === '') {
-                            showMsg('Upload failed: VOD server returned empty response.', 'error');
+                            showMsg('Upload failed: Server returned empty response.', 'error');
                             resetButtons();
                             return;
                         }
 
                         try {
-                            var uploadData = JSON.parse(xhr.responseText);
+                            var data = JSON.parse(xhr.responseText);
                         } catch(e) {
-                            showMsg('Upload failed: Invalid response from VOD server (HTTP ' + xhr.status + ')', 'error');
+                            showMsg('Upload failed: Invalid response (HTTP ' + xhr.status + ')', 'error');
                             resetButtons();
                             return;
                         }
 
-                        if (xhr.status >= 400 || uploadData.error) {
-                            showMsg('Upload failed: ' + (uploadData.error || 'HTTP ' + xhr.status), 'error');
-                            resetButtons();
-                            return;
-                        }
+                        if (data.success) {
+                            document.getElementById('vod-upload-bar').style.background = 'var(--success)';
+                            document.getElementById('vod-upload-label').textContent = file.name + ' — Uploaded!';
+                            document.getElementById('vod-upload-pct').textContent = 'Done';
 
-                        var uploadPath = uploadData.path || uploadData.file || '';
-                        if (!uploadPath) {
-                            showMsg('Upload succeeded but no file path returned', 'error');
-                            resetButtons();
-                            return;
-                        }
-
-                        document.getElementById('vod-upload-label').textContent = 'Submitting transcode job...';
-
-                        // Step 2: Submit job via IPTV backend (small JSON request, no file)
-                        var jobForm = new FormData();
-                        jobForm.append('csrf_token', CSRF);
-                        jobForm.append('server_id', serverId);
-                        jobForm.append('content_id', contentId);
-                        jobForm.append('upload_path', uploadPath);
-                        jobForm.append('title', MOVIE_TITLE);
-                        jobForm.append('profile', profile);
-                        jobForm.append('entity_type', 'movie');
-                        jobForm.append('entity_id', MOVIE_ID);
-                        if (overwrite) jobForm.append('overwrite', '1');
-
-                        fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.success) {
-                                    document.getElementById('vod-upload-bar').style.background = 'var(--success)';
-                                    document.getElementById('vod-upload-label').textContent = file.name + ' — Uploaded!';
-                                    document.getElementById('vod-upload-pct').textContent = 'Done';
-
-                                    var job = data.job || {};
-                                    var sid = data.server_id || serverId;
-                                    var jid = data.job_id || job.id || job.job_id || 0;
-                                    if (jid) {
-                                        startTranscodePoll(sid, jid);
-                                    } else {
-                                        showMsg('File uploaded and job submitted. Refresh the page to check transcode status.', 'success');
-                                        resetButtons();
-                                    }
-
-                                    vodPendingFile = null;
-                                    document.getElementById('vod-upload-btn').style.display = 'none';
-                                } else if (data.error === 'duplicate') {
-                                    document.getElementById('vod-upload-bar').style.background = 'var(--warning)';
-                                    document.getElementById('vod-upload-label').textContent = 'Duplicate detected';
-                                    document.getElementById('vod-upload-pct').textContent = '';
-                                    showMsg(
-                                        data.message + '<br><br>' +
-                                        '<button class="btn btn-primary btn-sm" onclick="vodStartUpload(true)" style="margin-right:0.5rem">' +
-                                        '<i class="lucide-refresh-cw"></i> Overwrite &amp; Re-transcode</button>' +
-                                        '<button class="btn btn-outline btn-sm" onclick="vodCancelOverwrite()">Cancel</button>',
-                                        'info'
-                                    );
-                                    uploadBtn.style.display = 'none';
-                                } else {
-                                    showMsg('Job submission failed: ' + (data.error || 'Unknown error'), 'error');
-                                    resetButtons();
-                                }
-                            })
-                            .catch(function(err) {
-                                showMsg('Job submission failed: ' + err.message, 'error');
+                            var job = data.job || {};
+                            var sid = data.server_id || serverId;
+                            var jid = data.job_id || job.id || job.job_id || 0;
+                            if (jid) {
+                                startTranscodePoll(sid, jid);
+                            } else {
+                                showMsg('File uploaded and job submitted. Refresh the page to check transcode status.', 'success');
                                 resetButtons();
-                            });
+                            }
+
+                            vodPendingFile = null;
+                            document.getElementById('vod-upload-btn').style.display = 'none';
+                        } else if (data.error === 'duplicate') {
+                            document.getElementById('vod-upload-bar').style.background = 'var(--warning)';
+                            document.getElementById('vod-upload-label').textContent = 'Duplicate detected';
+                            document.getElementById('vod-upload-pct').textContent = '';
+                            showMsg(
+                                data.message + '<br><br>' +
+                                '<button class="btn btn-primary btn-sm" onclick="vodStartUpload(true)" style="margin-right:0.5rem">' +
+                                '<i class="lucide-refresh-cw"></i> Overwrite &amp; Re-transcode</button>' +
+                                '<button class="btn btn-outline btn-sm" onclick="vodCancelOverwrite()">Cancel</button>',
+                                'info'
+                            );
+                            uploadBtn.style.display = 'none';
+                        } else {
+                            showMsg('Upload failed: ' + (data.error || 'Unknown error'), 'error');
+                            resetButtons();
+                        }
                     });
 
                     xhr.addEventListener('error', function() {
-                        showMsg('Upload failed: Cannot connect to VOD server. Check the server URL and ensure CORS is enabled.', 'error');
+                        showMsg('Upload failed: Network error. Please try again.', 'error');
                         resetButtons();
                     });
 
-                    xhr.send(file);
+                    xhr.send(formData);
                 };
 
                 window.vodCancelOverwrite = function() {
