@@ -405,6 +405,104 @@ class VodServerController
     }
 
     /**
+     * POST /admin/vod-server/submit-direct-job
+     * Called after a direct-to-VOD-server upload completes (browser → VOD server).
+     * Submits the transcode job via the VOD API and saves the job reference on the DB entity.
+     */
+    public function submitDirectUploadJob(): void
+    {
+        if (!Session::validateCsrf($_POST['csrf_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'error' => 'Invalid CSRF token']);
+            return;
+        }
+
+        $serverId   = (int)($_POST['server_id'] ?? 0);
+        $contentId  = trim($_POST['content_id'] ?? '');
+        $uploadPath = trim($_POST['upload_path'] ?? '');
+        $title      = trim($_POST['title'] ?? '');
+        $profile    = trim($_POST['profile'] ?? 'standard');
+        $entityType = trim($_POST['entity_type'] ?? 'movie');
+        $entityId   = (int)($_POST['entity_id'] ?? 0);
+        $overwrite  = ($_POST['overwrite'] ?? '') === '1';
+
+        if ($serverId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'No VOD server selected']);
+            return;
+        }
+        if (empty($contentId) || empty($uploadPath)) {
+            $this->sendJson(['success' => false, 'error' => 'content_id and upload_path are required']);
+            return;
+        }
+
+        try {
+            // Check for existing content (unless overwrite confirmed)
+            if (!$overwrite && $this->vodService->contentExists($serverId, $contentId)) {
+                $this->sendJson([
+                    'success' => false,
+                    'error'   => 'duplicate',
+                    'message' => 'Content "' . $contentId . '" already exists on this VOD server.',
+                ]);
+                return;
+            }
+
+            // Submit transcode job
+            $jobResult = $this->vodService->submitJob($serverId, $contentId, $uploadPath, [
+                'title'       => $title ?: $contentId,
+                'profile'     => $profile,
+                'priority'    => 5,
+                'source_type' => 'file',
+            ]);
+
+            $job = $jobResult['job'] ?? $jobResult;
+            $jobId = (int)($job['id'] ?? 0);
+
+            // If job ID not in response, look it up
+            if ($jobId <= 0) {
+                try {
+                    $jobsList = $this->vodService->getJobs($serverId, ['limit' => 20]);
+                    $items = $jobsList['items'] ?? $jobsList;
+                    if (is_array($items)) {
+                        foreach ($items as $item) {
+                            if (($item['content_id'] ?? '') === $contentId) {
+                                $job = $item;
+                                $jobId = (int)($item['id'] ?? 0);
+                                break;
+                            }
+                        }
+                    }
+                } catch (\Exception $lookupErr) {
+                    error_log('[VOD SubmitJob] Job lookup failed: ' . $lookupErr->getMessage());
+                }
+            }
+
+            // Save job reference on entity record
+            if ($entityId > 0 && $jobId > 0) {
+                try {
+                    $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
+                    $this->db->execute(
+                        "UPDATE {$table} SET vod_server_id = ?, vod_job_id = ?, vod_content_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
+                        [$serverId, $jobId, $contentId, $entityId]
+                    );
+                } catch (\Exception $dbErr) {
+                    error_log('[VOD SubmitJob] DB save failed: ' . $dbErr->getMessage());
+                }
+            }
+
+            $this->sendJson([
+                'success'     => true,
+                'message'     => 'Transcode job submitted',
+                'job'         => $job,
+                'job_id'      => $jobId,
+                'server_id'   => $serverId,
+                'entity_type' => $entityType,
+                'entity_id'   => $entityId,
+            ]);
+        } catch (\Exception $e) {
+            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * GET /admin/vod-server/check-content?server_id=X&content_id=Y
      * Check if content already exists on the VOD server
      */
