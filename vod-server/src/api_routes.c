@@ -2928,7 +2928,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
          * certbot places certs in /etc/letsencrypt/live/<domain>/
          * deploy-hook copies them to our paths after issue + renewal. */
         snprintf(cmd, sizeof(cmd),
-                 "sudo certbot certonly --non-interactive --agree-tos "
+                 "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --non-interactive --agree-tos "
                  "--dns-cloudflare "
                  "--dns-cloudflare-credentials '%s' "
                  "-d '%s' %s%s "
@@ -2947,7 +2947,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         if (email[0]) {
             /* Rebuild with proper quoting */
             snprintf(cmd, sizeof(cmd),
-                     "sudo certbot certonly --non-interactive --agree-tos "
+                     "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --non-interactive --agree-tos "
                      "--dns-cloudflare "
                      "--dns-cloudflare-credentials '%s' "
                      "-d '%s' --email '%s' "
@@ -2962,7 +2962,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      cert_path, key_path, cert_path, key_path);
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "sudo certbot certonly --non-interactive --agree-tos "
+                     "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --non-interactive --agree-tos "
                      "--dns-cloudflare --register-unsafely-without-email "
                      "--dns-cloudflare-credentials '%s' "
                      "-d '%s' "
@@ -2982,7 +2982,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         const char *webroot = s_config->acme_webroot;
         if (email[0] != '\0') {
             snprintf(cmd, sizeof(cmd),
-                     "sudo certbot certonly --webroot --non-interactive --agree-tos "
+                     "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --webroot --non-interactive --agree-tos "
                      "-w '%s' "
                      "-d '%s' --email '%s' "
                      "--deploy-hook '"
@@ -2996,7 +2996,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      cert_path, key_path, cert_path, key_path);
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "sudo certbot certonly --webroot --non-interactive --agree-tos "
+                     "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --webroot --non-interactive --agree-tos "
                      "--register-unsafely-without-email "
                      "-w '%s' "
                      "-d '%s' "
@@ -3014,7 +3014,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         /* HTTP-01 standalone — certbot runs its own server on port 80 */
         if (email[0] != '\0') {
             snprintf(cmd, sizeof(cmd),
-                     "sudo certbot certonly --standalone --non-interactive --agree-tos "
+                     "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --standalone --non-interactive --agree-tos "
                      "--preferred-challenges http "
                      "-d '%s' --email '%s' "
                      "--cert-path '%s' --key-path '%s' "
@@ -3023,7 +3023,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      domain, email, cert_path, key_path, cert_path);
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "sudo certbot certonly --standalone --non-interactive --agree-tos "
+                     "sudo systemd-run --pipe --wait --collect --quiet certbot certonly --standalone --non-interactive --agree-tos "
                      "--preferred-challenges http --register-unsafely-without-email "
                      "-d '%s' "
                      "--cert-path '%s' --key-path '%s' "
@@ -3075,7 +3075,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         if (sfp) {
             fprintf(sfp,
                 "#!/bin/bash\n"
-                "sudo certbot renew --quiet --deploy-hook '"
+                "certbot renew --quiet --deploy-hook '"
                 "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s; "
                 "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s; "
                 "chmod 644 %s; chmod 600 %s; "
