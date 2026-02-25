@@ -54,20 +54,33 @@ typedef struct {
 } http_response_t;
 
 /**
- * Start the HTTP server.
+ * Start the main HTTP/HTTPS server.
  * Returns 0 on success, -1 on error.
  */
 int http_server_start(const vod_config_t *config);
 
 /**
- * Stop the HTTP server.
+ * Stop the main HTTP/HTTPS server.
  */
 void http_server_stop(void);
 
 /**
- * Check if the server is running.
+ * Check if the main server is running.
  */
 bool http_server_is_running(void);
+
+/**
+ * Start the ACME HTTP listener (port 80).
+ * Serves /.well-known/acme-challenge/ files from the configured webroot
+ * and 301 redirects everything else to the HTTPS port.
+ * Returns 0 on success, -1 on error.
+ */
+int http_server_start_acme(const vod_config_t *config);
+
+/**
+ * Stop the ACME HTTP listener.
+ */
+void http_server_stop_acme(void);
 
 /**
  * Send a JSON response.

@@ -267,8 +267,9 @@ if ! id -u vod-server &>/dev/null; then
     log "Created system user: vod-server"
 fi
 
-# Create directories
+# Create directories (including ACME webroot for Let's Encrypt HTTP-01 challenges)
 mkdir -p /var/lib/vod-server/{library,tmp}
+mkdir -p /var/lib/vod-server/acme/.well-known/acme-challenge
 mkdir -p /var/log/vod-server
 chown -R vod-server:vod-server /var/lib/vod-server
 chown -R vod-server:vod-server /var/log/vod-server
@@ -294,7 +295,7 @@ if grep -q "change-me-on-first-run" /etc/vod-server/vod-server.conf; then
 fi
 
 # ========================
-# 7. Install certbot + Cloudflare DNS plugin (for Let's Encrypt behind NAT)
+# 7. Install certbot for Let's Encrypt SSL
 # ========================
 log "Installing certbot for Let's Encrypt SSL..."
 
@@ -338,6 +339,35 @@ else
     warn "  snap install certbot --classic && snap install certbot-dns-cloudflare"
 fi
 
+# Create certbot renewal hook to reload VOD server SSL certs
+# When certbot renews, it copies certs to VOD server's SSL dir and sends SIGHUP
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+cat > /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh << 'HOOK_EOF'
+#!/bin/bash
+# Certbot renewal hook for VOD Server
+# Copies renewed certs to VOD server's SSL directory and reloads config
+
+VOD_SSL_DIR="/etc/vod-server/ssl"
+VOD_CONF="/etc/vod-server/vod-server.conf"
+
+# Only run if VOD server is installed
+[ -f "$VOD_CONF" ] || exit 0
+
+# Copy renewed certificates
+if [ -n "$RENEWED_LINEAGE" ]; then
+    cp -f "$RENEWED_LINEAGE/fullchain.pem" "$VOD_SSL_DIR/cert.pem"
+    cp -f "$RENEWED_LINEAGE/privkey.pem" "$VOD_SSL_DIR/key.pem"
+    chown vod-server:vod-server "$VOD_SSL_DIR/cert.pem" "$VOD_SSL_DIR/key.pem"
+    chmod 644 "$VOD_SSL_DIR/cert.pem"
+    chmod 600 "$VOD_SSL_DIR/key.pem"
+
+    # Reload VOD server to pick up new certs
+    systemctl reload vod-server 2>/dev/null || systemctl restart vod-server 2>/dev/null || true
+fi
+HOOK_EOF
+chmod 755 /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh
+log "Certbot renewal hook installed at /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh"
+
 # ========================
 # 8. Start service
 # ========================
@@ -370,6 +400,18 @@ echo "  Commands:"
 echo "    systemctl status vod-server    # Check status"
 echo "    systemctl restart vod-server   # Restart"
 echo "    journalctl -u vod-server -f    # Follow logs"
+echo ""
+echo "  To enable HTTPS with Let's Encrypt:"
+echo "    1. Edit /etc/vod-server/vod-server.conf"
+echo "    2. Set [ssl] enabled = true"
+echo "    3. Set [acme] enabled = true, domain = vod.example.com"
+echo "    4. systemctl restart vod-server"
+echo "    5. certbot certonly --webroot -w /var/lib/vod-server/acme -d vod.example.com"
+echo "    6. cp /etc/letsencrypt/live/vod.example.com/fullchain.pem /etc/vod-server/ssl/cert.pem"
+echo "    7. cp /etc/letsencrypt/live/vod.example.com/privkey.pem /etc/vod-server/ssl/key.pem"
+echo "    8. chown vod-server:vod-server /etc/vod-server/ssl/*.pem"
+echo "    9. systemctl restart vod-server"
+echo "    (Renewals are handled automatically by the deploy hook)"
 echo ""
 echo "  To change library path:"
 echo "    1. Edit /etc/vod-server/vod-server.conf"

@@ -89,6 +89,13 @@ typedef struct {
     char         drm_scheme[16];            /* cenc or cbcs */
     char         drm_key_server_url[512];   /* Base URL for key delivery */
     bool         drm_auto_generate;         /* Auto-generate keys for new jobs */
+
+    /* [acme] */
+    bool         acme_enabled;              /* Enable HTTP listener for ACME challenges */
+    int          acme_http_port;            /* HTTP port (default 80) */
+    char         acme_webroot[MAX_PATH_LEN]; /* Webroot for /.well-known/acme-challenge/ */
+    char         acme_domain[256];          /* Domain name for HTTPS redirect */
+    int          acme_https_port;           /* Public HTTPS port for redirects (default 443) */
 } vod_config_t;
 
 /**

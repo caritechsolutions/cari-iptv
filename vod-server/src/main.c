@@ -266,6 +266,16 @@ int main(int argc, char *argv[])
         /* Non-fatal: will use FFmpeg fallback */
     }
 
+    /* Start ACME HTTP listener (port 80) if enabled — must start before
+     * the main server so we don't confuse the two in error messages */
+    if (g_config.acme_enabled) {
+        if (http_server_start_acme(&g_config) != 0) {
+            log_warn("Failed to start ACME HTTP listener on port %d (non-fatal)",
+                     g_config.acme_http_port);
+            /* Non-fatal: main HTTPS server can still run */
+        }
+    }
+
     /* Start HTTP server */
     if (http_server_start(&g_config) != 0) {
         log_error("Failed to start HTTP server");
@@ -307,6 +317,7 @@ cleanup:
     migration_stop();
     cluster_stop();
     job_processor_stop();
+    http_server_stop_acme();
     http_server_stop();
     ssl_cleanup();
     db_close();

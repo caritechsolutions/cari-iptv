@@ -227,6 +227,7 @@ var settingsPage = {
         const container = document.getElementById('ssl-status');
         try {
             const ssl = await App.get('/ssl/status');
+            this._sslData = ssl;
 
             let certHtml = '';
             if (ssl.certificate) {
@@ -267,6 +268,14 @@ var settingsPage = {
                     </div>
                     ${!ssl.certbot_available ? '<div class="text-sm text-warning mt-2">certbot not installed. Install: <code>apt install certbot</code> or <code>snap install certbot --classic</code></div>' : ''}
                 </div>
+                ${ssl.acme?.enabled ? `
+                <div class="mt-2" style="padding:8px;background:var(--bg-input);border-radius:var(--radius-sm)">
+                    <div class="text-sm mb-1"><strong>ACME HTTP Listener</strong> <span class="status online">Active</span></div>
+                    <div class="text-sm text-muted">Port ${ssl.acme.http_port} &rarr; serves challenges &amp; redirects to HTTPS${ssl.acme.https_port !== 443 ? ` port ${ssl.acme.https_port}` : ''}</div>
+                    ${ssl.acme.domain ? `<div class="text-sm text-muted">Domain: ${App.esc(ssl.acme.domain)}</div>` : ''}
+                    <div class="text-sm text-muted">Webroot: ${App.esc(ssl.acme.webroot)}</div>
+                </div>
+                ` : ''}
                 <p class="text-sm text-muted mt-2">SSL must be enabled in vod-server.conf. Restart required after certificate changes.</p>
             `;
         } catch (err) {
@@ -281,17 +290,32 @@ var settingsPage = {
     },
 
     showLetsEncryptModal() {
+        const acme = this._sslData?.acme;
+        const acmeEnabled = acme?.enabled;
+
         App.showModal("Let's Encrypt SSL Certificate", `
             <p class="text-sm text-muted mb-3">
-                Get a free SSL certificate. Uses Cloudflare DNS validation so it works behind NAT/firewalls.
+                Get a free SSL certificate. ${acmeEnabled
+                    ? 'ACME HTTP listener is active — you can use webroot mode (no Cloudflare needed) or Cloudflare DNS for behind-NAT setups.'
+                    : 'Uses Cloudflare DNS validation so it works behind NAT/firewalls.'}
                 SSL will be auto-enabled and the server will restart automatically.
             </p>
+            ${acmeEnabled ? `
+            <div class="form-group">
+                <label>Validation Method</label>
+                <select class="form-control" id="le-method" onchange="settingsPage.toggleLeMethod()">
+                    <option value="webroot">HTTP-01 (Webroot) — ACME listener on port ${acme.http_port || 80}</option>
+                    <option value="cloudflare">DNS-01 (Cloudflare) — works behind NAT</option>
+                </select>
+            </div>
+            ` : ''}
             <div class="form-group">
                 <label>Domain Name *</label>
-                <input type="text" class="form-control" id="le-domain" placeholder="e.g. vod1.example.com">
+                <input type="text" class="form-control" id="le-domain" placeholder="e.g. vod1.example.com"
+                    ${acme?.domain ? `value="${App.esc(acme.domain)}"` : ''}>
             </div>
-            <div class="form-group">
-                <label>Cloudflare API Token *</label>
+            <div class="form-group" id="le-cf-group" ${acmeEnabled ? 'style="display:none"' : ''}>
+                <label>Cloudflare API Token ${acmeEnabled ? '' : '*'}</label>
                 <input type="password" class="form-control" id="le-cf-token" placeholder="Paste your Cloudflare API token">
                 <small class="text-muted">Create at <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" style="color:var(--primary)">Cloudflare Dashboard</a> &rarr; API Tokens &rarr; Create Token &rarr; "Edit zone DNS" template. Token is saved securely for auto-renewal.</small>
             </div>
@@ -306,27 +330,37 @@ var settingsPage = {
         `);
     },
 
+    toggleLeMethod() {
+        const method = document.getElementById('le-method')?.value;
+        const cfGroup = document.getElementById('le-cf-group');
+        if (cfGroup) {
+            cfGroup.style.display = method === 'cloudflare' ? '' : 'none';
+        }
+    },
+
     async requestLetsEncrypt() {
         const domain = document.getElementById('le-domain').value.trim();
         const cfToken = document.getElementById('le-cf-token').value.trim();
         const email = document.getElementById('le-email').value.trim();
         const statusEl = document.getElementById('le-status');
         const btn = document.getElementById('le-submit');
+        const method = document.getElementById('le-method')?.value || 'cloudflare';
 
         if (!domain) { App.toast('Domain name is required', 'warning'); return; }
-        if (!cfToken) { App.toast('Cloudflare API token is required', 'warning'); return; }
+        if (method === 'cloudflare' && !cfToken) { App.toast('Cloudflare API token is required', 'warning'); return; }
 
         statusEl.style.display = 'block';
         statusEl.className = 'mt-2 text-sm';
-        statusEl.innerHTML = '<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div> Requesting certificate via Cloudflare DNS... this may take 1-2 minutes.';
+        const modeText = method === 'webroot' ? 'webroot (HTTP-01)' : 'Cloudflare DNS';
+        statusEl.innerHTML = `<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div> Requesting certificate via ${modeText}... this may take 1-2 minutes.`;
         btn.disabled = true;
 
         try {
-            const result = await App.post('/ssl/letsencrypt', {
-                domain,
-                email,
-                cloudflare_token: cfToken
-            });
+            const payload = { domain, email };
+            if (method === 'cloudflare' && cfToken) {
+                payload.cloudflare_token = cfToken;
+            }
+            const result = await App.post('/ssl/letsencrypt', payload);
             if (result.success) {
                 statusEl.className = 'mt-2 text-sm text-success';
                 statusEl.textContent = result.message || 'Certificate obtained! Server restarting...';

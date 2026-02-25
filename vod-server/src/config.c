@@ -168,6 +168,13 @@ static int config_ini_callback(void *user, const char *section, const char *name
     else if (MATCH("drm", "key_server_url"))   COPY_STR(config->drm_key_server_url);
     else if (MATCH("drm", "auto_generate"))    config->drm_auto_generate = (atoi(value) || strcasecmp(value, "true") == 0);
 
+    /* [acme] */
+    else if (MATCH("acme", "enabled"))         config->acme_enabled = (atoi(value) || strcasecmp(value, "true") == 0);
+    else if (MATCH("acme", "http_port"))       config->acme_http_port = atoi(value);
+    else if (MATCH("acme", "webroot"))         COPY_STR(config->acme_webroot);
+    else if (MATCH("acme", "domain"))          COPY_STR(config->acme_domain);
+    else if (MATCH("acme", "https_port"))      config->acme_https_port = atoi(value);
+
     /* [profile:*] sections */
     else if (strncmp(section, "profile:", 8) == 0) {
         const char *profile_name = section + 8;
@@ -244,6 +251,13 @@ void config_set_defaults(vod_config_t *config)
     snprintf(config->drm_scheme, sizeof(config->drm_scheme), "%s", "cenc");
     config->drm_key_server_url[0] = '\0';
     config->drm_auto_generate = true;
+
+    /* ACME */
+    config->acme_enabled = false;
+    config->acme_http_port = 80;
+    snprintf(config->acme_webroot, sizeof(config->acme_webroot), "%s", "/var/lib/vod-server/acme");
+    config->acme_domain[0] = '\0';
+    config->acme_https_port = 443;
 }
 
 int config_load(vod_config_t *config, const char *path)
@@ -305,6 +319,14 @@ void config_dump(const vod_config_t *config)
              config->drm_auto_generate ? "yes" : "no");
     if (config->drm_key_server_url[0]) {
         log_info("DRM key server: %s", config->drm_key_server_url);
+    }
+    log_info("ACME: %s (http_port=%d, webroot=%s)",
+             config->acme_enabled ? "enabled" : "disabled",
+             config->acme_http_port,
+             config->acme_webroot);
+    if (config->acme_enabled && config->acme_domain[0]) {
+        log_info("ACME domain: %s (redirect to HTTPS port %d)",
+                 config->acme_domain, config->acme_https_port);
     }
     log_info("=====================");
 }

@@ -2742,6 +2742,22 @@ int api_get_ssl_status(http_request_t *req)
         cJSON_AddBoolToObject(root, "certbot_available", certbot);
     }
 
+    /* ACME HTTP listener status */
+    {
+        cJSON *acme = cJSON_CreateObject();
+        cJSON_AddBoolToObject(acme, "enabled",
+                              s_config ? s_config->acme_enabled : false);
+        cJSON_AddNumberToObject(acme, "http_port",
+                                s_config ? s_config->acme_http_port : 80);
+        cJSON_AddStringToObject(acme, "webroot",
+                                s_config ? s_config->acme_webroot : "");
+        cJSON_AddStringToObject(acme, "domain",
+                                s_config ? s_config->acme_domain : "");
+        cJSON_AddNumberToObject(acme, "https_port",
+                                s_config ? s_config->acme_https_port : 443);
+        cJSON_AddItemToObject(root, "acme", acme);
+    }
+
     /* Try to get certificate details if loaded */
     if (ssl_is_ready() && s_config && s_config->ssl_cert_file[0]) {
         /* Use openssl to read cert details */
@@ -2905,8 +2921,42 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      domain, cert_path, domain, key_path,
                      cert_path, key_path, cert_path, key_path);
         }
+    } else if (s_config && s_config->acme_enabled) {
+        /* HTTP-01 via webroot — ACME listener on port 80 serves challenges.
+         * Works behind NAT/NPM when port 80 is proxied to this server. */
+        const char *webroot = s_config->acme_webroot;
+        if (email[0] != '\0') {
+            snprintf(cmd, sizeof(cmd),
+                     "certbot certonly --webroot --non-interactive --agree-tos "
+                     "-w '%s' "
+                     "-d '%s' --email '%s' "
+                     "--deploy-hook '"
+                     "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s && "
+                     "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s && "
+                     "chmod 644 %s && chmod 600 %s && "
+                     "chown vod-server:vod-server %s %s"
+                     "' 2>&1",
+                     webroot, domain, email,
+                     domain, cert_path, domain, key_path,
+                     cert_path, key_path, cert_path, key_path);
+        } else {
+            snprintf(cmd, sizeof(cmd),
+                     "certbot certonly --webroot --non-interactive --agree-tos "
+                     "--register-unsafely-without-email "
+                     "-w '%s' "
+                     "-d '%s' "
+                     "--deploy-hook '"
+                     "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s && "
+                     "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s && "
+                     "chmod 644 %s && chmod 600 %s && "
+                     "chown vod-server:vod-server %s %s"
+                     "' 2>&1",
+                     webroot, domain,
+                     domain, cert_path, domain, key_path,
+                     cert_path, key_path, cert_path, key_path);
+        }
     } else {
-        /* HTTP-01 challenge — requires port 80 reachable from internet */
+        /* HTTP-01 standalone — certbot runs its own server on port 80 */
         if (email[0] != '\0') {
             snprintf(cmd, sizeof(cmd),
                      "certbot certonly --standalone --non-interactive --agree-tos "
@@ -2931,7 +2981,8 @@ int api_post_ssl_letsencrypt(http_request_t *req)
     cJSON_Delete(body);
 
     log_info("Requesting Let's Encrypt certificate for %s (%s)",
-             domain, use_cloudflare ? "dns-cloudflare" : "http-01");
+             domain, use_cloudflare ? "dns-cloudflare" :
+             (s_config && s_config->acme_enabled) ? "webroot" : "standalone");
 
     FILE *fp = popen(cmd, "r");
     if (!fp) {

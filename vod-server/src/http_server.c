@@ -15,9 +15,10 @@
 
 /* ---------- module state ---------- */
 
-static struct MHD_Daemon *g_daemon   = NULL;
-const vod_config_t *g_http_config    = NULL;
-static volatile bool g_running       = false;
+static struct MHD_Daemon *g_daemon      = NULL;
+static struct MHD_Daemon *g_acme_daemon = NULL;
+const vod_config_t *g_http_config       = NULL;
+static volatile bool g_running          = false;
 
 /* Local alias */
 #define g_config g_http_config
@@ -598,4 +599,198 @@ void http_server_stop(void)
 bool http_server_is_running(void)
 {
     return g_running;
+}
+
+/* ================================================================
+ * ACME HTTP listener (port 80)
+ *
+ * Serves /.well-known/acme-challenge/ files from the ACME webroot
+ * directory so certbot --webroot can answer HTTP-01 challenges.
+ * Everything else gets a 301 redirect to HTTPS.
+ * ================================================================ */
+
+/**
+ * Build the HTTPS redirect URL for a given request path.
+ * Uses the configured domain and public HTTPS port.
+ */
+static int acme_send_redirect(struct MHD_Connection *conn, const char *url)
+{
+    /* Build redirect target */
+    char location[2048];
+    char host_buf[256];
+    const char *domain = g_config->acme_domain;
+    int https_port = g_config->acme_https_port;
+
+    /* If no domain configured, fall back to Host header */
+    if (!domain || domain[0] == '\0') {
+        const char *host = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "Host");
+        if (host) {
+            /* Strip port from Host header if present */
+            snprintf(host_buf, sizeof(host_buf), "%s", host);
+            char *colon = strchr(host_buf, ':');
+            if (colon) *colon = '\0';
+            domain = host_buf;
+        } else {
+            domain = "localhost";
+        }
+    }
+
+    if (https_port == 443) {
+        snprintf(location, sizeof(location), "https://%s%s", domain, url);
+    } else {
+        snprintf(location, sizeof(location), "https://%s:%d%s", domain, https_port, url);
+    }
+
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+    if (!response) return MHD_NO;
+
+    MHD_add_response_header(response, "Location", location);
+    MHD_add_response_header(response, "Cache-Control", "no-cache");
+
+    int ret = MHD_queue_response(conn, MHD_HTTP_MOVED_PERMANENTLY, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
+/**
+ * ACME HTTP request handler.
+ * Only serves files from /.well-known/acme-challenge/; redirects everything else.
+ */
+static enum MHD_Result
+acme_request_handler(void *cls,
+                     struct MHD_Connection *connection,
+                     const char *url,
+                     const char *method,
+                     const char *version,
+                     const char *upload_data,
+                     size_t *upload_data_size,
+                     void **con_cls)
+{
+    (void)cls;
+    (void)version;
+    (void)upload_data;
+    (void)upload_data_size;
+
+    /* Only handle on the first (and only) callback for GET/HEAD */
+    if (*con_cls == NULL) {
+        *con_cls = (void *)1;  /* Mark as seen */
+        /* For GET there is no body to accumulate, so fall through */
+    }
+
+    /* Only GET and HEAD are relevant */
+    if (strcmp(method, HTTP_GET) != 0 && strcmp(method, "HEAD") != 0) {
+        return acme_send_redirect(connection, url);
+    }
+
+    /* Check for ACME challenge path: /.well-known/acme-challenge/{token} */
+    static const char *acme_prefix = "/.well-known/acme-challenge/";
+    size_t prefix_len = strlen(acme_prefix);
+
+    if (strncmp(url, acme_prefix, prefix_len) == 0) {
+        const char *token = url + prefix_len;
+
+        /* Validate token: must be non-empty, no slashes, no '..' */
+        if (token[0] == '\0' || strchr(token, '/') != NULL ||
+            strstr(token, "..") != NULL) {
+            log_warn("ACME: invalid challenge token: %s", url);
+            return http_send_error(connection, MHD_HTTP_BAD_REQUEST,
+                                   "Invalid challenge token");
+        }
+
+        /* Build file path: {webroot}/.well-known/acme-challenge/{token} */
+        char filepath[MAX_PATH_LEN];
+        snprintf(filepath, sizeof(filepath), "%s/.well-known/acme-challenge/%s",
+                 g_config->acme_webroot, token);
+
+        struct stat st;
+        if (stat(filepath, &st) != 0 || !S_ISREG(st.st_mode)) {
+            log_debug("ACME: challenge file not found: %s", filepath);
+            return http_send_error(connection, MHD_HTTP_NOT_FOUND,
+                                   "Challenge not found");
+        }
+
+        log_info("ACME: serving challenge: %s", token);
+
+        /* Read and serve the challenge file */
+        FILE *fp = fopen(filepath, "rb");
+        if (!fp) {
+            return http_send_error(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                   "Cannot read challenge file");
+        }
+
+        char *buf = malloc(st.st_size + 1);
+        if (!buf) {
+            fclose(fp);
+            return http_send_error(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                   "Out of memory");
+        }
+
+        size_t nread = fread(buf, 1, st.st_size, fp);
+        fclose(fp);
+        buf[nread] = '\0';
+
+        struct MHD_Response *response =
+            MHD_create_response_from_buffer(nread, buf, MHD_RESPMEM_MUST_FREE);
+        if (!response) {
+            free(buf);
+            return MHD_NO;
+        }
+
+        MHD_add_response_header(response, "Content-Type", CT_PLAIN);
+        MHD_add_response_header(response, "Cache-Control", "no-cache, no-store");
+
+        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+        MHD_destroy_response(response);
+        return ret;
+    }
+
+    /* Everything else: redirect to HTTPS */
+    log_debug("ACME: redirecting %s to HTTPS", url);
+    return acme_send_redirect(connection, url);
+}
+
+int http_server_start_acme(const vod_config_t *config)
+{
+    if (g_acme_daemon) {
+        log_warn("ACME HTTP listener already running");
+        return -1;
+    }
+
+    if (!config->acme_enabled) {
+        log_debug("ACME listener is disabled");
+        return 0;
+    }
+
+    g_http_config = config;
+
+    unsigned int flags = MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_ERROR_LOG;
+
+    g_acme_daemon = MHD_start_daemon(
+        flags,
+        (uint16_t)config->acme_http_port,
+        NULL, NULL,                          /* accept policy (allow all) */
+        &acme_request_handler, NULL,         /* request handler */
+        MHD_OPTION_CONNECTION_TIMEOUT, (unsigned int)30,
+        MHD_OPTION_END
+    );
+
+    if (!g_acme_daemon) {
+        log_error("Failed to start ACME HTTP listener on port %d", config->acme_http_port);
+        return -1;
+    }
+
+    log_info("ACME HTTP listener started on port %d (webroot: %s)",
+             config->acme_http_port, config->acme_webroot);
+    return 0;
+}
+
+void http_server_stop_acme(void)
+{
+    if (g_acme_daemon) {
+        log_info("Stopping ACME HTTP listener...");
+        MHD_stop_daemon(g_acme_daemon);
+        g_acme_daemon = NULL;
+        log_info("ACME HTTP listener stopped");
+    }
 }
