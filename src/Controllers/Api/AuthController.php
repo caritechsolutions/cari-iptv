@@ -226,6 +226,30 @@ class AuthController extends BaseApiController
     }
 
     /**
+     * GET /api/v1/auth/watch-progress?content_type=movie&content_id=123
+     * Returns progress for a single content item
+     */
+    public function getWatchProgress(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $contentType = $_GET['content_type'] ?? 'movie';
+        $contentId = (int) ($_GET['content_id'] ?? 0);
+
+        if ($contentId <= 0) {
+            $this->error('content_id is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $progress = $this->auth->getWatchProgress($subscriberId, $contentType, $contentId);
+        $this->json(['data' => $progress], 200);
+    }
+
+    /**
      * GET /api/v1/auth/continue-watching
      */
     public function continueWatching(): void

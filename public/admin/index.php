@@ -63,6 +63,7 @@ use CariIPTV\Controllers\Admin\AppLayoutController;
 use CariIPTV\Controllers\Admin\AdController;
 use CariIPTV\Controllers\Admin\SubscriberController;
 use CariIPTV\Controllers\Admin\PackageController;
+use CariIPTV\Controllers\Admin\VodServerController;
 
 // Initialize session
 Session::start();
@@ -345,6 +346,39 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/packages/groups/{id}/delete', [PackageController::class, 'deleteGroup']);
     $router->post('/packages/groups/{id}/content/add', [PackageController::class, 'addGroupContent']);
     $router->post('/packages/groups/{id}/content/{iid}/remove', [PackageController::class, 'removeGroupContent']);
+
+    // VOD Server Integration
+    $router->get('/vod-server', [VodServerController::class, 'index']);
+    $router->get('/vod-server/servers', [VodServerController::class, 'listServers']);
+    $router->post('/vod-server/servers/add', [VodServerController::class, 'addServer']);
+    $router->post('/vod-server/servers/{id}/update', [VodServerController::class, 'updateServerRecord']);
+    $router->post('/vod-server/servers/{id}/delete', [VodServerController::class, 'deleteServer']);
+    $router->get('/vod-server/status', [VodServerController::class, 'status']);
+    $router->get('/vod-server/config', [VodServerController::class, 'config']);
+    $router->get('/vod-server/content', [VodServerController::class, 'content']);
+    $router->post('/vod-server/content/delete', [VodServerController::class, 'deleteContent']);
+    $router->get('/vod-server/jobs', [VodServerController::class, 'jobs']);
+    $router->get('/vod-server/job-detail', [VodServerController::class, 'jobDetail']);
+    $router->post('/vod-server/jobs/submit', [VodServerController::class, 'submitJob']);
+    $router->post('/vod-server/jobs/{id}/cancel', [VodServerController::class, 'cancelJob']);
+    $router->post('/vod-server/upload-source', [VodServerController::class, 'uploadSource']);
+    $router->post('/vod-server/submit-direct-job', [VodServerController::class, 'submitDirectUploadJob']);
+    $router->get('/vod-server/check-content', [VodServerController::class, 'checkContent']);
+    $router->get('/vod-server/job-status', [VodServerController::class, 'jobStatus']);
+    $router->post('/vod-server/movie-vod-delete', [VodServerController::class, 'movieVodDelete']);
+    $router->get('/vod-server/profiles', [VodServerController::class, 'getProfiles']);
+    $router->get('/vod-server/browse', [VodServerController::class, 'browseFiles']);
+    $router->post('/vod-server/test-connection', [VodServerController::class, 'testConnection']);
+
+    // VOD Server - DRM Key Management
+    $router->get('/vod-server/drm/keys', [VodServerController::class, 'drmKeys']);
+    $router->post('/vod-server/drm/generate', [VodServerController::class, 'drmKeyGenerate']);
+    $router->post('/vod-server/drm/delete', [VodServerController::class, 'drmKeyDelete']);
+
+    // Content Markers (intro, credits, ad cue points)
+    $router->get('/vod-server/markers', [VodServerController::class, 'getMarkers']);
+    $router->post('/vod-server/markers/save', [VodServerController::class, 'saveMarker']);
+    $router->post('/vod-server/markers/delete', [VodServerController::class, 'deleteMarker']);
 });
 
 // Dispatch the request

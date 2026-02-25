@@ -7,6 +7,7 @@
 namespace CariIPTV\Controllers\Api;
 
 use CariIPTV\Services\ContentApiService;
+use CariIPTV\Services\VodServerService;
 
 class ContentController extends BaseApiController
 {
@@ -202,6 +203,148 @@ class ContentController extends BaseApiController
         }
 
         $this->ok($episode);
+    }
+
+    // =========================================================================
+    // DRM LICENSE PROXY
+    // =========================================================================
+
+    /**
+     * GET /api/v1/drm/license
+     * Proxies ClearKey license requests to the VOD server.
+     * Player calls this instead of hitting the VOD server directly.
+     * ?content_id=movie-123&server_id=1
+     */
+    public function drmLicense(): void
+    {
+        $contentId = $this->query('content_id');
+        $serverId  = (int)$this->query('server_id', 0);
+
+        if (empty($contentId) || !$serverId) {
+            $this->error('content_id and server_id are required', 400);
+        }
+
+        try {
+            $vodService = new VodServerService();
+            $server = $vodService->getServer($serverId);
+            if (!$server) {
+                $this->error('VOD server not found', 404);
+            }
+
+            // Proxy to VOD server's ClearKey license endpoint
+            $vodUrl = rtrim($server['url'], '/') . '/api/drm/license?content_id=' . urlencode($contentId);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $vodUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_HTTPHEADER     => [
+                    'X-API-Key: ' . ($server['api_key'] ?? ''),
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+            ]);
+
+            // If this is a POST (EME standard sends POST with kids array),
+            // forward the request body
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $body = file_get_contents('php://input');
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+                // Change URL to license endpoint without content_id param
+                $vodUrl = rtrim($server['url'], '/') . '/api/drm/license';
+                curl_setopt($ch, CURLOPT_URL, $vodUrl);
+            }
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr  = curl_error($ch);
+            curl_close($ch);
+
+            if ($response === false) {
+                $this->error('VOD server unreachable: ' . $curlErr, 502);
+            }
+
+            // Forward the response directly (ClearKey license is JSON)
+            http_response_code($httpCode ?: 200);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization');
+            header('Cache-Control: no-cache');
+            echo $response;
+            exit;
+        } catch (\Throwable $e) {
+            error_log('DRM license proxy error: ' . $e->getMessage());
+            $this->error('License request failed', 500);
+        }
+    }
+
+    /**
+     * GET /api/v1/drm/key/{content_id}
+     * Proxies raw binary key requests from HLS #EXT-X-KEY tags.
+     * The HLS playlist references this URL; the player fetches 16 raw bytes.
+     * ?server_id=1  (optional — if not given, uses the default VOD server)
+     */
+    public function drmRawKey(string $contentId): void
+    {
+        $serverId = (int)$this->query('server_id', 0);
+
+        if (empty($contentId)) {
+            $this->error('content_id is required', 400);
+        }
+
+        try {
+            $vodService = new VodServerService();
+
+            // If no server_id provided, try to find it from the content_id
+            if (!$serverId) {
+                $server = $vodService->getDefaultServer();
+                if ($server) $serverId = (int)$server['id'];
+            }
+            if (!$serverId) {
+                $this->error('No VOD server available', 404);
+            }
+
+            $server = $vodService->getServer($serverId);
+            if (!$server) {
+                $this->error('VOD server not found', 404);
+            }
+
+            $vodUrl = rtrim($server['url'], '/') . '/api/drm/key/' . urlencode($contentId);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $vodUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            curl_close($ch);
+
+            if ($response === false) {
+                $this->error('VOD server unreachable', 502);
+            }
+
+            // Forward the raw binary key response
+            http_response_code($httpCode ?: 200);
+            header('Content-Type: ' . ($contentType ?: 'application/octet-stream'));
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, OPTIONS');
+            header('Cache-Control: no-cache');
+            echo $response;
+            exit;
+        } catch (\Throwable $e) {
+            error_log('DRM raw key proxy error: ' . $e->getMessage());
+            $this->error('Key request failed', 500);
+        }
     }
 
     // =========================================================================

@@ -606,15 +606,36 @@ configure_php() {
         PHP_FPM_SERVICE="php-fpm"
     fi
 
-    # Configure PHP settings
+    # Helper: ensure a PHP ini directive is set (handles commented/uncommented/missing)
+    set_php_ini() {
+        local ini_file="$1"
+        local directive="$2"
+        local value="$3"
+
+        if grep -qE "^${directive}\s*=" "$ini_file" 2>/dev/null; then
+            sed -i "s/^${directive}\s*=.*/${directive} = ${value}/" "$ini_file"
+        elif grep -qE "^;${directive}\s*=" "$ini_file" 2>/dev/null; then
+            sed -i "s/^;${directive}\s*=.*/${directive} = ${value}/" "$ini_file"
+        else
+            echo "${directive} = ${value}" >> "$ini_file"
+        fi
+    }
+
+    # Configure PHP settings (FPM + CLI for dev server support)
     log_info "Optimizing PHP settings..."
-    if [ -f "$PHP_INI" ]; then
-        sed -i 's/^upload_max_filesize.*/upload_max_filesize = 100M/' "$PHP_INI"
-        sed -i 's/^post_max_size.*/post_max_size = 100M/' "$PHP_INI"
-        sed -i 's/^memory_limit.*/memory_limit = 256M/' "$PHP_INI"
-        sed -i 's/^max_execution_time.*/max_execution_time = 300/' "$PHP_INI"
-        sed -i 's/^;date.timezone.*/date.timezone = UTC/' "$PHP_INI"
-    fi
+    PHP_INI_DIR=$(dirname "$PHP_INI")
+    CLI_INI="${PHP_INI_DIR}/../cli/php.ini"
+    for ini in "$PHP_INI" "$CLI_INI"; do
+        if [ -f "$ini" ]; then
+            set_php_ini "$ini" "upload_max_filesize" "12G"
+            set_php_ini "$ini" "post_max_size" "12G"
+            set_php_ini "$ini" "memory_limit" "256M"
+            set_php_ini "$ini" "max_execution_time" "600"
+            set_php_ini "$ini" "max_input_time" "600"
+            set_php_ini "$ini" "date.timezone" "UTC"
+            log_info "Updated PHP limits in $ini"
+        fi
+    done
 
     # Restart PHP-FPM
     systemctl restart $PHP_FPM_SERVICE
@@ -668,6 +689,9 @@ server {
 
     root ${INSTALL_DIR}/public;
     index index.php index.html;
+
+    # Allow large file uploads (VOD source files)
+    client_max_body_size 12G;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -1350,7 +1374,7 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="claude/live-tv-routing-uDNuY"
+    BRANCH="claude/vod-server-setup-458YL"
     TEMP_DIR=$(mktemp -d)
 
     log_info "Downloading application files from $BRANCH branch..."

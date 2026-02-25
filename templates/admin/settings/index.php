@@ -68,7 +68,7 @@
                         <input type="url" id="site_url" name="site_url" class="form-input"
                                placeholder="https://example.com"
                                value="<?= htmlspecialchars($settings['general']['site_url'] ?? '') ?>">
-                        <small class="form-help">Base URL of your site (used in emails)</small>
+                        <small class="form-help">Public URL of your site (used for emails, player API, and DRM license URLs)</small>
                     </div>
 
                     <div class="form-group">
@@ -218,9 +218,62 @@
     </div>
 </div>
 
-<!-- Integrations Tab (Metadata APIs) -->
+<!-- Integrations Tab (Metadata APIs + VOD Servers) -->
 <div class="settings-tab-content" id="tab-integrations">
     <div class="settings-grid">
+        <!-- VOD Servers -->
+        <div class="card full-width">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="lucide-hard-drive"></i>
+                    VOD Servers
+                </h3>
+                <button type="button" class="btn btn-sm btn-primary" onclick="vodShowAddServer()">
+                    <i class="lucide-plus"></i> Add Server
+                </button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">Configure VOD transcoding servers. Content from Movies and TV Shows can be sent to these servers for processing.</p>
+
+                <div id="vod-server-list">
+                    <?php if (!empty($vodServers)): ?>
+                        <?php foreach ($vodServers as $srv): ?>
+                            <div class="vod-server-row" id="vod-srv-<?= $srv['id'] ?>">
+                                <span class="vod-srv-indicator" style="background:<?= $srv['is_active'] ? 'var(--success)' : 'var(--danger)' ?>"></span>
+                                <div class="vod-srv-info">
+                                    <div class="vod-srv-name">
+                                        <?= htmlspecialchars($srv['name']) ?>
+                                        <?php if ($srv['is_default']): ?><span class="badge badge-primary" style="font-size:0.65rem;padding:0.1rem 0.4rem">default</span><?php endif; ?>
+                                        <?php if (!$srv['is_active']): ?><span class="badge badge-danger" style="font-size:0.65rem;padding:0.1rem 0.4rem">inactive</span><?php endif; ?>
+                                    </div>
+                                    <div class="vod-srv-url"><?= htmlspecialchars($srv['url']) ?></div>
+                                </div>
+                                <div class="vod-srv-actions">
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="vodTestServer(<?= $srv['id'] ?>)" title="Test Connection">
+                                        <i class="lucide-plug"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="vodEditServer(<?= $srv['id'] ?>)" title="Edit">
+                                        <i class="lucide-pencil"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="vodDeleteServer(<?= $srv['id'] ?>, '<?= htmlspecialchars(addslashes($srv['name'])) ?>')" title="Delete">
+                                        <i class="lucide-trash-2"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="vod-empty-state" id="vod-empty">
+                            <i class="lucide-hard-drive" style="font-size:2rem;color:var(--text-muted);margin-bottom:0.5rem"></i>
+                            <p>No VOD servers configured yet.</p>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="vodShowAddServer()">
+                                <i class="lucide-plus"></i> Add Your First Server
+                            </button>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
         <!-- Fanart.tv Settings -->
         <div class="card">
             <div class="card-header">
@@ -351,6 +404,70 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- VOD Server Add/Edit Modal -->
+<div class="modal-overlay" id="vodServerModal" style="display:none">
+    <div class="modal-content" style="max-width:550px">
+        <div class="modal-header">
+            <h3 id="vodModalTitle">Add VOD Server</h3>
+            <button type="button" class="modal-close" onclick="vodCloseModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="vodServerForm" onsubmit="return vodSaveServer(event)">
+                <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+                <input type="hidden" name="server_id" id="vod-edit-id" value="">
+
+                <div class="form-group">
+                    <label class="form-label">Server Name *</label>
+                    <input type="text" class="form-input" name="name" id="vod-srv-name" placeholder="e.g. Primary VOD Server" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Server URL *</label>
+                    <input type="url" class="form-input" name="url" id="vod-srv-url" placeholder="http://192.168.1.100:8090" required>
+                    <small class="form-help">Full URL including port (default: 8090)</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <input type="password" class="form-input" name="api_key" id="vod-srv-apikey" placeholder="VOD Server API key" autocomplete="off">
+                    <small class="form-help">Found in /etc/vod-server/vod-server.conf</small>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="checkbox-label" style="padding:0.75rem">
+                            <input type="checkbox" name="is_default" id="vod-srv-default" value="1">
+                            <span class="checkbox-text"><strong>Default server</strong></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label" style="padding:0.75rem">
+                            <input type="checkbox" name="is_active" id="vod-srv-active" value="1" checked>
+                            <span class="checkbox-text"><strong>Active</strong></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" name="notes" id="vod-srv-notes" rows="2" placeholder="Optional notes"></textarea>
+                </div>
+
+                <div id="vod-test-result" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
+
+                <div class="form-actions" style="justify-content:space-between">
+                    <button type="button" class="btn btn-secondary" onclick="vodTestFromForm()">
+                        <i class="lucide-plug"></i> Test Connection
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="vod-save-btn">
+                        <i class="lucide-save"></i> Save Server
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -1044,6 +1161,25 @@
 .test-error {
     color: var(--danger);
 }
+
+/* VOD Server styles */
+.vod-server-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    transition: background 0.15s;
+}
+.vod-server-row:hover { background: var(--bg-hover); }
+.vod-srv-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.vod-srv-info { flex: 1; min-width: 0; }
+.vod-srv-name { font-weight: 500; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem; }
+.vod-srv-url { font-size: 0.8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vod-srv-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.vod-empty-state { text-align: center; padding: 2rem 1rem; color: var(--text-muted); }
 </style>
 
 <script>
@@ -1051,16 +1187,25 @@
 document.querySelectorAll('.settings-tab').forEach(tab => {
     tab.addEventListener('click', function() {
         const tabId = this.dataset.tab;
-
-        // Update tabs
-        document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-
-        // Update content
-        document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById('tab-' + tabId).classList.add('active');
+        switchSettingsTab(tabId);
     });
 });
+
+function switchSettingsTab(tabId) {
+    document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+    var tabBtn = document.querySelector('.settings-tab[data-tab="' + tabId + '"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    var tabContent = document.getElementById('tab-' + tabId);
+    if (tabContent) tabContent.classList.add('active');
+}
+
+// Auto-select tab from URL ?tab= parameter
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var tab = params.get('tab');
+    if (tab) switchSettingsTab(tab);
+})();
 
 // Provider card selection
 document.querySelectorAll('.provider-card input').forEach(radio => {
@@ -1268,5 +1413,170 @@ function testYoutubeConnection() {
 // Close modal on overlay click
 document.getElementById('testResultModal').addEventListener('click', function(e) {
     if (e.target === this) closeTestModal();
+});
+
+/* ===================== VOD Server Management ===================== */
+var vodServersData = <?= json_encode($vodServers ?? []) ?>;
+var vodCsrf = '<?= $csrf ?>';
+
+function vodShowAddServer() {
+    document.getElementById('vodModalTitle').textContent = 'Add VOD Server';
+    document.getElementById('vod-edit-id').value = '';
+    document.getElementById('vodServerForm').reset();
+    document.getElementById('vod-srv-active').checked = true;
+    document.getElementById('vod-srv-default').checked = vodServersData.length === 0;
+    document.getElementById('vod-test-result').style.display = 'none';
+    document.getElementById('vod-save-btn').innerHTML = '<i class="lucide-save"></i> Add Server';
+    document.getElementById('vodServerModal').style.display = 'flex';
+}
+
+function vodEditServer(id) {
+    var srv = vodServersData.find(function(s) { return s.id == id; });
+    if (!srv) return;
+
+    document.getElementById('vodModalTitle').textContent = 'Edit VOD Server';
+    document.getElementById('vod-edit-id').value = id;
+    document.getElementById('vod-srv-name').value = srv.name;
+    document.getElementById('vod-srv-url').value = srv.url;
+    document.getElementById('vod-srv-apikey').value = '';
+    document.getElementById('vod-srv-default').checked = !!srv.is_default;
+    document.getElementById('vod-srv-active').checked = srv.is_active != 0;
+    document.getElementById('vod-srv-notes').value = srv.notes || '';
+    document.getElementById('vod-test-result').style.display = 'none';
+    document.getElementById('vod-save-btn').innerHTML = '<i class="lucide-save"></i> Update Server';
+    document.getElementById('vodServerModal').style.display = 'flex';
+}
+
+function vodCloseModal() {
+    document.getElementById('vodServerModal').style.display = 'none';
+}
+
+function vodSaveServer(e) {
+    e.preventDefault();
+    var editId = document.getElementById('vod-edit-id').value;
+    var isEdit = editId && editId !== '';
+    var btn = document.getElementById('vod-save-btn');
+    btn.disabled = true;
+
+    var body = new URLSearchParams(new FormData(document.getElementById('vodServerForm')));
+    if (!document.getElementById('vod-srv-active').checked) {
+        body.set('is_active', '0');
+    }
+
+    var url = isEdit
+        ? '/admin/vod-server/servers/' + editId + '/update'
+        : '/admin/vod-server/servers/add';
+
+    fetch(url, { method: 'POST', body: body })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showTestResult('VOD Server', data.message || 'Server saved successfully!', true);
+                vodCloseModal();
+                // Reload to reflect changes
+                setTimeout(function() { window.location.reload(); }, 800);
+            } else {
+                showTestResult('VOD Server', data.error || 'Failed to save server.', false);
+            }
+        })
+        .catch(function(err) {
+            showTestResult('VOD Server', 'Error: ' + err.message, false);
+        })
+        .finally(function() { btn.disabled = false; });
+
+    return false;
+}
+
+function vodDeleteServer(id, name) {
+    if (!confirm('Delete server "' + name + '"? This only removes it from the admin panel.')) return;
+
+    fetch('/admin/vod-server/servers/' + id + '/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrf_token=' + encodeURIComponent(vodCsrf)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            var el = document.getElementById('vod-srv-' + id);
+            if (el) el.remove();
+            vodServersData = vodServersData.filter(function(s) { return s.id != id; });
+            if (vodServersData.length === 0) {
+                document.getElementById('vod-server-list').innerHTML =
+                    '<div class="vod-empty-state" id="vod-empty">' +
+                    '<i class="lucide-hard-drive" style="font-size:2rem;color:var(--text-muted);margin-bottom:0.5rem"></i>' +
+                    '<p>No VOD servers configured yet.</p>' +
+                    '<button type="button" class="btn btn-sm btn-primary" onclick="vodShowAddServer()"><i class="lucide-plus"></i> Add Your First Server</button>' +
+                    '</div>';
+            }
+            showTestResult('VOD Server', 'Server removed.', true);
+        } else {
+            showTestResult('VOD Server', data.error || 'Failed to delete.', false);
+        }
+    })
+    .catch(function(err) { showTestResult('VOD Server', err.message, false); });
+}
+
+function vodTestServer(id) {
+    var srv = vodServersData.find(function(s) { return s.id == id; });
+    if (!srv) return;
+
+    fetch('/admin/vod-server/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrf_token=' + encodeURIComponent(vodCsrf) + '&url=' + encodeURIComponent(srv.url) + '&api_key=' + encodeURIComponent(srv.api_key || '')
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            showTestResult('VOD Server: ' + srv.name,
+                'Connected! Server: <strong>' + (data.node_name || '') + '</strong> v' + (data.version || '') +
+                ' | Content: ' + (data.content_count || 0) + ' | Jobs: ' + (data.active_jobs || 0), true);
+        } else {
+            showTestResult('VOD Server: ' + srv.name, 'Connection failed: ' + (data.error || 'Unknown error'), false);
+        }
+    })
+    .catch(function(err) { showTestResult('VOD Server', err.message, false); });
+}
+
+function vodTestFromForm() {
+    var url = document.getElementById('vod-srv-url').value;
+    var apiKey = document.getElementById('vod-srv-apikey').value;
+    var resultDiv = document.getElementById('vod-test-result');
+
+    if (!url) { alert('Enter a server URL first.'); return; }
+
+    resultDiv.style.display = 'block';
+    resultDiv.style.background = 'rgba(99, 102, 241, 0.1)';
+    resultDiv.style.color = 'var(--text-secondary)';
+    resultDiv.textContent = 'Testing connection...';
+
+    fetch('/admin/vod-server/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'csrf_token=' + encodeURIComponent(vodCsrf) + '&url=' + encodeURIComponent(url) + '&api_key=' + encodeURIComponent(apiKey)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            resultDiv.style.background = 'rgba(34, 197, 94, 0.1)';
+            resultDiv.style.color = 'var(--success)';
+            resultDiv.innerHTML = 'Connected! Server: <strong>' + (data.node_name || '') + '</strong> v' + (data.version || '') +
+                ' | Content: ' + (data.content_count || 0) + ' items | Jobs: ' + (data.active_jobs || 0);
+        } else {
+            resultDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+            resultDiv.style.color = 'var(--danger)';
+            resultDiv.textContent = 'Failed: ' + (data.error || 'Unknown error');
+        }
+    })
+    .catch(function(err) {
+        resultDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+        resultDiv.style.color = 'var(--danger)';
+        resultDiv.textContent = 'Error: ' + err.message;
+    });
+}
+
+document.getElementById('vodServerModal').addEventListener('click', function(e) {
+    if (e.target === this) vodCloseModal();
 });
 </script>

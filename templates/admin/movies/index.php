@@ -235,6 +235,16 @@
                                         };
                                         ?>
                                         <span class="badge <?= $statusBadge ?>"><?= ucfirst($movie['status']) ?></span>
+                                        <?php
+                                        $vs = $movie['vod_status'] ?? null;
+                                        if ($vs === 'complete'):
+                                        ?>
+                                            <span class="badge badge-info" title="VOD Ready"><i class="lucide-play-circle"></i> VOD</span>
+                                        <?php elseif ($vs && in_array($vs, ['pending', 'processing', 'packaging', 'downloading'])): ?>
+                                            <span class="badge badge-warning" title="Transcoding <?= number_format((float)($movie['vod_progress'] ?? 0), 0) ?>%"><i class="lucide-loader"></i> <?= number_format((float)($movie['vod_progress'] ?? 0), 0) ?>%</span>
+                                        <?php elseif ($vs === 'failed'): ?>
+                                            <span class="badge badge-danger" title="Transcode failed"><i class="lucide-alert-circle"></i> VOD</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td class="text-center">
                                         <?php if ($movie['trailer_count'] > 0): ?>

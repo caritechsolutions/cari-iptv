@@ -93,7 +93,12 @@ $episodeCount = count($episodes);
                                         data-runtime="<?= $ep['runtime'] ?? '' ?>"
                                         data-still-url="<?= htmlspecialchars($ep['still_url'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                         data-stream-url="<?= htmlspecialchars($ep['stream_url'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                                        data-stream-url-backup="<?= htmlspecialchars($ep['stream_url_backup'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                        data-stream-url-backup="<?= htmlspecialchars($ep['stream_url_backup'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                        data-vod-server-id="<?= $ep['vod_server_id'] ?? '' ?>"
+                                        data-vod-job-id="<?= $ep['vod_job_id'] ?? '' ?>"
+                                        data-vod-content-id="<?= htmlspecialchars($ep['vod_content_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                        data-vod-status="<?= htmlspecialchars($ep['vod_status'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                        data-vod-progress="<?= $ep['vod_progress'] ?? 0 ?>">
                                         <td class="text-center">
                                             <span class="episode-number"><?= $ep['episode_number'] ?></span>
                                         </td>
@@ -118,7 +123,17 @@ $episodeCount = count($episodes);
                                             <?= !empty($ep['runtime']) ? $ep['runtime'] . ' min' : '-' ?>
                                         </td>
                                         <td>
-                                            <?php if (!empty($ep['stream_url'])): ?>
+                                            <?php
+                                                $epVodStatus = $ep['vod_status'] ?? null;
+                                                $epVodActive = in_array($epVodStatus, ['pending', 'processing', 'packaging', 'downloading']);
+                                            ?>
+                                            <?php if ($epVodStatus === 'complete'): ?>
+                                                <span class="badge badge-success" title="VOD Ready"><i class="lucide-check-circle"></i> Ready</span>
+                                            <?php elseif ($epVodActive): ?>
+                                                <span class="badge badge-primary" title="<?= ucfirst($epVodStatus) ?>"><i class="lucide-loader"></i> <?= (int)($ep['vod_progress'] ?? 0) ?>%</span>
+                                            <?php elseif ($epVodStatus === 'failed'): ?>
+                                                <span class="badge badge-danger" title="Transcode failed"><i class="lucide-alert-circle"></i> Failed</span>
+                                            <?php elseif (!empty($ep['stream_url'])): ?>
                                                 <span class="badge badge-success">Has URL</span>
                                             <?php else: ?>
                                                 <span class="badge badge-danger">No URL</span>
@@ -126,6 +141,11 @@ $episodeCount = count($episodes);
                                         </td>
                                         <td>
                                             <div class="action-buttons">
+                                                <?php if (!empty($vodServers)): ?>
+                                                <button type="button" class="btn btn-sm" style="background:var(--accent,#8b5cf6);color:#fff" onclick="openVodModal(<?= $ep['id'] ?>)" title="VOD & Markers">
+                                                    <i class="lucide-hard-drive"></i>
+                                                </button>
+                                                <?php endif; ?>
                                                 <button type="button" class="btn btn-sm btn-secondary" onclick="openEditEpisodeModal(<?= $ep['id'] ?>)" title="Edit">
                                                     Edit
                                                 </button>
@@ -364,6 +384,134 @@ $episodeCount = count($episodes);
         </div>
     </div>
 </div>
+
+<?php if (!empty($vodServers)): ?>
+<!-- VOD & Markers Modal -->
+<div class="modal-overlay" id="vodModal" style="display: none;">
+    <div class="modal-content" style="max-width: 960px;">
+        <div class="modal-header">
+            <h3 id="vodModalTitle"><i class="lucide-hard-drive"></i> VOD & Markers</h3>
+            <button type="button" class="modal-close" onclick="closeVodModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="overflow-y: auto; max-height: 80vh;">
+            <input type="hidden" id="vod_episode_id" value="">
+
+            <!-- VOD Transcode Section -->
+            <div class="card mb-3">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h4 class="card-title" style="margin:0;font-size:0.9375rem"><i class="lucide-hard-drive"></i> Transcode</h4>
+                    <div id="vodStatusBadge"></div>
+                </div>
+                <div class="card-body">
+                    <!-- Progress bar (hidden until active) -->
+                    <div id="ep-vod-progress" style="display:none;margin-bottom:1rem">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+                            <span style="font-size:0.85rem;color:var(--text-secondary)" id="ep-vod-label">Transcoding...</span>
+                            <span style="font-size:0.85rem;font-family:var(--font-mono);color:var(--text-muted)" id="ep-vod-pct">0%</span>
+                        </div>
+                        <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden">
+                            <div id="ep-vod-bar" style="height:100%;width:0%;background:var(--accent, #8b5cf6);border-radius:4px;transition:width 0.3s"></div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="ep-vod-step"></div>
+                    </div>
+                    <div id="ep-vod-msg" style="display:none;padding:0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem"></div>
+
+                    <!-- Upload controls -->
+                    <div id="ep-vod-upload-controls">
+                        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                            <div class="form-group">
+                                <label class="form-label">VOD Server</label>
+                                <select class="form-input" id="ep-vod-server">
+                                    <?php foreach ($vodServers as $vs): ?>
+                                        <option value="<?= $vs['id'] ?>"
+                                            data-url="<?= htmlspecialchars($vs['url']) ?>"
+                                            data-public-url="<?= htmlspecialchars($vs['public_url'] ?? '') ?>"
+                                            data-api-key="<?= htmlspecialchars($vs['api_key'] ?? '') ?>"
+                                            <?= $vs['is_default'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($vs['name']) ?><?= $vs['is_default'] ? ' (default)' : '' ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Transcode Profile</label>
+                                <select class="form-input" id="ep-vod-profile">
+                                    <option value="standard">Loading profiles...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Source File</label>
+                            <div style="display:flex;gap:0.5rem">
+                                <input type="text" class="form-input" id="ep-vod-source-path" placeholder="No file selected" style="flex:1" readonly>
+                                <input type="file" id="ep-vod-file-input" accept="video/*,.mkv,.avi,.ts,.m2ts" style="display:none">
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('ep-vod-file-input').click()">
+                                    <i class="lucide-upload"></i> Choose File
+                                </button>
+                                <button type="button" class="btn btn-primary" id="ep-vod-submit-btn" onclick="epVodSubmit()" disabled>
+                                    <i class="lucide-send"></i> Upload & Transcode
+                                </button>
+                            </div>
+                            <div id="ep-vod-upload-progress" style="display:none;margin-top:0.5rem">
+                                <div style="height:4px;background:var(--bg-hover);border-radius:2px;overflow:hidden">
+                                    <div id="ep-vod-upload-bar" style="height:100%;width:0%;background:var(--primary);transition:width 0.3s"></div>
+                                </div>
+                                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem" id="ep-vod-upload-text">Uploading...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Remove VOD button -->
+                    <div id="ep-vod-remove-wrap" style="display:none;margin-top:0.5rem">
+                        <button type="button" class="btn btn-sm" style="background:transparent;color:var(--danger);border:1px solid var(--danger);font-size:0.75rem" onclick="epVodDelete()">
+                            <i class="lucide-trash-2"></i> Remove VOD
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview Player + Markers Section -->
+            <div class="card mb-3" id="markerSection" style="display:none">
+                <div class="card-header">
+                    <h4 class="card-title" style="margin:0;font-size:0.9375rem"><i class="lucide-scissors"></i> Preview & Markers</h4>
+                </div>
+                <div class="card-body">
+                    <!-- Video Preview -->
+                    <div style="position:relative;background:#000;border-radius:8px;overflow:hidden;margin-bottom:1rem">
+                        <video id="markerVideo" style="width:100%;max-height:360px;display:block" controls preload="metadata"></video>
+                    </div>
+
+                    <!-- Current time + marker buttons -->
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+                        <span style="font-family:var(--font-mono);font-size:0.9375rem;color:var(--text-secondary);min-width:70px" id="markerCurrentTime">0:00.000</span>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('intro_start')" title="Mark where the intro/recap begins">
+                            <i class="lucide-skip-forward"></i> Intro Start
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('intro_end')" title="Mark where the intro ends (skip-to point)">
+                            <i class="lucide-fast-forward"></i> Intro End
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('credits_start')" title="Mark where end credits begin">
+                            <i class="lucide-list-end"></i> Credits Start
+                        </button>
+                        <button type="button" class="btn btn-sm" style="background:var(--warning);color:#000" onclick="setMarker('ad_cue')" title="Add an ad insertion cue point">
+                            <i class="lucide-megaphone"></i> Ad Cue
+                        </button>
+                    </div>
+
+                    <!-- Timeline with markers -->
+                    <div style="position:relative;height:24px;background:var(--bg-hover);border-radius:4px;margin-bottom:1rem;cursor:pointer" id="markerTimeline" onclick="seekFromTimeline(event)">
+                        <div id="markerTimelineProgress" style="position:absolute;top:0;left:0;height:100%;background:rgba(99,102,241,0.3);border-radius:4px;pointer-events:none"></div>
+                        <div id="markerFlags"></div>
+                    </div>
+
+                    <!-- Markers list -->
+                    <div id="markersList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <style>
 /* Season Info Header */
@@ -759,6 +907,64 @@ $episodeCount = count($episodes);
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;
 }
+
+/* Marker flags on timeline */
+.marker-flag {
+    position: absolute;
+    top: 0;
+    width: 3px;
+    height: 100%;
+    border-radius: 1px;
+    cursor: pointer;
+    z-index: 2;
+    transition: transform 0.1s;
+}
+.marker-flag:hover { transform: scaleX(2); }
+.marker-flag[data-type="intro_start"] { background: #22c55e; }
+.marker-flag[data-type="intro_end"] { background: #3b82f6; }
+.marker-flag[data-type="credits_start"] { background: #f59e0b; }
+.marker-flag[data-type="ad_cue"] { background: #ef4444; }
+
+/* Marker list items */
+.marker-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+}
+.marker-item:last-child { border-bottom: none; }
+.marker-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.marker-dot[data-type="intro_start"] { background: #22c55e; }
+.marker-dot[data-type="intro_end"] { background: #3b82f6; }
+.marker-dot[data-type="credits_start"] { background: #f59e0b; }
+.marker-dot[data-type="ad_cue"] { background: #ef4444; }
+.marker-time {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    cursor: pointer;
+    min-width: 70px;
+}
+.marker-time:hover { color: var(--primary); }
+.marker-label { flex: 1; }
+.marker-type-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+}
+.marker-type-badge[data-type="intro_start"] { background: rgba(34,197,94,0.15); color: #22c55e; }
+.marker-type-badge[data-type="intro_end"] { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.marker-type-badge[data-type="credits_start"] { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.marker-type-badge[data-type="ad_cue"] { background: rgba(239,68,68,0.15); color: #ef4444; }
 
 .btn-success {
     background: var(--success);
@@ -1193,4 +1399,693 @@ document.getElementById('trailerSearchQuery').addEventListener('keydown', functi
         searchTrailers();
     }
 });
+
+// ========================================================================
+// VOD & MARKERS MODAL
+// ========================================================================
+
+let vodEpisodeId = 0;
+let vodPollTimer = null;
+let currentMarkers = [];
+
+function openVodModal(episodeId) {
+    vodEpisodeId = episodeId;
+    const row = document.getElementById('episode-row-' + episodeId);
+    if (!row) return;
+
+    document.getElementById('vod_episode_id').value = episodeId;
+    const epName = row.dataset.name || ('Episode ' + row.dataset.episodeNumber);
+    document.getElementById('vodModalTitle').innerHTML = '<i class="lucide-hard-drive"></i> ' + escapeHtml(epName) + ' — VOD & Markers';
+
+    // Read VOD state from row data
+    const vodStatus = row.dataset.vodStatus || '';
+    const vodServerId = row.dataset.vodServerId || '';
+    const vodJobId = row.dataset.vodJobId || '';
+    const vodContentId = row.dataset.vodContentId || '';
+    const vodProgress = parseFloat(row.dataset.vodProgress) || 0;
+    const streamUrl = row.dataset.streamUrl || '';
+
+    // Reset UI
+    const progressEl = document.getElementById('ep-vod-progress');
+    const uploadEl = document.getElementById('ep-vod-upload-controls');
+    const removeEl = document.getElementById('ep-vod-remove-wrap');
+    const msgEl = document.getElementById('ep-vod-msg');
+    const badgeEl = document.getElementById('vodStatusBadge');
+    msgEl.style.display = 'none';
+
+    const isActive = ['pending', 'processing', 'packaging', 'downloading'].includes(vodStatus);
+
+    if (vodStatus === 'complete') {
+        badgeEl.innerHTML = '<span class="badge badge-success"><i class="lucide-check-circle"></i> Ready</span>';
+        progressEl.style.display = 'none';
+        uploadEl.style.display = '';
+        removeEl.style.display = '';
+    } else if (isActive) {
+        badgeEl.innerHTML = '<span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>';
+        progressEl.style.display = '';
+        uploadEl.style.display = 'none';
+        removeEl.style.display = 'none';
+        document.getElementById('ep-vod-bar').style.width = vodProgress + '%';
+        document.getElementById('ep-vod-pct').textContent = vodProgress.toFixed(1) + '%';
+        // Start polling
+        startVodPoll(vodServerId, vodJobId, episodeId, vodContentId);
+    } else if (vodStatus === 'failed') {
+        badgeEl.innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
+        progressEl.style.display = 'none';
+        uploadEl.style.display = '';
+        removeEl.style.display = vodServerId ? '' : 'none';
+    } else {
+        badgeEl.innerHTML = '';
+        progressEl.style.display = 'none';
+        uploadEl.style.display = '';
+        removeEl.style.display = 'none';
+    }
+
+    // Show preview player if stream URL exists
+    const markerSection = document.getElementById('markerSection');
+    const video = document.getElementById('markerVideo');
+    if (streamUrl) {
+        markerSection.style.display = '';
+        // Use shaka or native for HLS
+        if (streamUrl.endsWith('.m3u8') && window.Hls) {
+            if (video._hls) { video._hls.destroy(); }
+            const hls = new Hls();
+            hls.loadSource(streamUrl);
+            hls.attachMedia(video);
+            video._hls = hls;
+        } else {
+            video.src = streamUrl;
+        }
+        loadMarkers(episodeId);
+    } else {
+        markerSection.style.display = 'none';
+        video.src = '';
+    }
+
+    // Time display
+    video.ontimeupdate = function() {
+        document.getElementById('markerCurrentTime').textContent = formatTimePrecise(video.currentTime);
+        const dur = video.duration || 1;
+        document.getElementById('markerTimelineProgress').style.width = ((video.currentTime / dur) * 100) + '%';
+    };
+
+    // Load profiles for the selected server
+    loadEpVodProfiles();
+
+    document.getElementById('vodModal').style.display = 'flex';
+}
+
+function closeVodModal() {
+    document.getElementById('vodModal').style.display = 'none';
+    stopVodPoll();
+    const video = document.getElementById('markerVideo');
+    if (video) { video.pause(); if (video._hls) { video._hls.destroy(); video._hls = null; } video.src = ''; }
+}
+
+// ---- VOD Profiles ----
+
+function loadEpVodProfiles() {
+    const serverId = document.getElementById('ep-vod-server').value;
+    fetch('/admin/vod-server/profiles?server_id=' + serverId)
+        .then(r => r.json())
+        .then(data => {
+            const sel = document.getElementById('ep-vod-profile');
+            sel.innerHTML = '';
+            const profiles = data.profiles || data.data?.profiles || [];
+            if (profiles.length === 0) {
+                sel.innerHTML = '<option value="standard">standard</option>';
+                return;
+            }
+            profiles.forEach(p => {
+                const name = p.name || p;
+                sel.innerHTML += '<option value="' + escapeAttr(name) + '">' + escapeHtml(name) + '</option>';
+            });
+        })
+        .catch(() => {});
+}
+
+document.getElementById('ep-vod-server')?.addEventListener('change', loadEpVodProfiles);
+
+// ---- VOD File Upload ----
+
+document.getElementById('ep-vod-file-input')?.addEventListener('change', function() {
+    const file = this.files[0];
+    if (file) {
+        document.getElementById('ep-vod-source-path').value = file.name;
+        document.getElementById('ep-vod-submit-btn').disabled = false;
+    }
+});
+
+function epVodSubmit() {
+    const file = document.getElementById('ep-vod-file-input').files[0];
+    if (!file) return;
+
+    const episodeId = vodEpisodeId;
+    const row = document.getElementById('episode-row-' + episodeId);
+    const epNum = row?.dataset.episodeNumber || episodeId;
+    const contentId = 'episode-' + episodeId;
+    const serverSel = document.getElementById('ep-vod-server');
+    const serverId = serverSel.value;
+    const serverOpt = serverSel.options[serverSel.selectedIndex];
+    const vodUrl = serverOpt.getAttribute('data-public-url') || serverOpt.getAttribute('data-url');
+    const vodApiKey = serverOpt.getAttribute('data-api-key');
+    const profile = document.getElementById('ep-vod-profile').value;
+    const title = '<?= htmlspecialchars($show['title'], ENT_QUOTES, 'UTF-8') ?> S<?= $season['season_number'] ?? '' ?>E' + epNum;
+
+    if (!vodUrl) { showVodMsg('VOD server URL not configured', 'danger'); return; }
+
+    // Generate a deterministic upload_id from file metadata for resumable uploads
+    const uploadId = simpleHash(file.name + '-' + file.size + '-' + file.lastModified);
+
+    // Show upload progress
+    const btn = document.getElementById('ep-vod-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader"></i> Uploading...';
+    document.getElementById('ep-vod-upload-progress').style.display = '';
+
+    const baseUrl = vodUrl.replace(/\/+$/, '');
+    const maxRetries = 3;
+    let retryCount = 0;
+
+    function doUpload(offset) {
+        const blob = offset > 0 ? file.slice(offset) : file;
+        const uploadUrl = baseUrl + '/api/upload?filename=' + encodeURIComponent(file.name)
+            + '&upload_id=' + encodeURIComponent(uploadId);
+        console.log('[VOD Upload] Target URL:', uploadUrl, '| offset:', offset, '| retry:', retryCount);
+        console.log('[VOD Upload] File:', file.name, '(' + file.size + ' bytes, sending ' + blob.size + ')');
+        console.log('[VOD Upload] Server ID:', serverId, '| Profile:', profile, '| Content ID:', contentId);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        if (vodApiKey) xhr.setRequestHeader('X-API-Key', vodApiKey);
+        if (offset > 0) xhr.setRequestHeader('Upload-Offset', String(offset));
+
+        xhr.upload.onprogress = function(e) {
+            if (e.lengthComputable) {
+                const totalSent = offset + e.loaded;
+                const pct = Math.round((totalSent / file.size) * 100);
+                document.getElementById('ep-vod-upload-bar').style.width = pct + '%';
+                document.getElementById('ep-vod-upload-text').textContent = pct < 100
+                    ? 'Uploading... ' + pct + '%' + (retryCount > 0 ? ' (resumed)' : '')
+                    : 'Finalizing upload...';
+            }
+        };
+
+        xhr.onload = function() {
+            console.log('[VOD Upload] Response: HTTP', xhr.status, xhr.responseText.substring(0, 500));
+            if (xhr.status === 0 || xhr.responseText === '') {
+                epUploadFailed(btn, vodUrl, 'VOD server returned empty response.');
+                return;
+            }
+
+            let uploadData;
+            try {
+                uploadData = JSON.parse(xhr.responseText);
+            } catch (e) {
+                epUploadFailed(btn, vodUrl, 'Invalid response from VOD server (HTTP ' + xhr.status + ')');
+                return;
+            }
+
+            if (xhr.status >= 400 || uploadData.error) {
+                epUploadFailed(btn, vodUrl, uploadData.error || 'HTTP ' + xhr.status);
+                return;
+            }
+
+            const uploadPath = uploadData.path || uploadData.file || '';
+            if (!uploadPath) {
+                epUploadFailed(btn, vodUrl, 'Upload succeeded but no file path returned');
+                return;
+            }
+
+            document.getElementById('ep-vod-upload-text').textContent = 'Submitting transcode job...';
+
+            // Step 2: Submit job via IPTV backend (small JSON request, no file)
+            const jobForm = new FormData();
+            jobForm.append('csrf_token', csrfToken);
+            jobForm.append('server_id', serverId);
+            jobForm.append('content_id', contentId);
+            jobForm.append('upload_path', uploadPath);
+            jobForm.append('title', title);
+            jobForm.append('profile', profile);
+            jobForm.append('entity_type', 'episode');
+            jobForm.append('entity_id', episodeId);
+
+            fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm })
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('ep-vod-upload-progress').style.display = 'none';
+                    btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
+                    btn.disabled = false;
+
+                    if (data.success) {
+                        const jobId = data.job_id || data.job?.id || 0;
+                        if (row) {
+                            row.dataset.vodServerId = serverId;
+                            row.dataset.vodJobId = jobId;
+                            row.dataset.vodContentId = contentId;
+                            row.dataset.vodStatus = 'pending';
+                            row.dataset.vodProgress = '0';
+                        }
+                        document.getElementById('ep-vod-progress').style.display = '';
+                        document.getElementById('ep-vod-upload-controls').style.display = 'none';
+                        document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>';
+                        startVodPoll(serverId, jobId, episodeId, contentId);
+                    } else if (data.error === 'duplicate') {
+                        showVodMsg(data.message || 'Content already exists on this server.', 'danger');
+                    } else {
+                        showVodMsg('Job submission failed: ' + (data.error || 'Unknown error'), 'danger');
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('ep-vod-upload-progress').style.display = 'none';
+                    btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
+                    btn.disabled = false;
+                    showVodMsg('Job submission failed: ' + err.message, 'danger');
+                });
+        };
+
+        xhr.onerror = function() {
+            console.error('[VOD Upload] XHR error at offset', offset, '| retry:', retryCount);
+            if (retryCount < maxRetries) {
+                retryCount++;
+                const delay = Math.pow(2, retryCount) * 1000; // 2s, 4s, 8s
+                document.getElementById('ep-vod-upload-text').textContent =
+                    'Connection lost. Resuming in ' + (delay / 1000) + 's... (attempt ' + (retryCount + 1) + '/' + (maxRetries + 1) + ')';
+                setTimeout(function() { resumeUpload(); }, delay);
+            } else {
+                epUploadFailed(btn, vodUrl, 'Upload failed after ' + (maxRetries + 1) + ' attempts. Please try again.');
+            }
+        };
+
+        xhr.send(blob);
+    }
+
+    function resumeUpload() {
+        // Query server for how much it received so far
+        const headUrl = baseUrl + '/api/upload?upload_id=' + encodeURIComponent(uploadId)
+            + '&filename=' + encodeURIComponent(file.name);
+        console.log('[VOD Upload] Querying resume offset:', headUrl);
+
+        const headXhr = new XMLHttpRequest();
+        headXhr.open('HEAD', headUrl, true);
+        if (vodApiKey) headXhr.setRequestHeader('X-API-Key', vodApiKey);
+
+        headXhr.onload = function() {
+            const serverOffset = parseInt(headXhr.getResponseHeader('Upload-Offset') || '0', 10);
+            console.log('[VOD Upload] Server has', serverOffset, 'of', file.size, 'bytes');
+            if (serverOffset >= file.size) {
+                // File already fully uploaded — unusual but handle it
+                console.log('[VOD Upload] File already fully uploaded, completing...');
+                document.getElementById('ep-vod-upload-text').textContent = 'Upload already complete, submitting job...';
+                // Trigger onload path by re-sending empty to get the response
+                doUpload(serverOffset);
+            } else {
+                const pct = Math.round((serverOffset / file.size) * 100);
+                document.getElementById('ep-vod-upload-text').textContent = 'Resuming from ' + pct + '%...';
+                doUpload(serverOffset);
+            }
+        };
+
+        headXhr.onerror = function() {
+            console.error('[VOD Upload] HEAD request failed, starting from scratch');
+            doUpload(0);
+        };
+
+        headXhr.send();
+    }
+
+    // Start the upload from the beginning
+    doUpload(0);
+}
+
+// Simple hash function for generating upload IDs (not cryptographic, just unique)
+function simpleHash(str) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+        var ch = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + ch;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    // Return as positive hex string
+    return (hash >>> 0).toString(16) + '-' + str.length.toString(16);
+}
+
+function epUploadFailed(btn, vodUrl, msg) {
+    document.getElementById('ep-vod-upload-progress').style.display = 'none';
+    btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
+    btn.disabled = false;
+    let errMsg = msg;
+    if (msg.indexOf('Cannot connect') >= 0 || msg.indexOf('connect') >= 0) {
+        if (window.location.protocol === 'https:' && vodUrl.indexOf('http://') === 0) {
+            errMsg += ' Mixed content blocked — update VOD server URL to https:// in Settings > VOD Servers.';
+        }
+    }
+    showVodMsg(errMsg, 'danger');
+}
+
+function showVodMsg(msg, type) {
+    const el = document.getElementById('ep-vod-msg');
+    el.style.display = '';
+    el.style.background = type === 'danger' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)';
+    el.style.color = type === 'danger' ? 'var(--danger)' : 'var(--success)';
+    el.innerHTML = '<i class="lucide-' + (type === 'danger' ? 'alert-circle' : 'check-circle') + '"></i> ' + escapeHtml(msg);
+}
+
+// ---- VOD Status Polling ----
+
+function startVodPoll(serverId, jobId, episodeId, contentId) {
+    stopVodPoll();
+    pollVodStatus(serverId, jobId, episodeId, contentId);
+    vodPollTimer = setInterval(() => pollVodStatus(serverId, jobId, episodeId, contentId), 3000);
+}
+
+function stopVodPoll() {
+    if (vodPollTimer) { clearInterval(vodPollTimer); vodPollTimer = null; }
+}
+
+function pollVodStatus(serverId, jobId, episodeId, contentId) {
+    var url = `/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${episodeId}`;
+    if (contentId) url += '&content_id=' + encodeURIComponent(contentId);
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                if (data.transient) {
+                    // Transient error (SSL timeout, connection drop) — keep polling
+                    console.warn('[VOD Poll] Transient error, will retry:', data.error);
+                    document.getElementById('ep-vod-step').textContent = 'Connection hiccup, retrying...';
+                    return;
+                }
+                // Permanent failure — stop polling, show error
+                stopVodPoll();
+                document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
+                document.getElementById('ep-vod-progress').style.display = 'none';
+                document.getElementById('ep-vod-upload-controls').style.display = '';
+                showVodMsg(data.error || 'Job not found on VOD server. You can re-upload.', 'danger');
+                const row = document.getElementById('episode-row-' + episodeId);
+                if (row) {
+                    row.dataset.vodStatus = 'failed';
+                    row.dataset.vodJobId = '';
+                    const streamTd = row.children[5];
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
+                }
+                return;
+            }
+            const job = data.job || {};
+            const status = job.status || '';
+            const progress = parseFloat(job.progress) || 0;
+            const row = document.getElementById('episode-row-' + episodeId);
+
+            // If backend recovered a job_id, update our poll parameters
+            if (job.id && (!jobId || jobId === '0')) {
+                jobId = job.id;
+                if (row) row.dataset.vodJobId = jobId;
+                console.log('[VOD Poll] Recovered job_id:', jobId);
+            }
+
+            document.getElementById('ep-vod-bar').style.width = progress + '%';
+            document.getElementById('ep-vod-pct').textContent = progress.toFixed(1) + '%';
+
+            const stepLabel = status === 'packaging' ? 'Packaging for streaming...'
+                : status === 'downloading' ? 'Downloading source...'
+                : status === 'processing' ? 'Transcoding...'
+                : status === 'pending' ? 'Waiting in queue...'
+                : status;
+            document.getElementById('ep-vod-step').textContent = stepLabel;
+
+            if (row) {
+                row.dataset.vodStatus = status;
+                row.dataset.vodProgress = progress;
+            }
+
+            if (status === 'complete') {
+                stopVodPoll();
+                document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-success"><i class="lucide-check-circle"></i> Ready</span>';
+                document.getElementById('ep-vod-progress').style.display = 'none';
+                document.getElementById('ep-vod-upload-controls').style.display = '';
+                document.getElementById('ep-vod-remove-wrap').style.display = '';
+                showVodMsg('Transcode complete! Stream URL has been set.', 'success');
+                if (row && job.stream_url) {
+                    row.dataset.streamUrl = job.stream_url;
+                    // Update status badge in the table
+                    const streamTd = row.children[5];
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-success" title="VOD Ready"><i class="lucide-check-circle"></i> Ready</span>';
+                }
+                // Show the preview player now
+                if (job.stream_url) {
+                    document.getElementById('markerSection').style.display = '';
+                    const video = document.getElementById('markerVideo');
+                    if (job.stream_url.endsWith('.m3u8') && window.Hls) {
+                        if (video._hls) video._hls.destroy();
+                        const hls = new Hls();
+                        hls.loadSource(job.stream_url);
+                        hls.attachMedia(video);
+                        video._hls = hls;
+                    } else {
+                        video.src = job.stream_url;
+                    }
+                    loadMarkers(episodeId);
+                }
+            } else if (status === 'failed') {
+                stopVodPoll();
+                document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
+                document.getElementById('ep-vod-progress').style.display = 'none';
+                document.getElementById('ep-vod-upload-controls').style.display = '';
+                showVodMsg(job.error_msg || 'Transcode failed', 'danger');
+                if (row) {
+                    const streamTd = row.children[5];
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="Failed"><i class="lucide-alert-circle"></i> Failed</span>';
+                }
+            } else if (status === 'cancelled') {
+                stopVodPoll();
+                document.getElementById('ep-vod-progress').style.display = 'none';
+                document.getElementById('ep-vod-upload-controls').style.display = '';
+                showVodMsg('Transcode was cancelled', 'danger');
+            }
+        })
+        .catch(() => {});
+}
+
+// ---- VOD Delete ----
+
+function epVodDelete() {
+    if (!confirm('Remove transcoded content from VOD server and clear episode VOD data?')) return;
+    const row = document.getElementById('episode-row-' + vodEpisodeId);
+    const body = new URLSearchParams();
+    body.append('csrf_token', csrfToken);
+    body.append('entity_type', 'episode');
+    body.append('entity_id', vodEpisodeId);
+    body.append('server_id', row?.dataset.vodServerId || '');
+    body.append('content_id', row?.dataset.vodContentId || '');
+    body.append('job_id', row?.dataset.vodJobId || '');
+
+    fetch('/admin/vod-server/movie-vod-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (row) {
+                row.dataset.vodServerId = '';
+                row.dataset.vodJobId = '';
+                row.dataset.vodContentId = '';
+                row.dataset.vodStatus = '';
+                row.dataset.vodProgress = '0';
+                row.dataset.streamUrl = '';
+                const streamTd = row.children[5];
+                if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger">No URL</span>';
+            }
+            document.getElementById('vodStatusBadge').innerHTML = '';
+            document.getElementById('ep-vod-remove-wrap').style.display = 'none';
+            document.getElementById('markerSection').style.display = 'none';
+            showVodMsg('VOD data cleared', 'success');
+        } else {
+            showVodMsg(data.error || 'Delete failed', 'danger');
+        }
+    })
+    .catch(err => showVodMsg('Error: ' + err.message, 'danger'));
+}
+
+// ========================================================================
+// MARKERS (Preview Player)
+// ========================================================================
+
+function loadMarkers(episodeId) {
+    fetch('/admin/vod-server/markers?content_type=episode&content_id=' + episodeId)
+        .then(r => r.json())
+        .then(data => {
+            currentMarkers = data.markers || [];
+            renderMarkers();
+        })
+        .catch(() => {});
+}
+
+function renderMarkers() {
+    const list = document.getElementById('markersList');
+    const flags = document.getElementById('markerFlags');
+    const video = document.getElementById('markerVideo');
+    const duration = video.duration || 0;
+
+    // Render timeline flags
+    flags.innerHTML = '';
+    currentMarkers.forEach(m => {
+        if (duration > 0) {
+            const pct = (parseFloat(m.position_seconds) / duration) * 100;
+            const flag = document.createElement('div');
+            flag.className = 'marker-flag';
+            flag.dataset.type = m.marker_type;
+            flag.style.left = pct + '%';
+            flag.title = markerTypeLabel(m.marker_type) + ' @ ' + formatTimePrecise(m.position_seconds);
+            flag.onclick = function(e) { e.stopPropagation(); video.currentTime = parseFloat(m.position_seconds); };
+            flags.appendChild(flag);
+        }
+    });
+
+    // Render list
+    if (currentMarkers.length === 0) {
+        list.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:0.85rem">No markers set. Use the buttons above while playing to add markers.</div>';
+        return;
+    }
+
+    list.innerHTML = '';
+    currentMarkers.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'marker-item';
+        item.innerHTML = `
+            <span class="marker-dot" data-type="${escapeAttr(m.marker_type)}"></span>
+            <span class="marker-time" onclick="document.getElementById('markerVideo').currentTime=${parseFloat(m.position_seconds)}">${formatTimePrecise(m.position_seconds)}</span>
+            <span class="marker-type-badge" data-type="${escapeAttr(m.marker_type)}">${escapeHtml(markerTypeLabel(m.marker_type))}</span>
+            <span class="marker-label">${escapeHtml(m.label || '')}</span>
+            <button type="button" class="btn btn-xs btn-danger" onclick="deleteMarker(${m.id})" title="Remove"><i class="lucide-x"></i></button>
+        `;
+        list.appendChild(item);
+    });
+}
+
+function markerTypeLabel(type) {
+    const labels = { 'intro_start': 'Intro Start', 'intro_end': 'Intro End', 'credits_start': 'Credits Start', 'ad_cue': 'Ad Cue' };
+    return labels[type] || type;
+}
+
+function setMarker(markerType) {
+    const video = document.getElementById('markerVideo');
+    const position = video.currentTime;
+    const label = markerType === 'ad_cue' ? prompt('Optional label for this ad cue point:', '') : '';
+
+    // Cancel if user pressed Cancel on the prompt for ad_cue (label === null)
+    if (markerType === 'ad_cue' && label === null) return;
+
+    const body = new URLSearchParams();
+    body.append('csrf_token', csrfToken);
+    body.append('content_type', 'episode');
+    body.append('content_id', vodEpisodeId);
+    body.append('marker_type', markerType);
+    body.append('position_seconds', position.toFixed(3));
+    if (label) body.append('label', label);
+
+    fetch('/admin/vod-server/markers/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            loadMarkers(vodEpisodeId);
+        } else {
+            alert(data.error || 'Failed to save marker');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function deleteMarker(markerId) {
+    const body = new URLSearchParams();
+    body.append('csrf_token', csrfToken);
+    body.append('id', markerId);
+
+    fetch('/admin/vod-server/markers/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) loadMarkers(vodEpisodeId);
+    })
+    .catch(() => {});
+}
+
+function seekFromTimeline(e) {
+    const video = document.getElementById('markerVideo');
+    if (!video.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    video.currentTime = pct * video.duration;
+}
+
+function formatTimePrecise(seconds) {
+    seconds = parseFloat(seconds) || 0;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 1000);
+    const time = h > 0
+        ? h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')
+        : m + ':' + String(s).padStart(2, '0');
+    return time + '.' + String(ms).padStart(3, '0');
+}
+
+// Re-render marker flags once video metadata loads (so we know duration)
+document.getElementById('markerVideo')?.addEventListener('loadedmetadata', function() {
+    renderMarkers();
+});
+
+// ---- Page-load: verify stale active VOD jobs against the VOD server ----
+(function() {
+    const rows = document.querySelectorAll('#episodesTable tr[data-vod-status]');
+    const activeStatuses = ['pending', 'processing', 'packaging', 'downloading'];
+    rows.forEach(row => {
+        const status = row.dataset.vodStatus;
+        const serverId = row.dataset.vodServerId;
+        const jobId = row.dataset.vodJobId;
+        const epId = row.id.replace('episode-row-', '');
+        if (!activeStatuses.includes(status) || !serverId || !jobId) return;
+
+        // Verify this job still exists on the VOD server
+        fetch(`/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${epId}`)
+            .then(r => r.json())
+            .then(data => {
+                const job = data.job || {};
+                const realStatus = job.status || '';
+                const streamTd = row.children[5];
+
+                if (realStatus === 'complete') {
+                    row.dataset.vodStatus = 'complete';
+                    row.dataset.vodProgress = '100';
+                    if (job.stream_url) row.dataset.streamUrl = job.stream_url;
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-success" title="VOD Ready"><i class="lucide-check-circle"></i> Ready</span>';
+                } else if (realStatus === 'failed' || !data.success) {
+                    row.dataset.vodStatus = 'failed';
+                    row.dataset.vodJobId = '';
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="Failed"><i class="lucide-alert-circle"></i> Failed</span>';
+                } else if (activeStatuses.includes(realStatus)) {
+                    // Still actually active — update badge with fresh progress
+                    const pct = Math.round(parseFloat(job.progress) || 0);
+                    row.dataset.vodProgress = pct;
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-primary" title="' + realStatus + '"><i class="lucide-loader"></i> ' + pct + '%</span>';
+                }
+            })
+            .catch(() => {
+                // VOD server unreachable — mark as failed
+                row.dataset.vodStatus = 'failed';
+                row.dataset.vodJobId = '';
+                const streamTd = row.children[5];
+                if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="VOD server unreachable"><i class="lucide-alert-circle"></i> Failed</span>';
+            });
+    });
+})();
 </script>

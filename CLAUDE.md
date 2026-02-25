@@ -39,6 +39,7 @@ Browser → PHP Templates → Controllers → Services → Database (MySQL)
 | Frontend | HTML5, CSS3, Vanilla JS |
 | Icons | Lucide Icons (CDN) |
 | Session | File-based (future: Redis) |
+| VOD Server | C (libmicrohttpd + SQLite + FFmpeg) — in `vod-server/` directory |
 
 ## Directory Structure
 
@@ -91,6 +92,15 @@ cari-iptv/
 │
 ├── database/
 │   └── migrations/        # Versioned SQL migrations (001-005)
+│
+├── vod-server/            # Standalone VOD transcoding server (C)
+│   ├── src/               # C source files (main.c, api_routes.c, transcoder.c, etc.)
+│   ├── include/           # Third-party headers (cJSON, inih)
+│   ├── config/            # Default config (vod-server.conf with transcode profiles)
+│   ├── database/          # SQLite schema
+│   ├── www/               # Web GUI (HTML/CSS/JS)
+│   ├── scripts/           # Systemd service, install scripts
+│   └── CMakeLists.txt     # Build system
 │
 └── storage/               # Logs, cache, sessions
 ```
@@ -396,25 +406,35 @@ Currently manual testing only:
 
 ### Install & Update Scripts
 
-The platform uses bash scripts for installation and updates. **IMPORTANT: After making changes, update the branch name in these scripts before pushing.**
+The platform has **two independent sets** of install/update scripts:
 
-**Files to update:**
-- `install.sh` - Line ~1140: `BRANCH="your-branch-name"`
-- `update.sh` - Line ~19: `BRANCH="your-branch-name"`
+1. **IPTV Backend** (`install.sh` / `update.sh` in repo root) — PHP application, MySQL, Nginx
+2. **VOD Server** (`vod-server/scripts/install.sh` / `vod-server/scripts/update.sh`) — C daemon, FFmpeg, SQLite
 
-**Running updates on test/production:**
+**IMPORTANT: After making changes, update the branch name in ALL scripts before pushing.**
+
+**Files to update (branch names):**
+- `install.sh` - Line ~1357: `BRANCH="your-branch-name"` (IPTV backend)
+- `update.sh` - Line ~19: `BRANCH="your-branch-name"` (IPTV backend)
+- `vod-server/scripts/install.sh` - Line ~215: `BRANCH="${BRANCH:-your-branch-name}"` (VOD server)
+- `vod-server/scripts/update.sh` - Line ~10: `BRANCH="your-branch-name"` (VOD server)
+
+---
+
+#### IPTV Backend Install & Update
+
 ```bash
-# Update command (use the current branch name)
+# Fresh install (PHP app + MySQL + Nginx)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/install.sh?$(date +%s)" | sudo bash
+
+# Update existing installation
 curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/update.sh?$(date +%s)" | sudo bash
 
 # Example with specific branch:
-curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/add-movies-menu-OxBkb/update.sh?$(date +%s)" | sudo bash
-
-# Fresh install command:
-curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/install.sh?$(date +%s)" | sudo bash
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/vod-server-setup-458YL/update.sh?$(date +%s)" | sudo bash
 ```
 
-**What the update script does:**
+**What the IPTV update script does:**
 1. Creates backup (if --backup flag used)
 2. Enables maintenance mode
 3. Downloads latest code from the specified branch
@@ -425,11 +445,79 @@ curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_
 8. Clears cache and restarts PHP-FPM/Nginx
 9. Disables maintenance mode
 
-**Important notes:**
+---
+
+#### VOD Server Install & Update
+
+The VOD server is a standalone C daemon. It has its own install/update scripts that handle compilation from source.
+
+```bash
+# Fresh install (builds FFmpeg 8, compiles VOD server, creates systemd service)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/install.sh?$(date +%s)" | sudo bash
+
+# Update existing installation (rebuilds binary, updates Web GUI, auto-rollback on failure)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+
+# Example with specific branch:
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/vod-server-setup-458YL/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+```
+
+**What the VOD server install script does:**
+1. Detects OS (Ubuntu/Debian vs RHEL/CentOS)
+2. Installs build dependencies (cmake, libmicrohttpd-dev, libsqlite3-dev, etc.)
+3. Builds FFmpeg 8.0.1 from source (if not already >= v8)
+4. Installs GPAC/MP4Box for CMAF packaging
+5. Clones repo and builds VOD server with CMake
+6. Installs binary to `/usr/local/bin/vod-server`
+7. Installs Web GUI to `/usr/local/share/vod-server/www/`
+8. Copies default config to `/etc/vod-server/vod-server.conf` (won't overwrite existing)
+9. Creates `vod-server` system user and directories
+10. Generates random API key (replaces default `change-me-on-first-run`)
+11. Installs and starts systemd service
+
+**What the VOD server update script does:**
+1. Checks current version via `vod-server --version`
+2. Downloads latest source from branch (with retry + exponential backoff)
+3. Pauses active transcode jobs (SIGUSR1) and stops service
+4. Backs up current binary to `vod-server.bak`
+5. Rebuilds from source (cmake + make)
+6. Installs new binary, Web GUI, and systemd service
+7. Starts service and verifies health via `/api/status`
+8. **Auto-rollback** if the new binary fails to start
+9. Shows version comparison (previous → current)
+
+**VOD server installation paths:**
+| Path | Purpose |
+|------|---------|
+| `/usr/local/bin/vod-server` | Binary |
+| `/etc/vod-server/vod-server.conf` | Configuration |
+| `/etc/vod-server/ssl/` | SSL certificates |
+| `/var/lib/vod-server/library/` | Transcoded content |
+| `/var/lib/vod-server/tmp/` | Scratch/temp files |
+| `/var/lib/vod-server/vod-server.db` | SQLite database |
+| `/var/log/vod-server/vod-server.log` | Log file |
+| `/usr/local/share/vod-server/www/` | Web GUI |
+| `/etc/systemd/system/vod-server.service` | Systemd unit |
+
+**VOD server management commands:**
+```bash
+systemctl status vod-server      # Check status
+systemctl restart vod-server     # Restart
+systemctl stop vod-server        # Stop
+journalctl -u vod-server -f      # Follow logs
+vod-server --version             # Check version
+curl http://localhost:8090/api/status  # Health check (requires API key header)
+```
+
+---
+
+**Important notes (both scripts):**
 - The `$(date +%s)` cache-buster ensures you get the latest script
-- Migrations are idempotent - they track which have been run
-- The script requires root/sudo access
+- Both scripts require root/sudo access
+- IPTV migrations are idempotent (tracked in `_migrations` table)
+- VOD server runs SQLite migrations automatically on startup
 - Always test on development/staging first
+- The VOD server and IPTV backend are **independent** — you can update one without the other
 
 ## Important Guidelines for AI Assistants
 
@@ -1009,6 +1097,151 @@ The ad creation/edit modal provides:
 #### Future: Sora 2 Video Generation
 
 OpenAI's Sora 2 API integration is planned for AI-generated video ads. This would allow generating short video ad clips from text prompts, similar to how DALL-E 3 generates images. Implementation is pending Sora 2 API availability and cost evaluation.
+
+## VOD Server (Transcoding)
+
+The VOD server is a **standalone C daemon** located in `vod-server/` that handles video transcoding and HLS/DASH packaging. It runs as a separate process and communicates with the IPTV admin panel via REST API.
+
+### Architecture
+
+```
+IPTV Admin (PHP) ──REST API──▶ VOD Server (C daemon, port 8090)
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+                 FFmpeg          MP4Box          SQLite
+              (transcode)      (package)       (job queue)
+```
+
+### Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language | C (C11 standard) |
+| HTTP | libmicrohttpd |
+| Database | SQLite3 (WAL mode) |
+| Build | CMake 3.10+ |
+| Transcoding | FFmpeg (libx264, libx265, libsvtav1) |
+| Packaging | MP4Box (CMAF) with FFmpeg fallback |
+| HW Accel | NVIDIA NVENC, Intel VAAPI/QSV |
+
+### Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `vod-server/src/main.c` | Entry point, daemon init, signal handlers |
+| `vod-server/src/config.c` | INI config parsing, profile loading/saving |
+| `vod-server/src/config.h` | Config structs (`vod_config_t`, `transcode_profile_t`) |
+| `vod-server/src/api_routes.c` | All JSON API endpoint handlers |
+| `vod-server/src/transcoder.c` | FFmpeg command building, media probing |
+| `vod-server/src/packager.c` | HLS/DASH packaging (MP4Box + FFmpeg fallback) |
+| `vod-server/src/job_processor.c` | Job queue, concurrent transcode execution |
+| `vod-server/src/http_server.c` | libmicrohttpd setup, auth, request routing |
+| `vod-server/src/database.c` | SQLite operations |
+| `vod-server/config/vod-server.conf` | Default config with profile definitions |
+| `vod-server/database/schema.sql` | SQLite schema (jobs, content, peers, settings) |
+
+### Transcode Pipeline
+
+The current pipeline is **two-step**: encode intermediates, then package.
+
+```
+1. ENCODE: FFmpeg → per-rendition MP4 files (360p.mp4, 720p.mp4, 1080p.mp4, audio.m4a)
+2. PACKAGE: MP4Box → CMAF segments + master.m3u8 + manifest.mpd
+```
+
+Job status flow: `pending → downloading → processing → packaging → complete`
+
+### Transcode Profiles
+
+Profiles are defined in `vod-server.conf` as `[profile:name]` sections and can also be created/edited via the API (stored in SQLite `settings` table). DB profiles override INI profiles on startup.
+
+```ini
+[profile:standard]
+codec = libx264
+preset = slow
+crf = 23
+renditions = 360p:400k,480p:1000k,720p:2800k,1080p:5000k
+audio_codec = aac
+audio_bitrate = 128k
+```
+
+**Profile struct** (`config.h`): max 16 profiles, max 8 renditions each.
+
+### VOD Server API Endpoints
+
+All require `X-API-Key` header. Base URL: `http://vod-server:8090/api/`
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/status` | Server status (uptime, CPU, memory, disk) |
+| GET | `/api/config` | Current config + profiles |
+| POST | `/api/config` | Update settings (persisted to SQLite) |
+| GET | `/api/profiles` | List all transcode profiles |
+| POST | `/api/profiles` | Create new profile |
+| PUT | `/api/profiles/{name}` | Update existing profile |
+| DELETE | `/api/profiles/{name}` | Delete profile |
+| GET | `/api/jobs` | List transcode jobs (filterable) |
+| POST | `/api/jobs` | Submit new transcode job |
+| GET | `/api/jobs/{id}` | Job details + progress |
+| DELETE | `/api/jobs/{id}` | Cancel/delete job |
+| GET | `/api/content` | List transcoded content |
+| DELETE | `/api/content/{id}` | Delete content from library |
+| POST | `/api/upload` | Upload source file |
+| GET | `/api/browse` | Browse server filesystem |
+
+### IPTV Admin Integration
+
+The PHP admin panel proxies VOD server API calls through `VodServerService` + `VodServerController`:
+
+| IPTV Admin Route | Proxied To |
+|------------------|-----------|
+| `GET /admin/vod-server/profiles` | `GET /api/profiles` |
+| `POST /admin/vod-server/profiles/create` | `POST /api/profiles` |
+| `POST /admin/vod-server/profiles/update` | `PUT /api/profiles/{name}` |
+| `POST /admin/vod-server/profiles/delete` | `DELETE /api/profiles/{name}` |
+| `GET /admin/vod-server/config` | `GET /api/config` |
+| `GET /admin/vod-server/status` | `GET /api/status` |
+| `POST /admin/vod-server/jobs/submit` | `POST /api/jobs` |
+| `GET /admin/vod-server/job-status` | `GET /api/jobs/{id}` |
+
+### Movie VOD Fields
+
+The `movies` table tracks per-movie VOD state:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `vod_server_id` | INT | Which VOD server processed this |
+| `vod_job_id` | INT | Transcode job ID on that server |
+| `vod_status` | VARCHAR(20) | pending/processing/packaging/complete/failed/cancelled |
+| `vod_progress` | DECIMAL(5,2) | 0-100% |
+| `vod_error` | TEXT | Error message if failed |
+| `stream_url` | VARCHAR(500) | HLS URL (e.g. `http://vod:8090/content/movie-123/master.m3u8`) |
+
+### Building the VOD Server
+
+**Recommended: Use the install/update scripts** (see [Install & Update Scripts](#install--update-scripts) above):
+```bash
+# Fresh install (handles ALL dependencies, FFmpeg, config, systemd)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/install.sh?$(date +%s)" | sudo bash
+
+# Update existing installation (rebuild + auto-rollback)
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/BRANCH_NAME/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+```
+
+**Manual build (if you prefer):**
+```bash
+cd vod-server
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+sudo systemctl restart vod-server
+```
+
+**Build dependencies:** cmake 3.10+, libmicrohttpd-dev, libsqlite3-dev, libgnutls28-dev
+
+**Runtime dependencies:** FFmpeg 8+ (libx264, libx265, libsvtav1), MP4Box/GPAC (optional, FFmpeg fallback)
 
 ## Project Status
 

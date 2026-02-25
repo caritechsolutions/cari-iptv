@@ -154,10 +154,20 @@ class MovieController
 
         $categories = $this->movieService->getCategories();
 
+        // Get active VOD servers for transcoding
+        $vodServers = [];
+        try {
+            $vodService = new \CariIPTV\Services\VodServerService();
+            $vodServers = $vodService->getActiveServers();
+        } catch (\Exception $e) {
+            // Table may not exist yet
+        }
+
         Response::view('admin/movies/form', [
             'pageTitle' => 'Edit Movie',
             'movie' => $movie,
             'categories' => $categories,
+            'vodServers' => $vodServers,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');

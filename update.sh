@@ -16,7 +16,7 @@ set -e
 # ============================================
 INSTALL_DIR="/var/www/cari-iptv"
 REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-BRANCH="claude/live-tv-routing-uDNuY"
+BRANCH="claude/vod-server-setup-458YL"
 BACKUP_ENABLED=false
 BACKUP_DIR="/var/backups/cari-iptv"
 WEB_USER="www-data"
@@ -305,6 +305,7 @@ apply_update() {
     else
         # Fallback to cp
         cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
+        cp public/.user.ini "$INSTALL_DIR/public/.user.ini" 2>/dev/null || true
         cp -r src/* "$INSTALL_DIR/src/" 2>/dev/null || true
         cp -r templates/* "$INSTALL_DIR/templates/" 2>/dev/null || true
         # Copy scripts directory
@@ -512,17 +513,87 @@ CRONEOF
 restart_services() {
     log_step "Restarting Services"
 
-    # Restart PHP-FPM
-    if systemctl is-active --quiet php8.2-fpm 2>/dev/null; then
-        systemctl restart php8.2-fpm
-        log_info "Restarted php8.2-fpm"
-    elif systemctl is-active --quiet php8.1-fpm 2>/dev/null; then
-        systemctl restart php8.1-fpm
-        log_info "Restarted php8.1-fpm"
-    elif systemctl is-active --quiet php-fpm 2>/dev/null; then
-        systemctl restart php-fpm
-        log_info "Restarted php-fpm"
+    # Helper: ensure a PHP ini directive is set (handles commented/uncommented/missing)
+    set_php_ini() {
+        local ini_file="$1"
+        local directive="$2"
+        local value="$3"
+
+        if grep -qE "^${directive}\s*=" "$ini_file" 2>/dev/null; then
+            # Directive exists uncommented — replace it
+            sed -i "s/^${directive}\s*=.*/${directive} = ${value}/" "$ini_file"
+        elif grep -qE "^;${directive}\s*=" "$ini_file" 2>/dev/null; then
+            # Directive exists but is commented out — uncomment and set
+            sed -i "s/^;${directive}\s*=.*/${directive} = ${value}/" "$ini_file"
+        else
+            # Directive missing entirely — append it
+            echo "${directive} = ${value}" >> "$ini_file"
+        fi
+    }
+
+    # Update PHP upload limits for VOD file uploads (all SAPI: fpm, cli, apache2)
+    for PHP_INI in /etc/php/8.3/fpm/php.ini /etc/php/8.2/fpm/php.ini /etc/php/8.1/fpm/php.ini \
+                   /etc/php/8.3/cli/php.ini /etc/php/8.2/cli/php.ini /etc/php/8.1/cli/php.ini \
+                   /etc/php/8.3/apache2/php.ini /etc/php/8.2/apache2/php.ini /etc/php/8.1/apache2/php.ini \
+                   /etc/php.ini; do
+        if [ -f "$PHP_INI" ]; then
+            set_php_ini "$PHP_INI" "upload_max_filesize" "12G"
+            set_php_ini "$PHP_INI" "post_max_size" "12G"
+            set_php_ini "$PHP_INI" "max_execution_time" "600"
+            set_php_ini "$PHP_INI" "max_input_time" "600"
+            log_info "Updated PHP upload limits in $PHP_INI"
+        fi
+    done
+
+    # Update Nginx config — replace existing client_max_body_size or add it
+    NGINX_CONF="/etc/nginx/sites-available/cari-iptv"
+    if [ ! -f "$NGINX_CONF" ]; then
+        NGINX_CONF="/etc/nginx/conf.d/cari-iptv.conf"
     fi
+    if [ -f "$NGINX_CONF" ]; then
+        if grep -q "client_max_body_size" "$NGINX_CONF"; then
+            # Replace existing value (handles any size: 1m, 2G, etc.)
+            sed -i 's/client_max_body_size[[:space:]]*[^;]*/client_max_body_size 12G/' "$NGINX_CONF"
+            log_info "Updated client_max_body_size to 12G in Nginx config"
+        else
+            # Add it after the index directive
+            sed -i '/index index.php/a\    \n    # Allow large file uploads (VOD source files)\n    client_max_body_size 12G;' "$NGINX_CONF"
+            log_info "Added client_max_body_size 12G to Nginx config"
+        fi
+
+        # Ensure fastcgi timeouts are long enough for large uploads (600s = 10 min)
+        if grep -q "fastcgi_read_timeout" "$NGINX_CONF"; then
+            sed -i 's/fastcgi_read_timeout[[:space:]]*[^;]*/fastcgi_read_timeout 600/' "$NGINX_CONF"
+        fi
+        if grep -q "fastcgi_send_timeout" "$NGINX_CONF"; then
+            sed -i 's/fastcgi_send_timeout[[:space:]]*[^;]*/fastcgi_send_timeout 600/' "$NGINX_CONF"
+        fi
+
+        # Add client_body_timeout for slow uploads over WAN
+        if ! grep -q "client_body_timeout" "$NGINX_CONF"; then
+            sed -i '/client_max_body_size/a\    client_body_timeout 600s;' "$NGINX_CONF"
+            log_info "Added client_body_timeout to Nginx config"
+        fi
+    fi
+
+    # Also set global Nginx limit in nginx.conf http block (catches any server block)
+    if [ -f "/etc/nginx/nginx.conf" ]; then
+        if grep -q "client_max_body_size" /etc/nginx/nginx.conf; then
+            sed -i 's/client_max_body_size[[:space:]]*[^;]*/client_max_body_size 12G/' /etc/nginx/nginx.conf
+            log_info "Updated global client_max_body_size in nginx.conf"
+        else
+            sed -i '/http {/a\    client_max_body_size 12G;' /etc/nginx/nginx.conf
+            log_info "Added global client_max_body_size to nginx.conf"
+        fi
+    fi
+
+    # Restart PHP-FPM (try all versions)
+    for fpm in php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
+        if systemctl is-active --quiet "$fpm" 2>/dev/null; then
+            systemctl restart "$fpm"
+            log_info "Restarted $fpm"
+        fi
+    done
 
     # Reload Nginx
     if systemctl is-active --quiet nginx 2>/dev/null; then

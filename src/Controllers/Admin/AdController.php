@@ -818,7 +818,8 @@ class AdController
         }
 
         $ad = $ads[0];
-        $baseUrl = rtrim(getenv('APP_URL') ?: 'http://localhost', '/');
+        $settings = new \CariIPTV\Services\SettingsService();
+        $baseUrl = rtrim($settings->get('site_url', '', 'general') ?: getenv('APP_URL') ?: 'http://localhost', '/');
 
         $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         $xml .= '<VAST version="4.2">' . "\n";

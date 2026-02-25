@@ -520,6 +520,9 @@ class ContentApiService
         $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
         $movie['content_type'] = 'movie';
 
+        // DRM info — if movie has a VOD server, check for DRM key
+        $movie['drm'] = $this->getDrmInfo($movie);
+
         // Trailers (video_key, url - not youtube_id, youtube_url)
         $movie['trailers'] = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT id, name as title, video_key, url, is_primary
@@ -540,7 +543,59 @@ class ContentApiService
             [$id]
         ), []);
 
+        // Content markers (intro, credits, ad cues)
+        $movie['markers'] = $this->getContentMarkers('movie', $id);
+
         return $movie;
+    }
+
+    // =========================================================================
+    // DRM
+    // =========================================================================
+
+    /**
+     * Get DRM info for a content item that has a VOD server.
+     * Returns null if no DRM key exists, or a config object for the player.
+     */
+    private function getDrmInfo(array $item): ?array
+    {
+        $serverId = (int)($item['vod_server_id'] ?? 0);
+        if (!$serverId || empty($item['stream_url'])) {
+            return null;
+        }
+
+        try {
+            $vodService = new VodServerService();
+            $server = $vodService->getServer($serverId);
+            if (!$server) return null;
+
+            // Use stored content_id if available, otherwise fall back to movie-{id}
+            $contentId = !empty($item['vod_content_id'])
+                ? $item['vod_content_id']
+                : 'movie-' . ($item['id'] ?? 0);
+
+            // Check if a DRM key exists for this content
+            $keyInfo = $vodService->getDrmKey($serverId, $contentId);
+            if (empty($keyInfo) || !empty($keyInfo['error'])) {
+                return null;
+            }
+
+            // Build player-facing DRM config
+            // The license URL points to our middleware proxy (not the VOD server directly)
+            // Prefer site_url from DB settings (admin GUI), fall back to APP_URL env var
+            $settings = new SettingsService();
+            $appUrl = rtrim($settings->get('site_url', '', 'general') ?: getenv('APP_URL') ?: '', '/');
+            return [
+                'scheme'      => $keyInfo['scheme'] ?? 'cenc',
+                'key_id'      => $keyInfo['kid'] ?? '',
+                'license_url' => $appUrl . '/api/v1/drm/license?content_id=' . urlencode($contentId)
+                                        . '&server_id=' . $serverId,
+            ];
+        } catch (\Throwable $e) {
+            // DRM lookup failure is non-fatal — content plays without DRM
+            error_log('DRM info lookup failed for item ' . ($item['id'] ?? '?') . ': ' . $e->getMessage());
+            return null;
+        }
     }
 
     // =========================================================================
@@ -678,7 +733,7 @@ class ContentApiService
         foreach ($show['seasons'] as &$season) {
             $season['episodes'] = $this->safeQuery(fn() => $this->db->fetchAll(
                 "SELECT id, name as title, episode_number, overview as synopsis, runtime,
-                        stream_url, still_url, air_date, vote_average
+                        stream_url, still_url, air_date, vote_average, vod_status
                  FROM series_episodes
                  WHERE season_id = ?
                  ORDER BY episode_number ASC",
@@ -711,7 +766,9 @@ class ContentApiService
             "SELECT e.id, e.series_id, e.season_id, e.episode_number, e.name as title,
                     e.overview as synopsis, e.runtime, e.stream_url, e.still_url,
                     e.air_date, e.vote_average,
+                    e.vod_server_id, e.vod_status, e.vod_content_id,
                     s.title as series_title, s.poster_url as series_poster_url,
+                    s.backdrop_url as series_backdrop_url,
                     sn.season_number, sn.name as season_name
              FROM series_episodes e
              JOIN series s ON e.series_id = s.id
@@ -720,7 +777,49 @@ class ContentApiService
             [$id]
         );
 
-        return $episode ?: null;
+        if (!$episode) {
+            return null;
+        }
+
+        $episode['content_type'] = 'episode';
+
+        // DRM info for episode VOD
+        $episode['drm'] = $this->getDrmInfo($episode);
+
+        // Content markers (intro, credits, ad cues)
+        $episode['markers'] = $this->getContentMarkers('episode', $id);
+
+        // Next episode in the same season (for auto-play)
+        $episode['next_episode'] = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT e.id, e.episode_number, e.name as title, e.stream_url, e.still_url, e.runtime
+             FROM series_episodes e
+             WHERE e.season_id = ? AND e.episode_number > ?
+             ORDER BY e.episode_number ASC LIMIT 1",
+            [$episode['season_id'], $episode['episode_number']]
+        ));
+
+        // If no next in season, check next season's first episode
+        if (!$episode['next_episode']) {
+            $nextSeason = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT sn.id FROM series_seasons sn
+                 WHERE sn.series_id = ? AND sn.season_number > (SELECT season_number FROM series_seasons WHERE id = ?)
+                 ORDER BY sn.season_number ASC LIMIT 1",
+                [$episode['series_id'], $episode['season_id']]
+            ));
+            if ($nextSeason) {
+                $episode['next_episode'] = $this->safeQuery(fn() => $this->db->fetch(
+                    "SELECT e.id, e.episode_number, e.name as title, e.stream_url, e.still_url, e.runtime,
+                            sn.season_number, sn.name as season_name
+                     FROM series_episodes e
+                     JOIN series_seasons sn ON e.season_id = sn.id
+                     WHERE e.season_id = ?
+                     ORDER BY e.episode_number ASC LIMIT 1",
+                    [$nextSeason['id']]
+                ));
+            }
+        }
+
+        return $episode;
     }
 
     // =========================================================================
@@ -1148,6 +1247,25 @@ class ContentApiService
         }
 
         return $results;
+    }
+
+    // =========================================================================
+    // CONTENT MARKERS
+    // =========================================================================
+
+    /**
+     * Get content markers (intro, credits, ad cue points) for a content item.
+     * Used by the player for skip intro, credits countdown, and ad insertion.
+     */
+    public function getContentMarkers(string $contentType, int $contentId): array
+    {
+        return $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, marker_type, position_seconds, label
+             FROM content_markers
+             WHERE content_type = ? AND content_id = ?
+             ORDER BY position_seconds ASC",
+            [$contentType, $contentId]
+        ), []);
     }
 
     // =========================================================================

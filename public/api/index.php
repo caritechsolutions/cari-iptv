@@ -98,6 +98,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     // ----- Authenticated user endpoints -----
     $router->get('/auth/me', [AuthController::class, 'me'], ['api_auth']);
     $router->post('/auth/watch-progress', [AuthController::class, 'updateWatchProgress'], ['api_auth']);
+    $router->get('/auth/watch-progress', [AuthController::class, 'getWatchProgress'], ['api_auth']);
     $router->get('/auth/continue-watching', [AuthController::class, 'continueWatching'], ['api_auth']);
     $router->post('/auth/watchlist/toggle', [AuthController::class, 'toggleWatchlist'], ['api_auth']);
     $router->get('/auth/watchlist', [AuthController::class, 'getWatchlist'], ['api_auth']);
@@ -126,6 +127,15 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
 
     // Episodes
     $router->get('/episodes/{id}', [ContentController::class, 'episode'], ['api_auth']);
+
+    // DRM License Proxy (ClearKey — GET for simple lookup, POST for EME standard)
+    $router->get('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
+    $router->post('/drm/license', [ContentController::class, 'drmLicense'], ['api_auth']);
+
+    // DRM Raw Key Proxy (for HLS #EXT-X-KEY — returns 16-byte binary key)
+    // NOTE: Public (no api_auth) — HLS players fetch #EXT-X-KEY URIs as plain GET
+    // requests with no way to add Authorization headers.
+    $router->get('/drm/key/{contentId}', [ContentController::class, 'drmRawKey']);
 
     // Categories
     $router->get('/categories', [ContentController::class, 'categories'], ['api_auth']);

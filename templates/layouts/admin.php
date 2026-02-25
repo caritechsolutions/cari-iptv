@@ -842,6 +842,9 @@
         </main>
     </div>
 
+    <!-- HLS.js for admin preview players (VOD) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+
     <script>
         function toggleDropdown(id) {
             const dropdown = document.getElementById(id);

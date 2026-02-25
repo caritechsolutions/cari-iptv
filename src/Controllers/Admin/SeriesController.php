@@ -610,12 +610,22 @@ class SeriesController
             return;
         }
 
+        // Get active VOD servers for transcoding
+        $vodServers = [];
+        try {
+            $vodService = new \CariIPTV\Services\VodServerService();
+            $vodServers = $vodService->getActiveServers();
+        } catch (\Exception $e) {
+            // Table may not exist yet
+        }
+
         Response::view('admin/series/episodes', [
             'pageTitle' => $season['name'] . ' - ' . $show['title'],
             'show' => $show,
             'season' => $season,
             'episodes' => $season['episodes'],
             'trailers' => $season['trailers'],
+            'vodServers' => $vodServers,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
