@@ -610,7 +610,13 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             .then(function(data) {
                                 console.log('[VOD] Poll response:', data);
                                 if (!data.success) {
-                                    // VOD server can't find this job — stop polling, show failure
+                                    if (data.transient) {
+                                        // Transient error (SSL timeout, connection drop) — keep polling
+                                        console.warn('[VOD Poll] Transient error, will retry:', data.error);
+                                        document.getElementById('vod-transcode-step').textContent = 'Connection hiccup, retrying...';
+                                        return;
+                                    }
+                                    // Permanent failure — stop polling, show error
                                     clearInterval(vodJobPollTimer);
                                     vodJobPollTimer = null;
                                     document.getElementById('vod-transcode-bar').style.background = 'var(--danger)';

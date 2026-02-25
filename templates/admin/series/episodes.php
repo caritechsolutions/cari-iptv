@@ -1771,7 +1771,13 @@ function pollVodStatus(serverId, jobId, episodeId, contentId) {
         .then(r => r.json())
         .then(data => {
             if (!data.success) {
-                // Job not found on VOD server — stop polling, show failure
+                if (data.transient) {
+                    // Transient error (SSL timeout, connection drop) — keep polling
+                    console.warn('[VOD Poll] Transient error, will retry:', data.error);
+                    document.getElementById('ep-vod-step').textContent = 'Connection hiccup, retrying...';
+                    return;
+                }
+                // Permanent failure — stop polling, show error
                 stopVodPoll();
                 document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
                 document.getElementById('ep-vod-progress').style.display = 'none';

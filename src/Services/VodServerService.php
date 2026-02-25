@@ -489,7 +489,7 @@ class VodServerService
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => $this->timeout,
-            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 30,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS      => 3,
             CURLOPT_SSL_VERIFYPEER => false,

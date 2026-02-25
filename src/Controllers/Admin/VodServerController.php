@@ -697,24 +697,47 @@ class VodServerController
 
             $this->sendJson(['success' => true, 'job' => $job, 'job_id' => $jobId]);
         } catch (\Exception $e) {
-            // VOD server returned error (404 job not found, connection failed, etc.)
-            // Reset the stale DB entry so the UI doesn't stay stuck
-            if ($entityId > 0 && $entityType) {
-                $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
-                try {
-                    $this->db->execute(
-                        "UPDATE {$table} SET vod_status = 'failed', vod_error = ?, vod_job_id = NULL WHERE id = ? AND vod_status IN ('pending','downloading','processing','packaging')",
-                        ['Job not found on VOD server: ' . $e->getMessage(), $entityId]
-                    );
-                } catch (\Exception $dbErr) {
-                    // ignore
+            $errMsg = $e->getMessage();
+            $isTransient = (
+                stripos($errMsg, 'timeout') !== false ||
+                stripos($errMsg, 'timed out') !== false ||
+                stripos($errMsg, 'connection failed') !== false ||
+                stripos($errMsg, 'connection refused') !== false ||
+                stripos($errMsg, 'could not connect') !== false ||
+                stripos($errMsg, 'ssl') !== false ||
+                stripos($errMsg, 'resolve host') !== false
+            );
+
+            if ($isTransient) {
+                // Transient network/SSL error — do NOT mark the job as failed in the DB.
+                // The job is likely still running fine on the VOD server.
+                error_log("[VOD jobStatus] Transient error (not updating DB): {$errMsg}");
+                $this->sendJson([
+                    'success'   => false,
+                    'error'     => $errMsg,
+                    'transient' => true,
+                ]);
+            } else {
+                // Permanent error (e.g. 404 job not found) — update DB
+                error_log("[VOD jobStatus] Permanent error: {$errMsg}");
+                if ($entityId > 0 && $entityType) {
+                    $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
+                    try {
+                        $this->db->execute(
+                            "UPDATE {$table} SET vod_status = 'failed', vod_error = ?, vod_job_id = NULL WHERE id = ? AND vod_status IN ('pending','downloading','processing','packaging')",
+                            ['Job not found on VOD server: ' . $errMsg, $entityId]
+                        );
+                    } catch (\Exception $dbErr) {
+                        // ignore
+                    }
                 }
+                $this->sendJson([
+                    'success'   => false,
+                    'error'     => $errMsg,
+                    'transient' => false,
+                    'job'       => ['status' => 'failed', 'error_msg' => 'Job not found on VOD server']
+                ]);
             }
-            $this->sendJson([
-                'success' => false,
-                'error' => $e->getMessage(),
-                'job' => ['status' => 'failed', 'error_msg' => 'Job not found on VOD server']
-            ]);
         }
     }
 
