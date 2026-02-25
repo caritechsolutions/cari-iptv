@@ -64,6 +64,54 @@ if [ -n "$MISSING_DEPS" ]; then
 fi
 
 # ========================
+# 2b. Ensure certbot is installed (for Let's Encrypt SSL)
+# ========================
+if ! command -v certbot &>/dev/null; then
+    log "Installing certbot for Let's Encrypt SSL..."
+    if command -v snap &>/dev/null; then
+        snap install certbot --classic > /dev/null 2>&1 || true
+        snap set certbot trust-plugin-with-root=ok > /dev/null 2>&1 || true
+        snap install certbot-dns-cloudflare > /dev/null 2>&1 || true
+    fi
+    if ! command -v certbot &>/dev/null; then
+        # Snap failed or unavailable — try pip
+        if command -v apt-get &>/dev/null; then
+            apt-get install -y -qq python3-pip > /dev/null 2>&1 || true
+        fi
+        pip3 install certbot certbot-dns-cloudflare > /dev/null 2>&1 || true
+    fi
+    if command -v certbot &>/dev/null; then
+        log "certbot installed: $(certbot --version 2>&1 | head -1)"
+    else
+        warn "certbot installation failed. Install manually: snap install certbot --classic"
+    fi
+else
+    log "certbot already installed: $(certbot --version 2>&1 | head -1)"
+fi
+
+# Ensure certbot renewal hook exists
+if [ ! -f /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh ]; then
+    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    cat > /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh << 'HOOK_EOF'
+#!/bin/bash
+# Certbot renewal hook for VOD Server
+VOD_SSL_DIR="/etc/vod-server/ssl"
+VOD_CONF="/etc/vod-server/vod-server.conf"
+[ -f "$VOD_CONF" ] || exit 0
+if [ -n "$RENEWED_LINEAGE" ]; then
+    cp -f "$RENEWED_LINEAGE/fullchain.pem" "$VOD_SSL_DIR/cert.pem"
+    cp -f "$RENEWED_LINEAGE/privkey.pem" "$VOD_SSL_DIR/key.pem"
+    chown vod-server:vod-server "$VOD_SSL_DIR/cert.pem" "$VOD_SSL_DIR/key.pem"
+    chmod 644 "$VOD_SSL_DIR/cert.pem"
+    chmod 600 "$VOD_SSL_DIR/key.pem"
+    systemctl reload vod-server 2>/dev/null || systemctl restart vod-server 2>/dev/null || true
+fi
+HOOK_EOF
+    chmod 755 /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh
+    log "Certbot renewal hook installed"
+fi
+
+# ========================
 # 3. Download latest source
 # ========================
 TEMP_DIR=$(mktemp -d)
