@@ -604,10 +604,47 @@ class VodServerController
                 $entityId = $movieId;
             }
 
-            if ($sid <= 0 || $jobId <= 0) {
-                $this->sendJson(['success' => false, 'error' => 'Server ID and Job ID required']);
+            if ($sid <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'Server ID required']);
                 return;
             }
+
+            // If job_id is missing but we have a content_id, recover the job from the VOD server
+            $contentId = trim($_GET['content_id'] ?? '');
+            if ($jobId <= 0 && !empty($contentId)) {
+                error_log("[VOD jobStatus] job_id missing, recovering by content_id: {$contentId}");
+                try {
+                    $jobsList = $this->vodService->getJobs($sid, ['limit' => 50]);
+                    $items = $jobsList['items'] ?? $jobsList;
+                    if (is_array($items)) {
+                        foreach ($items as $item) {
+                            if (($item['content_id'] ?? '') === $contentId) {
+                                $jobId = (int)($item['id'] ?? 0);
+                                error_log("[VOD jobStatus] Recovered job_id={$jobId} for content_id={$contentId}");
+                                // Persist recovered job_id so future polls don't need recovery
+                                if ($jobId > 0 && $entityId > 0) {
+                                    $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
+                                    try {
+                                        $this->db->execute(
+                                            "UPDATE {$table} SET vod_job_id = ? WHERE id = ? AND (vod_job_id IS NULL OR vod_job_id = 0)",
+                                            [$jobId, $entityId]
+                                        );
+                                    } catch (\Exception $ignore) {}
+                                }
+                                break;
+                            }
+                        }
+                    }
+                } catch (\Exception $lookupErr) {
+                    error_log("[VOD jobStatus] Job recovery failed: " . $lookupErr->getMessage());
+                }
+            }
+
+            if ($jobId <= 0) {
+                $this->sendJson(['success' => false, 'error' => 'Server ID and Job ID required (job_id could not be recovered)']);
+                return;
+            }
+
             $detail = $this->vodService->getJob($sid, $jobId);
             $job = $detail['job'] ?? $detail;
             $status = $job['status'] ?? '';
@@ -658,7 +695,7 @@ class VodServerController
                 }
             }
 
-            $this->sendJson(['success' => true, 'job' => $job]);
+            $this->sendJson(['success' => true, 'job' => $job, 'job_id' => $jobId]);
         } catch (\Exception $e) {
             // VOD server returned error (404 job not found, connection failed, etc.)
             // Reset the stale DB entry so the UI doesn't stay stuck

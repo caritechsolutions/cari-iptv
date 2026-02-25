@@ -1448,7 +1448,7 @@ function openVodModal(episodeId) {
         document.getElementById('ep-vod-bar').style.width = vodProgress + '%';
         document.getElementById('ep-vod-pct').textContent = vodProgress.toFixed(1) + '%';
         // Start polling
-        startVodPoll(vodServerId, vodJobId, episodeId);
+        startVodPoll(vodServerId, vodJobId, episodeId, vodContentId);
     } else if (vodStatus === 'failed') {
         badgeEl.innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
         progressEl.style.display = 'none';
@@ -1650,7 +1650,7 @@ function epVodSubmit() {
                         document.getElementById('ep-vod-progress').style.display = '';
                         document.getElementById('ep-vod-upload-controls').style.display = 'none';
                         document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>';
-                        startVodPoll(serverId, jobId, episodeId);
+                        startVodPoll(serverId, jobId, episodeId, contentId);
                     } else if (data.error === 'duplicate') {
                         showVodMsg(data.message || 'Content already exists on this server.', 'danger');
                     } else {
@@ -1754,18 +1754,20 @@ function showVodMsg(msg, type) {
 
 // ---- VOD Status Polling ----
 
-function startVodPoll(serverId, jobId, episodeId) {
+function startVodPoll(serverId, jobId, episodeId, contentId) {
     stopVodPoll();
-    pollVodStatus(serverId, jobId, episodeId);
-    vodPollTimer = setInterval(() => pollVodStatus(serverId, jobId, episodeId), 3000);
+    pollVodStatus(serverId, jobId, episodeId, contentId);
+    vodPollTimer = setInterval(() => pollVodStatus(serverId, jobId, episodeId, contentId), 3000);
 }
 
 function stopVodPoll() {
     if (vodPollTimer) { clearInterval(vodPollTimer); vodPollTimer = null; }
 }
 
-function pollVodStatus(serverId, jobId, episodeId) {
-    fetch(`/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${episodeId}`)
+function pollVodStatus(serverId, jobId, episodeId, contentId) {
+    var url = `/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${episodeId}`;
+    if (contentId) url += '&content_id=' + encodeURIComponent(contentId);
+    fetch(url)
         .then(r => r.json())
         .then(data => {
             if (!data.success) {
@@ -1788,6 +1790,13 @@ function pollVodStatus(serverId, jobId, episodeId) {
             const status = job.status || '';
             const progress = parseFloat(job.progress) || 0;
             const row = document.getElementById('episode-row-' + episodeId);
+
+            // If backend recovered a job_id, update our poll parameters
+            if (job.id && (!jobId || jobId === '0')) {
+                jobId = job.id;
+                if (row) row.dataset.vodJobId = jobId;
+                console.log('[VOD Poll] Recovered job_id:', jobId);
+            }
 
             document.getElementById('ep-vod-bar').style.width = progress + '%';
             document.getElementById('ep-vod-pct').textContent = progress.toFixed(1) + '%';

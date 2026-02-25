@@ -139,12 +139,13 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
             <?php if ($isEdit && !empty($vodServers)): ?>
             <?php
-                $vodStatus   = $movie['vod_status'] ?? null;
-                $vodServerId = $movie['vod_server_id'] ?? null;
-                $vodJobId    = $movie['vod_job_id'] ?? null;
-                $vodProgress = (float)($movie['vod_progress'] ?? 0);
-                $vodError    = $movie['vod_error'] ?? null;
-                $vodActive   = in_array($vodStatus, ['pending', 'processing', 'packaging', 'downloading']);
+                $vodStatus    = $movie['vod_status'] ?? null;
+                $vodServerId  = $movie['vod_server_id'] ?? null;
+                $vodJobId     = $movie['vod_job_id'] ?? null;
+                $vodContentId = $movie['vod_content_id'] ?? null;
+                $vodProgress  = (float)($movie['vod_progress'] ?? 0);
+                $vodError     = $movie['vod_error'] ?? null;
+                $vodActive    = in_array($vodStatus, ['pending', 'processing', 'packaging', 'downloading']);
             ?>
             <!-- VOD Transcode Card -->
             <div class="card mb-3">
@@ -302,6 +303,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 // Saved job state from database (survives page reload)
                 var SAVED_SERVER_ID = <?= (int)($vodServerId ?? 0) ?>;
                 var SAVED_JOB_ID = <?= (int)($vodJobId ?? 0) ?>;
+                var SAVED_CONTENT_ID = <?= json_encode($vodContentId ?? '') ?>;
                 var SAVED_STATUS = <?= json_encode($vodStatus ?? '') ?>;
 
                 // Load profiles from VOD server dynamically
@@ -492,7 +494,7 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                                         var sid = data.server_id || serverId;
                                         var jid = data.job_id || job.id || job.job_id || 0;
                                         if (jid) {
-                                            startTranscodePoll(sid, jid);
+                                            startTranscodePoll(sid, jid, contentId);
                                         } else {
                                             showMsg('File uploaded and job submitted. Refresh the page to check transcode status.', 'success');
                                             resetButtons();
@@ -588,19 +590,22 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                     document.getElementById('vod-upload-controls').style.display = '';
                 }
 
-                function startTranscodePoll(serverId, jobId) {
+                function startTranscodePoll(serverId, jobId, contentId) {
                     // Show transcode progress, hide upload controls
                     var progDiv = document.getElementById('vod-transcode-progress');
                     progDiv.style.display = 'block';
                     document.getElementById('vod-upload-controls').style.display = 'none';
                     document.getElementById('vod-transcode-label').textContent = 'Checking transcode status...';
                     document.getElementById('vod-transcode-step').textContent = 'Polling VOD server...';
-                    console.log('[VOD] Starting transcode poll: server=' + serverId + ' job=' + jobId + ' movie=' + MOVIE_ID);
+                    var cid = contentId || SAVED_CONTENT_ID || ('movie-' + MOVIE_ID);
+                    console.log('[VOD] Starting transcode poll: server=' + serverId + ' job=' + jobId + ' content_id=' + cid + ' movie=' + MOVIE_ID);
 
                     if (vodJobPollTimer) clearInterval(vodJobPollTimer);
 
                     function pollOnce() {
-                        fetch('/admin/vod-server/job-status?server_id=' + serverId + '&job_id=' + jobId + '&movie_id=' + MOVIE_ID)
+                        var pollUrl = '/admin/vod-server/job-status?server_id=' + serverId + '&job_id=' + jobId + '&movie_id=' + MOVIE_ID;
+                        if (cid) pollUrl += '&content_id=' + encodeURIComponent(cid);
+                        fetch(pollUrl)
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
                                 console.log('[VOD] Poll response:', data);
@@ -727,9 +732,10 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                 };
 
                 // Auto-resume polling if there's an active job from DB
-                if (SAVED_JOB_ID > 0 && SAVED_SERVER_ID > 0 &&
+                if (SAVED_SERVER_ID > 0 &&
                     ['pending', 'processing', 'packaging', 'downloading'].indexOf(SAVED_STATUS) !== -1) {
-                    startTranscodePoll(SAVED_SERVER_ID, SAVED_JOB_ID);
+                    // Poll even if SAVED_JOB_ID is 0 — the backend can recover it by content_id
+                    startTranscodePoll(SAVED_SERVER_ID, SAVED_JOB_ID, SAVED_CONTENT_ID);
                 }
             })();
             </script>
