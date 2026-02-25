@@ -3050,6 +3050,9 @@ const CariApp = (function() {
             const vodCCBtn = document.getElementById('vodCCBtn');
             if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
 
+            // Fullscreen: use the container so overlays (Skip Intro, Next Episode) stay visible
+            setupVodFullscreen(video, document.getElementById('playerContainer'));
+
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
                 setupProgressTracking(video, type === 'episode' ? 'episode' : 'movie', item.id);
@@ -3117,6 +3120,36 @@ const CariApp = (function() {
         } catch (err) {
             document.getElementById('playerDetails').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load content.');
         }
+    }
+
+    /**
+     * Override fullscreen so the container (not just the video) goes fullscreen.
+     * This keeps Skip Intro, Next Episode countdown, and CC buttons visible.
+     */
+    function setupVodFullscreen(video, container) {
+        if (!video || !container) return;
+
+        // Override video.requestFullscreen to fullscreen the container instead.
+        // When the native <video controls> fullscreen button is clicked,
+        // the browser calls video.requestFullscreen(). We redirect it to the container.
+        const origRequestFs = video.requestFullscreen || video.webkitRequestFullscreen;
+        video.requestFullscreen = function() {
+            return (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+        };
+        if (video.webkitRequestFullscreen) {
+            video.webkitRequestFullscreen = video.requestFullscreen;
+        }
+
+        // Double-click video → toggle fullscreen on container
+        video.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (fsEl) {
+                (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            } else {
+                (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+            }
+        });
     }
 
     /**
