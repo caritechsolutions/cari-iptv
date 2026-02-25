@@ -3123,22 +3123,32 @@ const CariApp = (function() {
     }
 
     /**
-     * Override fullscreen so the container (not just the video) goes fullscreen.
-     * This keeps Skip Intro, Next Episode countdown, and CC buttons visible.
+     * Make fullscreen target the container instead of just the video.
+     * Native <video controls> fullscreen button internally fullscreens the
+     * video element — overlays (Skip Intro, Next Episode, CC) are children
+     * of the container and become invisible. We detect this and switch
+     * fullscreen to the container so all children remain visible.
      */
     function setupVodFullscreen(video, container) {
         if (!video || !container) return;
 
-        // Override video.requestFullscreen to fullscreen the container instead.
-        // When the native <video controls> fullscreen button is clicked,
-        // the browser calls video.requestFullscreen(). We redirect it to the container.
-        const origRequestFs = video.requestFullscreen || video.webkitRequestFullscreen;
-        video.requestFullscreen = function() {
-            return (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
-        };
-        if (video.webkitRequestFullscreen) {
-            video.webkitRequestFullscreen = video.requestFullscreen;
+        // Detect when native controls put the VIDEO in fullscreen,
+        // then switch to the CONTAINER so overlay children stay visible.
+        function onFsChange() {
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (fsEl === video) {
+                // Video went fullscreen via native controls — switch to container
+                const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+                const enterFs = container.requestFullscreen || container.webkitRequestFullscreen;
+                if (exitFs && enterFs) {
+                    exitFs.call(document).then(() => {
+                        enterFs.call(container).catch(() => {});
+                    }).catch(() => {});
+                }
+            }
         }
+        document.addEventListener('fullscreenchange', onFsChange);
+        document.addEventListener('webkitfullscreenchange', onFsChange);
 
         // Double-click video → toggle fullscreen on container
         video.addEventListener('dblclick', (e) => {
