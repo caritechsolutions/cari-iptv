@@ -38,6 +38,7 @@ typedef struct {
     char                title[512];
     char                profile_name[MAX_PROFILE_NAME];
     char                callback_url[1024];
+    time_t              last_callback_time;   /* Throttle periodic callbacks */
 } active_job_t;
 
 /* Module state */
@@ -305,6 +306,15 @@ static void check_active_jobs(void)
 
             log_debug("Job %d progress: %.1f%% - %s",
                       st->job_id, st->progress, st->current_step);
+
+            /* Fire periodic progress callback (~every 30 seconds) */
+            if (g_jobs[i].callback_url[0]) {
+                time_t now = time(NULL);
+                if (now - g_jobs[i].last_callback_time >= 30) {
+                    g_jobs[i].last_callback_time = now;
+                    fire_callback(&g_jobs[i], "processing", NULL);
+                }
+            }
         }
     }
 }
@@ -334,6 +344,9 @@ static void handle_job_completed(active_job_t *job)
             sqlite3_finalize(stmt);
         }
     }
+
+    /* Notify backend that packaging has started */
+    fire_callback(job, "packaging", NULL);
 
     /* ---- DRM: Auto-generate key if enabled ---- */
     if (g_config->drm_enabled && g_config->drm_auto_generate) {

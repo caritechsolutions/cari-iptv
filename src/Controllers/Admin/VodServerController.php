@@ -778,10 +778,13 @@ class VodServerController
 
         error_log("[VOD Webhook] event={$event} job_id={$jobId} content_id={$contentId} status={$status}");
 
-        if (!in_array($status, ['complete', 'failed'])) {
+        $validStatuses = ['complete', 'failed', 'processing', 'packaging', 'downloading', 'pending'];
+        if (!in_array($status, $validStatuses)) {
             $this->sendJson(['success' => false, 'error' => 'Unhandled status: ' . $status]);
             return;
         }
+
+        $progress = isset($data['progress']) ? (float)$data['progress'] : null;
 
         // Determine entity type and ID from content_id (format: "movie-123" or "episode-456")
         $entityType = null;
@@ -824,12 +827,27 @@ class VodServerController
                 );
                 error_log("[VOD Webhook] Marked {$entityType} {$entityId} as complete (stream_url={$hlsUrl})");
 
-            } else { // failed
+            } elseif ($status === 'failed') {
                 $this->db->execute(
                     "UPDATE {$table} SET vod_status = 'failed', vod_error = ? WHERE id = ?",
                     [$errorMsg ?? 'Unknown error', $entityId]
                 );
                 error_log("[VOD Webhook] Marked {$entityType} {$entityId} as failed: {$errorMsg}");
+
+            } else {
+                // Progress update (processing, packaging, downloading, pending)
+                $updates = ["vod_status = ?"];
+                $params = [$status];
+                if ($progress !== null) {
+                    $updates[] = "vod_progress = ?";
+                    $params[] = min(99.9, max(0, $progress)); // Cap at 99.9 — only 'complete' sets 100
+                }
+                $params[] = $entityId;
+                $this->db->execute(
+                    "UPDATE {$table} SET " . implode(', ', $updates) . " WHERE id = ?",
+                    $params
+                );
+                error_log("[VOD Webhook] Progress update {$entityType} {$entityId}: status={$status} progress={$progress}");
             }
 
             $this->sendJson(['success' => true, 'message' => "Updated {$entityType} {$entityId} to {$status}"]);
@@ -837,6 +855,39 @@ class VodServerController
             error_log("[VOD Webhook] DB update failed: " . $e->getMessage());
             $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * GET /admin/vod-server/episode-progress?season_id=N
+     * Returns VOD status/progress for all episodes in a season that have active VOD jobs.
+     * Polled by the episodes list page every 10 seconds for live progress updates.
+     */
+    public function episodeProgress(): void
+    {
+        $seasonId = (int)($_GET['season_id'] ?? 0);
+        if ($seasonId <= 0) {
+            $this->sendJson(['success' => false, 'error' => 'season_id required']);
+            return;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT id, vod_status, vod_progress, stream_url
+             FROM series_episodes
+             WHERE season_id = ? AND vod_status IS NOT NULL AND vod_status != ''",
+            [$seasonId]
+        );
+
+        $episodes = [];
+        foreach ($rows as $row) {
+            $episodes[] = [
+                'id'       => (int)$row['id'],
+                'status'   => $row['vod_status'],
+                'progress' => (float)$row['vod_progress'],
+                'stream_url' => $row['stream_url'] ?? '',
+            ];
+        }
+
+        $this->sendJson(['success' => true, 'episodes' => $episodes]);
     }
 
     /**
