@@ -762,6 +762,16 @@ int http_server_start_acme(const vod_config_t *config)
         return 0;
     }
 
+    /* Ensure webroot directory tree exists */
+    {
+        char path[MAX_PATH_LEN];
+        mkdir(config->acme_webroot, 0755);
+        snprintf(path, sizeof(path), "%s/.well-known", config->acme_webroot);
+        mkdir(path, 0755);
+        snprintf(path, sizeof(path), "%s/.well-known/acme-challenge", config->acme_webroot);
+        mkdir(path, 0755);
+    }
+
     g_http_config = config;
 
     unsigned int flags = MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_ERROR_LOG;

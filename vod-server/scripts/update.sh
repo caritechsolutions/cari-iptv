@@ -227,6 +227,10 @@ log "Updating Web GUI..."
 mkdir -p /usr/local/share/vod-server/www
 cp -r "$SOURCE_DIR/www/"* /usr/local/share/vod-server/www/
 
+# Ensure ACME webroot directory exists (for Let's Encrypt HTTP-01 challenges)
+mkdir -p /var/lib/vod-server/acme/.well-known/acme-challenge
+chown -R vod-server:vod-server /var/lib/vod-server/acme
+
 # Update systemd service (if changed)
 install -m 644 "$SOURCE_DIR/scripts/vod-server.service" /etc/systemd/system/vod-server.service
 systemctl daemon-reload
