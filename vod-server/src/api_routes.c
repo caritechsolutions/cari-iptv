@@ -649,6 +649,15 @@ int api_get_config(http_request_t *req)
     cJSON_AddStringToObject(drm, "widevine_system_id", WIDEVINE_SYSTEM_ID);
     cJSON_AddItemToObject(root, "drm", drm);
 
+    /* ACME */
+    cJSON *acme = cJSON_CreateObject();
+    cJSON_AddBoolToObject(acme, "enabled", s_config->acme_enabled);
+    cJSON_AddNumberToObject(acme, "http_port", s_config->acme_http_port);
+    cJSON_AddStringToObject(acme, "webroot", s_config->acme_webroot);
+    cJSON_AddStringToObject(acme, "domain", s_config->acme_domain);
+    cJSON_AddNumberToObject(acme, "https_port", s_config->acme_https_port);
+    cJSON_AddItemToObject(root, "acme", acme);
+
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
 }
 
@@ -702,9 +711,54 @@ int api_post_config(http_request_t *req)
     }
 
     /*
+     * Check for ACME settings object — apply to runtime config and persist.
+     * Changes to enabled/port require a restart for the listener to start/stop.
+     */
+    cJSON *acme = cJSON_GetObjectItemCaseSensitive(body, "acme");
+    if (cJSON_IsObject(acme)) {
+        vod_config_t *cfg = get_mutable_config();
+        if (cfg) {
+            bool was_enabled = cfg->acme_enabled;
+
+            cJSON *enabled = cJSON_GetObjectItemCaseSensitive(acme, "enabled");
+            if (cJSON_IsBool(enabled)) cfg->acme_enabled = cJSON_IsTrue(enabled);
+
+            cJSON *http_port = cJSON_GetObjectItemCaseSensitive(acme, "http_port");
+            if (cJSON_IsNumber(http_port) && http_port->valueint > 0)
+                cfg->acme_http_port = http_port->valueint;
+
+            cJSON *webroot = cJSON_GetObjectItemCaseSensitive(acme, "webroot");
+            if (cJSON_IsString(webroot) && webroot->valuestring[0])
+                snprintf(cfg->acme_webroot, sizeof(cfg->acme_webroot), "%s", webroot->valuestring);
+
+            cJSON *domain = cJSON_GetObjectItemCaseSensitive(acme, "domain");
+            if (cJSON_IsString(domain))
+                snprintf(cfg->acme_domain, sizeof(cfg->acme_domain), "%s", domain->valuestring);
+
+            cJSON *https_port = cJSON_GetObjectItemCaseSensitive(acme, "https_port");
+            if (cJSON_IsNumber(https_port) && https_port->valueint > 0)
+                cfg->acme_https_port = https_port->valueint;
+
+            config_save_db_acme(cfg);
+
+            /* Dynamically start/stop ACME listener */
+            if (cfg->acme_enabled && !was_enabled) {
+                http_server_start_acme(cfg);
+            } else if (!cfg->acme_enabled && was_enabled) {
+                http_server_stop_acme();
+            }
+
+            log_info("ACME settings updated via API (enabled=%s, port=%d, domain=%s)",
+                     cfg->acme_enabled ? "yes" : "no",
+                     cfg->acme_http_port,
+                     cfg->acme_domain[0] ? cfg->acme_domain : "(auto)");
+        }
+    }
+
+    /*
      * Store each top-level key/value pair into the settings table.
      * This allows runtime-configurable settings to persist across restarts.
-     * Skip the 'drm' key since it's handled above.
+     * Skip the 'drm' and 'acme' keys since they're handled above.
      */
     sqlite3_stmt *stmt;
     const char *sql = "INSERT OR REPLACE INTO settings (key, value, updated_at) "
@@ -715,6 +769,7 @@ int api_post_config(http_request_t *req)
     cJSON_ArrayForEach(item, body) {
         if (!item->string) continue;
         if (strcmp(item->string, "drm") == 0) { saved++; continue; }
+        if (strcmp(item->string, "acme") == 0) { saved++; continue; }
 
         char *val_str = NULL;
         if (cJSON_IsString(item)) {

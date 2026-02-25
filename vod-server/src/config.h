@@ -158,4 +158,17 @@ int config_load_db_settings(vod_config_t *config);
  */
 int config_save_db_settings(const vod_config_t *config);
 
+/**
+ * Load ACME settings from SQLite settings table (key='acme_settings').
+ * Overrides INI file ACME settings if present in DB.
+ * Call after db_init().  Returns 0 on success, -1 on error or no DB settings.
+ */
+int config_load_db_acme(vod_config_t *config);
+
+/**
+ * Save current ACME settings to SQLite settings table (key='acme_settings').
+ * Returns 0 on success, -1 on error.
+ */
+int config_save_db_acme(const vod_config_t *config);
+
 #endif /* VOD_CONFIG_H */

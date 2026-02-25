@@ -118,6 +118,40 @@ var settingsPage = {
                     <button class="btn btn-primary btn-sm mt-2" onclick="settingsPage.saveThumbnails()">Save Thumbnail Settings</button>
                 </div>
 
+                <!-- ACME / Let's Encrypt -->
+                <div class="card">
+                    <div class="card-header"><h3>ACME / Let's Encrypt</h3></div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="set-acme-enabled"> Enable ACME HTTP listener
+                        </label>
+                        <small class="text-muted" style="display:block;margin-top:4px">
+                            Listens on port 80 for Let's Encrypt HTTP-01 challenges and redirects all other traffic to HTTPS.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>HTTP Port</label>
+                        <input type="number" class="form-control" id="set-acme-http-port" min="1" max="65535" placeholder="80">
+                    </div>
+                    <div class="form-group">
+                        <label>Domain</label>
+                        <input type="text" class="form-control" id="set-acme-domain" placeholder="e.g. vod1.example.com">
+                        <small class="text-muted">Used for HTTPS redirects. Leave empty to use the Host header.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Public HTTPS Port</label>
+                        <input type="number" class="form-control" id="set-acme-https-port" min="1" max="65535" placeholder="443">
+                        <small class="text-muted">The port browsers connect to (e.g. 443 or 8443 if NAT-forwarded).</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Webroot</label>
+                        <input type="text" class="form-control text-mono" id="set-acme-webroot" placeholder="/var/lib/vod-server/acme">
+                        <small class="text-muted">certbot --webroot writes challenge files here.</small>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" onclick="settingsPage.saveAcme()">Save ACME Settings</button>
+                    <div id="acme-save-note" class="text-sm mt-2" style="display:none"></div>
+                </div>
+
                 <!-- Cluster -->
                 <div class="card">
                     <div class="card-header"><h3>Cluster</h3></div>
@@ -189,6 +223,14 @@ var settingsPage = {
             document.getElementById('set-thumb-interval').value = th.interval || 10;
             document.getElementById('set-thumb-w').value = th.width || 160;
             document.getElementById('set-thumb-h').value = th.height || 90;
+
+            /* ACME */
+            const acme = config.acme || {};
+            document.getElementById('set-acme-enabled').checked = acme.enabled === true;
+            document.getElementById('set-acme-http-port').value = acme.http_port || 80;
+            document.getElementById('set-acme-domain').value = acme.domain || '';
+            document.getElementById('set-acme-https-port').value = acme.https_port || 443;
+            document.getElementById('set-acme-webroot').value = acme.webroot || '/var/lib/vod-server/acme';
 
             /* Cluster */
             document.getElementById('set-health-interval').value = cls.health_check_interval || 30;
@@ -586,6 +628,36 @@ var settingsPage = {
                 thumb_height: parseInt(document.getElementById('set-thumb-h').value)
             });
             App.toast('Thumbnail settings saved', 'success');
+        } catch (err) {
+            App.toast('Failed to save: ' + err.message, 'error');
+        }
+    },
+
+    async saveAcme() {
+        try {
+            const enabled = document.getElementById('set-acme-enabled').checked;
+            await App.post('/config', {
+                acme: {
+                    enabled: enabled,
+                    http_port: parseInt(document.getElementById('set-acme-http-port').value) || 80,
+                    domain: document.getElementById('set-acme-domain').value.trim(),
+                    https_port: parseInt(document.getElementById('set-acme-https-port').value) || 443,
+                    webroot: document.getElementById('set-acme-webroot').value.trim() || '/var/lib/vod-server/acme'
+                }
+            });
+            App.toast('ACME settings saved', 'success');
+            const note = document.getElementById('acme-save-note');
+            if (enabled) {
+                note.style.display = 'block';
+                note.className = 'text-sm mt-2 text-success';
+                note.textContent = 'ACME listener is now active. If you changed the port, restart the server.';
+            } else {
+                note.style.display = 'block';
+                note.className = 'text-sm mt-2 text-muted';
+                note.textContent = 'ACME listener disabled.';
+            }
+            /* Refresh SSL status to show updated ACME info */
+            this.loadSSLStatus();
         } catch (err) {
             App.toast('Failed to save: ' + err.message, 'error');
         }
