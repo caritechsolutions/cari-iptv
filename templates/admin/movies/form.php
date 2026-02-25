@@ -500,7 +500,14 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
                     xhr.addEventListener('error', function() {
                         console.error('[VOD Upload] XHR error event fired. readyState:', xhr.readyState, 'status:', xhr.status);
-                        showMsg('Upload failed: Cannot connect to VOD server. Check CORS config on the VOD proxy host.', 'error');
+                        console.error('[VOD Upload] Target was:', uploadUrl);
+                        var errMsg = 'Cannot connect to VOD server at: ' + vodUrl;
+                        if (window.location.protocol === 'https:' && vodUrl.indexOf('http://') === 0) {
+                            errMsg += '. Mixed content blocked — your admin panel uses HTTPS but VOD server URL is HTTP. Update the VOD server URL to https:// in Settings > VOD Servers.';
+                        } else {
+                            errMsg += '. Check that the VOD server is reachable from your browser and CORS is configured.';
+                        }
+                        showMsg(errMsg, 'error');
                         resetButtons();
                     });
 

@@ -1667,10 +1667,17 @@ function epVodSubmit() {
 
     xhr.onerror = function() {
         console.error('[VOD Upload] XHR error event fired. readyState:', xhr.readyState, 'status:', xhr.status);
+        console.error('[VOD Upload] Target was:', uploadUrl);
         document.getElementById('ep-vod-upload-progress').style.display = 'none';
         btn.innerHTML = '<i class="lucide-send"></i> Upload & Transcode';
         btn.disabled = false;
-        showVodMsg('Upload failed: Cannot connect to VOD server. Check CORS config on the VOD proxy host.', 'danger');
+        let errMsg = 'Cannot connect to VOD server at: ' + vodUrl;
+        if (window.location.protocol === 'https:' && vodUrl.startsWith('http://')) {
+            errMsg += '. Mixed content blocked — your admin panel uses HTTPS but VOD server URL is HTTP. Update the VOD server URL to https:// in Settings > VOD Servers.';
+        } else {
+            errMsg += '. Check that the VOD server is reachable from your browser and CORS is configured.';
+        }
+        showVodMsg(errMsg, 'danger');
     };
 
     xhr.send(file);
