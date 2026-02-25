@@ -476,36 +476,45 @@ $episodeCount = count($episodes);
                     <h4 class="card-title" style="margin:0;font-size:0.9375rem"><i class="lucide-scissors"></i> Preview & Markers</h4>
                 </div>
                 <div class="card-body">
-                    <!-- Video Preview -->
-                    <div style="position:relative;background:#000;border-radius:8px;overflow:hidden;margin-bottom:1rem">
-                        <video id="markerVideo" style="width:100%;max-height:360px;display:block" controls preload="metadata"></video>
+                    <!-- Fullscreen-capable container: video + overlay all live here -->
+                    <div id="markerPlayerContainer" class="marker-player-container">
+                        <!-- Video Preview -->
+                        <div class="marker-video-wrap">
+                            <video id="markerVideo" style="width:100%;display:block" controls preload="metadata"></video>
+                        </div>
+
+                        <!-- Overlay: marker controls (visible in both normal and fullscreen) -->
+                        <div class="marker-overlay" id="markerOverlay">
+                            <!-- Current time + marker buttons -->
+                            <div class="marker-controls">
+                                <span class="marker-current-time" id="markerCurrentTime">0:00.000</span>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('intro_start')" title="Mark where the intro/recap begins">
+                                    <i class="lucide-skip-forward"></i> Intro Start
+                                </button>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('intro_end')" title="Mark where the intro ends (skip-to point)">
+                                    <i class="lucide-fast-forward"></i> Intro End
+                                </button>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('credits_start')" title="Mark where end credits begin">
+                                    <i class="lucide-list-end"></i> Credits Start
+                                </button>
+                                <button type="button" class="btn btn-sm" style="background:var(--warning);color:#000" onclick="setMarker('ad_cue')" title="Add an ad insertion cue point">
+                                    <i class="lucide-megaphone"></i> Ad Cue
+                                </button>
+                                <button type="button" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;margin-left:auto" onclick="toggleMarkerFullscreen()" title="Toggle fullscreen" id="markerFsBtn">
+                                    <i class="lucide-maximize"></i>
+                                </button>
+                            </div>
+
+                            <!-- Timeline with markers -->
+                            <div class="marker-timeline" id="markerTimeline" onclick="seekFromTimeline(event)">
+                                <div id="markerTimelineProgress" style="position:absolute;top:0;left:0;height:100%;background:rgba(99,102,241,0.3);border-radius:4px;pointer-events:none"></div>
+                                <div id="markerFlags"></div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Current time + marker buttons -->
-                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
-                        <span style="font-family:var(--font-mono);font-size:0.9375rem;color:var(--text-secondary);min-width:70px" id="markerCurrentTime">0:00.000</span>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('intro_start')" title="Mark where the intro/recap begins">
-                            <i class="lucide-skip-forward"></i> Intro Start
-                        </button>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('intro_end')" title="Mark where the intro ends (skip-to point)">
-                            <i class="lucide-fast-forward"></i> Intro End
-                        </button>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="setMarker('credits_start')" title="Mark where end credits begin">
-                            <i class="lucide-list-end"></i> Credits Start
-                        </button>
-                        <button type="button" class="btn btn-sm" style="background:var(--warning);color:#000" onclick="setMarker('ad_cue')" title="Add an ad insertion cue point">
-                            <i class="lucide-megaphone"></i> Ad Cue
-                        </button>
-                    </div>
-
-                    <!-- Timeline with markers -->
-                    <div style="position:relative;height:24px;background:var(--bg-hover);border-radius:4px;margin-bottom:1rem;cursor:pointer" id="markerTimeline" onclick="seekFromTimeline(event)">
-                        <div id="markerTimelineProgress" style="position:absolute;top:0;left:0;height:100%;background:rgba(99,102,241,0.3);border-radius:4px;pointer-events:none"></div>
-                        <div id="markerFlags"></div>
-                    </div>
-
-                    <!-- Markers list -->
-                    <div id="markersList"></div>
+                    <!-- Markers list (below the player, not in fullscreen container) -->
+                    <div id="markersList" style="margin-top:1rem"></div>
                 </div>
             </div>
         </div>
@@ -514,6 +523,85 @@ $episodeCount = count($episodes);
 <?php endif; ?>
 
 <style>
+/* Marker Player Container — supports fullscreen with overlay */
+.marker-player-container {
+    position: relative;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.marker-video-wrap {
+    position: relative;
+}
+.marker-video-wrap video {
+    max-height: 360px;
+}
+.marker-overlay {
+    padding: 0.5rem 0.75rem;
+    background: rgba(15, 23, 42, 0.85);
+}
+.marker-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+.marker-current-time {
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    min-width: 70px;
+}
+.marker-timeline {
+    position: relative;
+    height: 24px;
+    background: var(--bg-hover);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Fullscreen state — overlay sticks to bottom of the video */
+.marker-player-container:fullscreen,
+.marker-player-container:-webkit-full-screen {
+    display: flex;
+    flex-direction: column;
+    background: #000;
+}
+.marker-player-container:fullscreen .marker-video-wrap,
+.marker-player-container:-webkit-full-screen .marker-video-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.marker-player-container:fullscreen .marker-video-wrap video,
+.marker-player-container:-webkit-full-screen .marker-video-wrap video {
+    max-height: 100%;
+    width: 100%;
+    object-fit: contain;
+}
+.marker-player-container:fullscreen .marker-overlay,
+.marker-player-container:-webkit-full-screen .marker-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85) 30%);
+    transition: opacity 0.3s;
+}
+.marker-player-container:fullscreen .marker-overlay:not(:hover),
+.marker-player-container:-webkit-full-screen .marker-overlay:not(:hover) {
+    opacity: 0.2;
+}
+.marker-player-container:fullscreen .marker-overlay:hover,
+.marker-player-container:-webkit-full-screen .marker-overlay:hover {
+    opacity: 1;
+}
+
 /* Season Info Header */
 .season-info-header {
     display: flex;
@@ -1651,6 +1739,7 @@ function epVodSubmit() {
                         document.getElementById('ep-vod-upload-controls').style.display = 'none';
                         document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-primary"><i class="lucide-loader"></i> Processing</span>';
                         startVodPoll(serverId, jobId, episodeId, contentId);
+                        if (window.startEpisodeProgressPoll) window.startEpisodeProgressPoll();
                     } else if (data.error === 'duplicate') {
                         showVodMsg(data.message || 'Content already exists on this server.', 'danger');
                     } else {
@@ -2027,6 +2116,28 @@ function seekFromTimeline(e) {
     video.currentTime = pct * video.duration;
 }
 
+function toggleMarkerFullscreen() {
+    const container = document.getElementById('markerPlayerContainer');
+    const btn = document.getElementById('markerFsBtn');
+    if (!container) return;
+
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else {
+        (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+    }
+}
+
+// Update fullscreen button icon on fullscreen change
+document.addEventListener('fullscreenchange', updateFsIcon);
+document.addEventListener('webkitfullscreenchange', updateFsIcon);
+function updateFsIcon() {
+    const btn = document.getElementById('markerFsBtn');
+    if (!btn) return;
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    btn.innerHTML = isFs ? '<i class="lucide-minimize"></i>' : '<i class="lucide-maximize"></i>';
+}
+
 function formatTimePrecise(seconds) {
     seconds = parseFloat(seconds) || 0;
     const h = Math.floor(seconds / 3600);
@@ -2044,48 +2155,96 @@ document.getElementById('markerVideo')?.addEventListener('loadedmetadata', funct
     renderMarkers();
 });
 
-// ---- Page-load: verify stale active VOD jobs against the VOD server ----
+// ---- Live VOD progress polling for episodes table ----
+// Polls the backend DB (updated by VOD server webhooks) every 10 seconds.
+// Stops automatically when no active jobs remain.
 (function() {
-    const rows = document.querySelectorAll('#episodesTable tr[data-vod-status]');
     const activeStatuses = ['pending', 'processing', 'packaging', 'downloading'];
-    rows.forEach(row => {
-        const status = row.dataset.vodStatus;
-        const serverId = row.dataset.vodServerId;
-        const jobId = row.dataset.vodJobId;
-        const epId = row.id.replace('episode-row-', '');
-        if (!activeStatuses.includes(status) || !serverId || !jobId) return;
+    let progressTimer = null;
 
-        // Verify this job still exists on the VOD server
-        fetch(`/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${epId}`)
+    function hasActiveJobs() {
+        const rows = document.querySelectorAll('#episodesTableBody tr[data-vod-status]');
+        for (const row of rows) {
+            if (activeStatuses.includes(row.dataset.vodStatus)) return true;
+        }
+        return false;
+    }
+
+    function updateEpisodeBadge(row, status, progress, streamUrl) {
+        const streamTd = row.children[5];
+        if (!streamTd) return;
+
+        row.dataset.vodStatus = status;
+        row.dataset.vodProgress = progress;
+        if (streamUrl) row.dataset.streamUrl = streamUrl;
+
+        if (status === 'complete') {
+            streamTd.innerHTML = '<span class="badge badge-success" title="VOD Ready"><i class="lucide-check-circle"></i> Ready</span>';
+        } else if (status === 'failed') {
+            streamTd.innerHTML = '<span class="badge badge-danger" title="Failed"><i class="lucide-alert-circle"></i> Failed</span>';
+        } else if (activeStatuses.includes(status)) {
+            const pct = Math.round(progress);
+            const label = status === 'packaging' ? 'Packaging' : status === 'downloading' ? 'Downloading' : pct + '%';
+            streamTd.innerHTML = '<span class="badge badge-primary" title="' + status + '"><i class="lucide-loader"></i> ' + label + '</span>';
+        }
+    }
+
+    function pollEpisodeProgress() {
+        fetch('/admin/vod-server/episode-progress?season_id=' + seasonId)
             .then(r => r.json())
             .then(data => {
-                const job = data.job || {};
-                const realStatus = job.status || '';
-                const streamTd = row.children[5];
+                if (!data.success || !data.episodes) return;
+                data.episodes.forEach(ep => {
+                    const row = document.getElementById('episode-row-' + ep.id);
+                    if (!row) return;
+                    const oldStatus = row.dataset.vodStatus;
+                    updateEpisodeBadge(row, ep.status, ep.progress, ep.stream_url);
 
-                if (realStatus === 'complete') {
-                    row.dataset.vodStatus = 'complete';
-                    row.dataset.vodProgress = '100';
-                    if (job.stream_url) row.dataset.streamUrl = job.stream_url;
-                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-success" title="VOD Ready"><i class="lucide-check-circle"></i> Ready</span>';
-                } else if (realStatus === 'failed' || !data.success) {
-                    row.dataset.vodStatus = 'failed';
-                    row.dataset.vodJobId = '';
-                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="Failed"><i class="lucide-alert-circle"></i> Failed</span>';
-                } else if (activeStatuses.includes(realStatus)) {
-                    // Still actually active — update badge with fresh progress
-                    const pct = Math.round(parseFloat(job.progress) || 0);
-                    row.dataset.vodProgress = pct;
-                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-primary" title="' + realStatus + '"><i class="lucide-loader"></i> ' + pct + '%</span>';
+                    // If an episode just completed and its VOD modal is open, update the modal too
+                    if (ep.status === 'complete' && oldStatus !== 'complete' && vodEpisodeId == ep.id) {
+                        document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-success"><i class="lucide-check-circle"></i> Ready</span>';
+                        const progBar = document.getElementById('ep-vod-progress');
+                        if (progBar) progBar.style.display = 'none';
+                        document.getElementById('ep-vod-upload-controls').style.display = '';
+                        document.getElementById('ep-vod-remove-wrap').style.display = '';
+                        showVodMsg('Transcode complete! Stream URL has been set.', 'success');
+                        if (ep.stream_url) {
+                            document.getElementById('markerSection').style.display = '';
+                            const video = document.getElementById('markerVideo');
+                            if (ep.stream_url.endsWith('.m3u8') && window.Hls) {
+                                if (video._hls) video._hls.destroy();
+                                const hls = new Hls();
+                                hls.loadSource(ep.stream_url);
+                                hls.attachMedia(video);
+                                video._hls = hls;
+                            } else {
+                                video.src = ep.stream_url;
+                            }
+                            loadMarkers(ep.id);
+                        }
+                    }
+                });
+
+                // Stop polling if no more active jobs
+                if (!hasActiveJobs()) {
+                    clearInterval(progressTimer);
+                    progressTimer = null;
                 }
             })
-            .catch(() => {
-                // VOD server unreachable — mark as failed
-                row.dataset.vodStatus = 'failed';
-                row.dataset.vodJobId = '';
-                const streamTd = row.children[5];
-                if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="VOD server unreachable"><i class="lucide-alert-circle"></i> Failed</span>';
-            });
-    });
+            .catch(() => {}); // Silently ignore network blips
+    }
+
+    // Start polling immediately if there are active jobs
+    if (hasActiveJobs()) {
+        pollEpisodeProgress(); // First fetch right away
+        progressTimer = setInterval(pollEpisodeProgress, 10000); // Then every 10s
+    }
+
+    // Expose so the upload handler can restart polling after submitting a new job
+    window.startEpisodeProgressPoll = function() {
+        if (progressTimer) return; // Already running
+        pollEpisodeProgress();
+        progressTimer = setInterval(pollEpisodeProgress, 10000);
+    };
 })();
 </script>

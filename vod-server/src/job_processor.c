@@ -38,6 +38,7 @@ typedef struct {
     char                title[512];
     char                profile_name[MAX_PROFILE_NAME];
     char                callback_url[1024];
+    time_t              last_callback_time;   /* Throttle periodic callbacks */
 } active_job_t;
 
 /* Module state */
@@ -53,6 +54,7 @@ static void  check_active_jobs(void);
 static void  pick_up_new_jobs(void);
 static void  handle_job_completed(active_job_t *job);
 static void  handle_job_failed(active_job_t *job, const char *error_msg);
+static void  fire_callback(const active_job_t *job, const char *status, const char *error_msg);
 static void  remove_active_job(int slot);
 static int   find_free_slot(void);
 static void  interruptible_sleep(int seconds);
@@ -304,6 +306,15 @@ static void check_active_jobs(void)
 
             log_debug("Job %d progress: %.1f%% - %s",
                       st->job_id, st->progress, st->current_step);
+
+            /* Fire periodic progress callback (~every 30 seconds) */
+            if (g_jobs[i].callback_url[0]) {
+                time_t now = time(NULL);
+                if (now - g_jobs[i].last_callback_time >= 30) {
+                    g_jobs[i].last_callback_time = now;
+                    fire_callback(&g_jobs[i], "processing", NULL);
+                }
+            }
         }
     }
 }
@@ -333,6 +344,9 @@ static void handle_job_completed(active_job_t *job)
             sqlite3_finalize(stmt);
         }
     }
+
+    /* Notify backend that packaging has started */
+    fire_callback(job, "packaging", NULL);
 
     /* ---- DRM: Auto-generate key if enabled ---- */
     if (g_config->drm_enabled && g_config->drm_auto_generate) {
@@ -537,6 +551,9 @@ static void handle_job_completed(active_job_t *job)
 
     log_info("Job %d: Complete! Content '%s' is ready to serve",
              job_id, job->content_id);
+
+    /* ---- Fire callback notification ---- */
+    fire_callback(job, "complete", NULL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -570,6 +587,76 @@ static void handle_job_failed(active_job_t *job, const char *error_msg)
 
     /* Clean up temp directory */
     storage_cleanup_temp(job_id);
+
+    /* Fire callback notification */
+    fire_callback(job, "failed", error_msg);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Fire the callback URL (non-blocking via fork+curl)                 */
+/* ------------------------------------------------------------------ */
+
+static void fire_callback(const active_job_t *job, const char *status, const char *error_msg)
+{
+    if (!job->callback_url[0]) return;  /* No callback configured */
+
+    int job_id = job->state.job_id;
+    log_info("Job %d: Firing callback to %s (status=%s)", job_id, job->callback_url, status);
+
+    /* Build JSON payload */
+    char payload[2048];
+    char escaped_error[512] = "";
+    if (error_msg) {
+        /* Simple JSON-escape: replace " with \" and \ with \\ */
+        int j = 0;
+        for (int i = 0; error_msg[i] && j < (int)sizeof(escaped_error) - 2; i++) {
+            if (error_msg[i] == '"' || error_msg[i] == '\\') {
+                escaped_error[j++] = '\\';
+            }
+            escaped_error[j++] = error_msg[i];
+        }
+        escaped_error[j] = '\0';
+    }
+
+    snprintf(payload, sizeof(payload),
+        "{\"event\":\"job.%s\","
+        "\"job_id\":%d,"
+        "\"content_id\":\"%s\","
+        "\"status\":\"%s\","
+        "\"progress\":%.1f"
+        "%s%s%s}",
+        status,
+        job_id,
+        job->content_id,
+        status,
+        (strcmp(status, "complete") == 0) ? 100.0 : job->state.progress,
+        error_msg ? ",\"error\":\"" : "",
+        error_msg ? escaped_error : "",
+        error_msg ? "\"" : "");
+
+    /* Fork a child to run curl so we don't block the processor thread */
+    pid_t pid = fork();
+    if (pid == 0) {
+        /* Child process — fire and forget */
+        /* Retry up to 3 times with 2s delay between */
+        execlp("curl", "curl",
+               "-s",                       /* silent */
+               "-X", "POST",
+               "-H", "Content-Type: application/json",
+               "-d", payload,
+               "--connect-timeout", "10",
+               "--max-time", "30",
+               "--retry", "3",
+               "--retry-delay", "2",
+               "-k",                       /* allow self-signed certs */
+               job->callback_url,
+               (char *)NULL);
+        /* If exec fails, just exit */
+        _exit(1);
+    } else if (pid < 0) {
+        log_error("Job %d: Failed to fork for callback: %s", job_id, strerror(errno));
+    }
+    /* Parent continues immediately — don't waitpid, let child be reaped by init */
 }
 
 /* ------------------------------------------------------------------ */

@@ -3050,6 +3050,9 @@ const CariApp = (function() {
             const vodCCBtn = document.getElementById('vodCCBtn');
             if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
 
+            // Fullscreen: use the container so overlays (Skip Intro, Next Episode) stay visible
+            setupVodFullscreen(video, document.getElementById('playerContainer'));
+
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
                 setupProgressTracking(video, type === 'episode' ? 'episode' : 'movie', item.id);
@@ -3117,6 +3120,46 @@ const CariApp = (function() {
         } catch (err) {
             document.getElementById('playerDetails').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load content.');
         }
+    }
+
+    /**
+     * Make fullscreen target the container instead of just the video.
+     * Native <video controls> fullscreen button internally fullscreens the
+     * video element — overlays (Skip Intro, Next Episode, CC) are children
+     * of the container and become invisible. We detect this and switch
+     * fullscreen to the container so all children remain visible.
+     */
+    function setupVodFullscreen(video, container) {
+        if (!video || !container) return;
+
+        // Detect when native controls put the VIDEO in fullscreen,
+        // then switch to the CONTAINER so overlay children stay visible.
+        function onFsChange() {
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (fsEl === video) {
+                // Video went fullscreen via native controls — switch to container
+                const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+                const enterFs = container.requestFullscreen || container.webkitRequestFullscreen;
+                if (exitFs && enterFs) {
+                    exitFs.call(document).then(() => {
+                        enterFs.call(container).catch(() => {});
+                    }).catch(() => {});
+                }
+            }
+        }
+        document.addEventListener('fullscreenchange', onFsChange);
+        document.addEventListener('webkitfullscreenchange', onFsChange);
+
+        // Double-click video → toggle fullscreen on container
+        video.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (fsEl) {
+                (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            } else {
+                (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+            }
+        });
     }
 
     /**

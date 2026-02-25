@@ -379,7 +379,13 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->get('/vod-server/markers', [VodServerController::class, 'getMarkers']);
     $router->post('/vod-server/markers/save', [VodServerController::class, 'saveMarker']);
     $router->post('/vod-server/markers/delete', [VodServerController::class, 'deleteMarker']);
+
+    // Bulk VOD progress for episodes list (polled by JS)
+    $router->get('/vod-server/episode-progress', [VodServerController::class, 'episodeProgress']);
 });
+
+// VOD Server webhook (no auth — called by the VOD server directly)
+$router->post('/admin/vod-server/webhook', [VodServerController::class, 'webhook']);
 
 // Dispatch the request
 $router->dispatch();
