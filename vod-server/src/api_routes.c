@@ -2928,7 +2928,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
          * certbot places certs in /etc/letsencrypt/live/<domain>/
          * deploy-hook copies them to our paths after issue + renewal. */
         snprintf(cmd, sizeof(cmd),
-                 "certbot certonly --non-interactive --agree-tos "
+                 "sudo certbot certonly --non-interactive --agree-tos "
                  "--dns-cloudflare "
                  "--dns-cloudflare-credentials '%s' "
                  "-d '%s' %s%s "
@@ -2947,7 +2947,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         if (email[0]) {
             /* Rebuild with proper quoting */
             snprintf(cmd, sizeof(cmd),
-                     "certbot certonly --non-interactive --agree-tos "
+                     "sudo certbot certonly --non-interactive --agree-tos "
                      "--dns-cloudflare "
                      "--dns-cloudflare-credentials '%s' "
                      "-d '%s' --email '%s' "
@@ -2962,7 +2962,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      cert_path, key_path, cert_path, key_path);
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "certbot certonly --non-interactive --agree-tos "
+                     "sudo certbot certonly --non-interactive --agree-tos "
                      "--dns-cloudflare --register-unsafely-without-email "
                      "--dns-cloudflare-credentials '%s' "
                      "-d '%s' "
@@ -2982,7 +2982,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         const char *webroot = s_config->acme_webroot;
         if (email[0] != '\0') {
             snprintf(cmd, sizeof(cmd),
-                     "certbot certonly --webroot --non-interactive --agree-tos "
+                     "sudo certbot certonly --webroot --non-interactive --agree-tos "
                      "-w '%s' "
                      "-d '%s' --email '%s' "
                      "--deploy-hook '"
@@ -2996,7 +2996,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      cert_path, key_path, cert_path, key_path);
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "certbot certonly --webroot --non-interactive --agree-tos "
+                     "sudo certbot certonly --webroot --non-interactive --agree-tos "
                      "--register-unsafely-without-email "
                      "-w '%s' "
                      "-d '%s' "
@@ -3014,7 +3014,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         /* HTTP-01 standalone — certbot runs its own server on port 80 */
         if (email[0] != '\0') {
             snprintf(cmd, sizeof(cmd),
-                     "certbot certonly --standalone --non-interactive --agree-tos "
+                     "sudo certbot certonly --standalone --non-interactive --agree-tos "
                      "--preferred-challenges http "
                      "-d '%s' --email '%s' "
                      "--cert-path '%s' --key-path '%s' "
@@ -3023,7 +3023,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
                      domain, email, cert_path, key_path, cert_path);
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "certbot certonly --standalone --non-interactive --agree-tos "
+                     "sudo certbot certonly --standalone --non-interactive --agree-tos "
                      "--preferred-challenges http --register-unsafely-without-email "
                      "-d '%s' "
                      "--cert-path '%s' --key-path '%s' "
@@ -3066,7 +3066,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         ssl_load_files(cert_path, key_path);
 
         /* Enable SSL in vod-server.conf */
-        system("sed -i 's/^\\s*enabled\\s*=.*$/enabled = true/' "
+        system("sudo sed -i 's/^\\s*enabled\\s*=.*$/enabled = true/' "
                "/etc/vod-server/vod-server.conf 2>/dev/null");
         log_info("SSL auto-enabled in vod-server.conf");
 
@@ -3075,7 +3075,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         if (sfp) {
             fprintf(sfp,
                 "#!/bin/bash\n"
-                "certbot renew --quiet --deploy-hook '"
+                "sudo certbot renew --quiet --deploy-hook '"
                 "cp -fL /etc/letsencrypt/live/%s/fullchain.pem %s; "
                 "cp -fL /etc/letsencrypt/live/%s/privkey.pem %s; "
                 "chmod 644 %s; chmod 600 %s; "
@@ -3111,8 +3111,8 @@ int api_post_ssl_letsencrypt(http_request_t *req)
             fclose(tfp);
         }
 
-        system("systemctl daemon-reload 2>/dev/null");
-        system("systemctl enable --now vod-server-renew.timer 2>/dev/null");
+        system("sudo systemctl daemon-reload 2>/dev/null");
+        system("sudo systemctl enable --now vod-server-renew.timer 2>/dev/null");
         log_info("Auto-renewal timer installed (twice daily)");
 
         cJSON_AddBoolToObject(root, "success", 1);
@@ -3122,7 +3122,7 @@ int api_post_ssl_letsencrypt(http_request_t *req)
         cJSON_AddStringToObject(root, "key_path", key_path);
 
         /* Schedule restart after we send the response */
-        system("(sleep 2 && systemctl restart vod-server) &");
+        system("(sleep 2 && sudo systemctl restart vod-server) &");
 
     } else {
         log_error("certbot failed for %s (exit %d): %.512s", domain, status, output);

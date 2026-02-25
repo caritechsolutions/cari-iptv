@@ -368,6 +368,27 @@ HOOK_EOF
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh
 log "Certbot renewal hook installed at /etc/letsencrypt/renewal-hooks/deploy/vod-server.sh"
 
+# Allow vod-server user to run certbot and systemctl without password
+# (needed because the VOD server daemon runs as vod-server, not root)
+SUDOERS_FILE="/etc/sudoers.d/vod-server"
+if [ ! -f "$SUDOERS_FILE" ]; then
+    CERTBOT_BIN=$(command -v certbot 2>/dev/null || echo "/usr/bin/certbot")
+    cat > "$SUDOERS_FILE" << SUDOERS_EOF
+# VOD Server — allow the vod-server user to run certbot and systemctl
+# for Let's Encrypt certificate management from the Web GUI
+vod-server ALL=(root) NOPASSWD: $CERTBOT_BIN *
+vod-server ALL=(root) NOPASSWD: /snap/bin/certbot *
+vod-server ALL=(root) NOPASSWD: /usr/local/bin/certbot *
+vod-server ALL=(root) NOPASSWD: /usr/bin/certbot *
+vod-server ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+vod-server ALL=(root) NOPASSWD: /usr/bin/systemctl restart vod-server
+vod-server ALL=(root) NOPASSWD: /usr/bin/systemctl enable --now vod-server-renew.timer
+vod-server ALL=(root) NOPASSWD: /usr/bin/sed -i * /etc/vod-server/vod-server.conf
+SUDOERS_EOF
+    chmod 440 "$SUDOERS_FILE"
+    log "Sudoers entry created for vod-server user"
+fi
+
 # ========================
 # 8. Start service
 # ========================
