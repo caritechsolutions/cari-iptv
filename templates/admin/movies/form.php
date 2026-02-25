@@ -542,7 +542,18 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
                                 console.log('[VOD] Poll response:', data);
-                                if (!data.success || !data.job) {
+                                if (!data.success) {
+                                    // VOD server can't find this job — stop polling, show failure
+                                    clearInterval(vodJobPollTimer);
+                                    vodJobPollTimer = null;
+                                    document.getElementById('vod-transcode-bar').style.background = 'var(--danger)';
+                                    document.getElementById('vod-transcode-label').textContent = 'Job not found on VOD server';
+                                    document.getElementById('vod-transcode-step').textContent = data.error || '';
+                                    showMsg('VOD job no longer exists on the server. You can re-upload.', 'error');
+                                    resetButtons();
+                                    return;
+                                }
+                                if (!data.job) {
                                     document.getElementById('vod-transcode-step').textContent = 'Waiting for response...';
                                     return;
                                 }

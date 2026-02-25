@@ -1700,7 +1700,22 @@ function pollVodStatus(serverId, jobId, episodeId) {
     fetch(`/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${episodeId}`)
         .then(r => r.json())
         .then(data => {
-            if (!data.success) return;
+            if (!data.success) {
+                // Job not found on VOD server — stop polling, show failure
+                stopVodPoll();
+                document.getElementById('vodStatusBadge').innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
+                document.getElementById('ep-vod-progress').style.display = 'none';
+                document.getElementById('ep-vod-upload-controls').style.display = '';
+                showVodMsg(data.error || 'Job not found on VOD server. You can re-upload.', 'danger');
+                const row = document.getElementById('episode-row-' + episodeId);
+                if (row) {
+                    row.dataset.vodStatus = 'failed';
+                    row.dataset.vodJobId = '';
+                    const streamTd = row.children[5];
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger"><i class="lucide-alert-circle"></i> Failed</span>';
+                }
+                return;
+            }
             const job = data.job || {};
             const status = job.status || '';
             const progress = parseFloat(job.progress) || 0;
@@ -1945,4 +1960,49 @@ function formatTimePrecise(seconds) {
 document.getElementById('markerVideo')?.addEventListener('loadedmetadata', function() {
     renderMarkers();
 });
+
+// ---- Page-load: verify stale active VOD jobs against the VOD server ----
+(function() {
+    const rows = document.querySelectorAll('#episodesTable tr[data-vod-status]');
+    const activeStatuses = ['pending', 'processing', 'packaging', 'downloading'];
+    rows.forEach(row => {
+        const status = row.dataset.vodStatus;
+        const serverId = row.dataset.vodServerId;
+        const jobId = row.dataset.vodJobId;
+        const epId = row.id.replace('episode-row-', '');
+        if (!activeStatuses.includes(status) || !serverId || !jobId) return;
+
+        // Verify this job still exists on the VOD server
+        fetch(`/admin/vod-server/job-status?server_id=${serverId}&job_id=${jobId}&entity_type=episode&entity_id=${epId}`)
+            .then(r => r.json())
+            .then(data => {
+                const job = data.job || {};
+                const realStatus = job.status || '';
+                const streamTd = row.children[5];
+
+                if (realStatus === 'complete') {
+                    row.dataset.vodStatus = 'complete';
+                    row.dataset.vodProgress = '100';
+                    if (job.stream_url) row.dataset.streamUrl = job.stream_url;
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-success" title="VOD Ready"><i class="lucide-check-circle"></i> Ready</span>';
+                } else if (realStatus === 'failed' || !data.success) {
+                    row.dataset.vodStatus = 'failed';
+                    row.dataset.vodJobId = '';
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="Failed"><i class="lucide-alert-circle"></i> Failed</span>';
+                } else if (activeStatuses.includes(realStatus)) {
+                    // Still actually active — update badge with fresh progress
+                    const pct = Math.round(parseFloat(job.progress) || 0);
+                    row.dataset.vodProgress = pct;
+                    if (streamTd) streamTd.innerHTML = '<span class="badge badge-primary" title="' + realStatus + '"><i class="lucide-loader"></i> ' + pct + '%</span>';
+                }
+            })
+            .catch(() => {
+                // VOD server unreachable — mark as failed
+                row.dataset.vodStatus = 'failed';
+                row.dataset.vodJobId = '';
+                const streamTd = row.children[5];
+                if (streamTd) streamTd.innerHTML = '<span class="badge badge-danger" title="VOD server unreachable"><i class="lucide-alert-circle"></i> Failed</span>';
+            });
+    });
+})();
 </script>

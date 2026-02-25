@@ -609,7 +609,24 @@ class VodServerController
 
             $this->sendJson(['success' => true, 'job' => $job]);
         } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+            // VOD server returned error (404 job not found, connection failed, etc.)
+            // Reset the stale DB entry so the UI doesn't stay stuck
+            if ($entityId > 0 && $entityType) {
+                $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
+                try {
+                    $this->db->execute(
+                        "UPDATE {$table} SET vod_status = 'failed', vod_error = ?, vod_job_id = NULL WHERE id = ? AND vod_status IN ('pending','downloading','processing','packaging')",
+                        ['Job not found on VOD server: ' . $e->getMessage(), $entityId]
+                    );
+                } catch (\Exception $dbErr) {
+                    // ignore
+                }
+            }
+            $this->sendJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'job' => ['status' => 'failed', 'error_msg' => 'Job not found on VOD server']
+            ]);
         }
     }
 
