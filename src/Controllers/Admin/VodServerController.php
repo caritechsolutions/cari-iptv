@@ -445,13 +445,21 @@ class VodServerController
 
         try {
             // Check for existing content (unless overwrite confirmed)
-            if (!$overwrite && $this->vodService->contentExists($serverId, $contentId)) {
-                $this->sendJson([
-                    'success' => false,
-                    'error'   => 'duplicate',
-                    'message' => 'Content "' . $contentId . '" already exists on this VOD server.',
-                ]);
-                return;
+            // Use a short timeout — don't let this block the whole submission
+            if (!$overwrite) {
+                try {
+                    if ($this->vodService->contentExists($serverId, $contentId)) {
+                        $this->sendJson([
+                            'success' => false,
+                            'error'   => 'duplicate',
+                            'message' => 'Content "' . $contentId . '" already exists on this VOD server.',
+                        ]);
+                        return;
+                    }
+                } catch (\Exception $existsErr) {
+                    // If check fails (timeout etc.), proceed anyway — better to submit than block
+                    error_log('[VOD SubmitJob] contentExists check failed (proceeding): ' . $existsErr->getMessage());
+                }
             }
 
             // Submit transcode job
@@ -465,7 +473,7 @@ class VodServerController
             $job = $jobResult['job'] ?? $jobResult;
             $jobId = (int)($job['id'] ?? 0);
 
-            // If job ID not in response, look it up
+            // If job ID not in response, try a quick lookup (non-blocking)
             if ($jobId <= 0) {
                 try {
                     $jobsList = $this->vodService->getJobs($serverId, ['limit' => 20]);
@@ -507,7 +515,50 @@ class VodServerController
                 'entity_id'   => $entityId,
             ]);
         } catch (\Exception $e) {
-            $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+            // If the job submission itself timed out, the VOD server may still have received it.
+            // Check if we can find the job before reporting failure.
+            $recovered = false;
+            if (stripos($e->getMessage(), 'timed out') !== false || stripos($e->getMessage(), 'timeout') !== false) {
+                try {
+                    error_log('[VOD SubmitJob] Job submission timed out, checking if job was created...');
+                    $jobsList = $this->vodService->getJobs($serverId, ['limit' => 10]);
+                    $items = $jobsList['items'] ?? $jobsList;
+                    if (is_array($items)) {
+                        foreach ($items as $item) {
+                            if (($item['content_id'] ?? '') === $contentId) {
+                                $jobId = (int)($item['id'] ?? 0);
+                                error_log('[VOD SubmitJob] Found job ' . $jobId . ' despite timeout — reporting success');
+
+                                if ($entityId > 0 && $jobId > 0) {
+                                    $table = $entityType === 'episode' ? 'series_episodes' : 'movies';
+                                    $this->db->execute(
+                                        "UPDATE {$table} SET vod_server_id = ?, vod_job_id = ?, vod_content_id = ?, vod_status = 'pending', vod_progress = 0, vod_error = NULL WHERE id = ?",
+                                        [$serverId, $jobId, $contentId, $entityId]
+                                    );
+                                }
+
+                                $this->sendJson([
+                                    'success'     => true,
+                                    'message'     => 'Transcode job submitted (recovered after timeout)',
+                                    'job'         => $item,
+                                    'job_id'      => $jobId,
+                                    'server_id'   => $serverId,
+                                    'entity_type' => $entityType,
+                                    'entity_id'   => $entityId,
+                                ]);
+                                $recovered = true;
+                                break;
+                            }
+                        }
+                    }
+                } catch (\Exception $recoveryErr) {
+                    error_log('[VOD SubmitJob] Recovery lookup also failed: ' . $recoveryErr->getMessage());
+                }
+            }
+
+            if (!$recovered) {
+                $this->sendJson(['success' => false, 'error' => $e->getMessage()]);
+            }
         }
     }
 

@@ -11,7 +11,7 @@ use CariIPTV\Core\Database;
 class VodServerService
 {
     private Database $db;
-    private int $timeout = 30;
+    private int $timeout = 60;
     private static bool $tableChecked = false;
 
     public function __construct()
