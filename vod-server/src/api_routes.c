@@ -361,6 +361,11 @@ int api_handle_request(http_request_t *req)
         return api_post_upload(req);
     }
 
+    /* HEAD /api/upload?upload_id=... — query resume offset */
+    if (strcmp(url, "/api/upload") == 0 && strcmp(method, "HEAD") == 0) {
+        return api_head_upload(req);
+    }
+
     /* GET|DELETE /api/uploads */
     if (strcmp(url, "/api/uploads") == 0) {
         if (strcmp(method, HTTP_GET) == 0)    return api_get_uploads(req);
@@ -2627,6 +2632,70 @@ int api_post_upload(http_request_t *req)
     cJSON_AddNumberToObject(root, "size", (double)req->upload_size);
 
     return send_json_obj(req->connection, MHD_HTTP_OK, root);
+}
+
+/* ================================================================
+ * HEAD /api/upload?upload_id=...  — query resumable upload progress
+ * Returns Upload-Offset header with current byte count.
+ * ================================================================ */
+
+int api_head_upload(http_request_t *req)
+{
+    const char *upload_id = http_get_param(req->connection, "upload_id");
+    if (!upload_id || upload_id[0] == '\0') {
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Missing upload_id parameter");
+    }
+
+    /* Get filename extension from query param */
+    const char *fname = http_get_param(req->connection, "filename");
+    const char *ext = "mp4";
+    if (fname) {
+        const char *dot = strrchr(fname, '.');
+        if (dot && dot[1]) ext = dot + 1;
+    }
+
+    /* Sanitize upload_id */
+    char safe_id[65];
+    int j = 0;
+    for (int i = 0; upload_id[i] && j < 64; i++) {
+        char c = upload_id[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '-') {
+            safe_id[j++] = c;
+        }
+    }
+    safe_id[j] = '\0';
+
+    /* Build the upload file path */
+    char upload_path[MAX_PATH_LEN];
+    snprintf(upload_path, sizeof(upload_path), "%s/uploads/upload_%s.%s",
+             s_config ? s_config->temp_path : "/var/lib/vod-server/tmp",
+             safe_id, ext);
+
+    /* Check if partial file exists */
+    struct stat st;
+    size_t offset = 0;
+    if (stat(upload_path, &st) == 0) {
+        offset = (size_t)st.st_size;
+    }
+
+    /* Return 200 with Upload-Offset header */
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+
+    char offset_val[32];
+    snprintf(offset_val, sizeof(offset_val), "%zu", offset);
+    MHD_add_response_header(response, "Upload-Offset", offset_val);
+    MHD_add_response_header(response, "Cache-Control", "no-store");
+    MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Allow-Headers",
+                            "Content-Type, X-API-Key, Upload-Offset");
+    MHD_add_response_header(response, "Access-Control-Expose-Headers", "Upload-Offset");
+
+    int ret = MHD_queue_response(req->connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return ret;
 }
 
 /* ================================================================

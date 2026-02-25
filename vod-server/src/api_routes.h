@@ -44,6 +44,7 @@ int api_post_peer_health(http_request_t *req);
 
 /* Upload routes */
 int api_post_upload(http_request_t *req);
+int api_head_upload(http_request_t *req);
 int api_get_uploads(http_request_t *req);
 int api_delete_upload(http_request_t *req);
 

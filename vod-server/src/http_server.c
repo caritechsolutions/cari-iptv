@@ -112,9 +112,11 @@ static int add_cors_headers(struct MHD_Response *response)
 {
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     MHD_add_response_header(response, "Access-Control-Allow-Methods",
-                            "GET, POST, PUT, DELETE, OPTIONS");
+                            "GET, POST, PUT, DELETE, HEAD, OPTIONS");
     MHD_add_response_header(response, "Access-Control-Allow-Headers",
-                            "Content-Type, X-API-Key, Authorization");
+                            "Content-Type, X-API-Key, Authorization, Upload-Offset");
+    MHD_add_response_header(response, "Access-Control-Expose-Headers",
+                            "Upload-Offset");
     MHD_add_response_header(response, "Access-Control-Max-Age", "86400");
     return 0;
 }
@@ -312,6 +314,15 @@ request_handler(void *cls,
             const char *fname = MHD_lookup_connection_value(
                 connection, MHD_GET_ARGUMENT_KIND, "filename");
 
+            /* Get optional upload_id for resumable uploads */
+            const char *upload_id = MHD_lookup_connection_value(
+                connection, MHD_GET_ARGUMENT_KIND, "upload_id");
+
+            /* Get optional Upload-Offset header for resume */
+            const char *offset_str = MHD_lookup_connection_value(
+                connection, MHD_HEADER_KIND, "Upload-Offset");
+            size_t upload_offset = offset_str ? (size_t)strtoull(offset_str, NULL, 10) : 0;
+
             /* Determine file extension */
             const char *ext = "mp4";
             if (fname) {
@@ -319,7 +330,7 @@ request_handler(void *cls,
                 if (dot && dot[1]) ext = dot + 1;
             }
 
-            /* Build upload path: {temp_path}/uploads/upload_{time}_{rand}.{ext} */
+            /* Build upload path */
             char upload_dir[MAX_PATH_LEN];
             snprintf(upload_dir, sizeof(upload_dir), "%s/uploads",
                      g_config ? g_config->temp_path : "/var/lib/vod-server/tmp");
@@ -327,19 +338,67 @@ request_handler(void *cls,
             /* Ensure uploads directory exists */
             mkdir(upload_dir, 0775);
 
-            unsigned int rnd = 0;
-            FILE *urand = fopen("/dev/urandom", "rb");
-            if (urand) {
-                fread(&rnd, sizeof(rnd), 1, urand);
-                fclose(urand);
+            if (upload_id && upload_id[0]) {
+                /* Resumable upload: deterministic filename based on upload_id */
+                /* Sanitize upload_id — only allow alphanumeric and hyphens */
+                char safe_id[65];
+                int j = 0;
+                for (int i = 0; upload_id[i] && j < 64; i++) {
+                    char c = upload_id[i];
+                    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '-') {
+                        safe_id[j++] = c;
+                    }
+                }
+                safe_id[j] = '\0';
+
+                snprintf(req->upload_path, sizeof(req->upload_path),
+                         "%s/upload_%s.%s", upload_dir, safe_id, ext);
+            } else {
+                /* Legacy non-resumable: random filename */
+                unsigned int rnd = 0;
+                FILE *urand = fopen("/dev/urandom", "rb");
+                if (urand) {
+                    fread(&rnd, sizeof(rnd), 1, urand);
+                    fclose(urand);
+                }
+                rnd &= 0xFFFFFF;
+
+                snprintf(req->upload_path, sizeof(req->upload_path),
+                         "%s/upload_%lu_%06x.%s",
+                         upload_dir, (unsigned long)time(NULL), rnd, ext);
             }
-            rnd &= 0xFFFFFF;
 
-            snprintf(req->upload_path, sizeof(req->upload_path),
-                     "%s/upload_%lu_%06x.%s",
-                     upload_dir, (unsigned long)time(NULL), rnd, ext);
+            /* Open file — append if resuming, create new otherwise */
+            if (upload_offset > 0 && upload_id && upload_id[0]) {
+                /* Resuming: verify existing file size matches offset */
+                struct stat st;
+                if (stat(req->upload_path, &st) == 0 && (size_t)st.st_size == upload_offset) {
+                    req->upload_fp = fopen(req->upload_path, "ab");
+                    req->upload_size = upload_offset;
+                    log_info("Upload resumed: %s at offset %zu", req->upload_path, upload_offset);
+                } else if (stat(req->upload_path, &st) == 0) {
+                    /* Offset mismatch — report actual size so client can retry */
+                    log_warn("Upload offset mismatch: client=%zu, server=%lld, file=%s",
+                             upload_offset, (long long)st.st_size, req->upload_path);
+                    char err_json[256];
+                    snprintf(err_json, sizeof(err_json),
+                             "{\"error\":\"Offset mismatch\",\"expected_offset\":%lld}",
+                             (long long)st.st_size);
+                    free(req);
+                    return http_send_json(connection, MHD_HTTP_CONFLICT, err_json);
+                } else {
+                    /* File doesn't exist — can't resume, start fresh */
+                    req->upload_fp = fopen(req->upload_path, "wb");
+                    req->upload_size = 0;
+                    log_info("Upload resume requested but file missing, starting fresh: %s",
+                             req->upload_path);
+                }
+            } else {
+                req->upload_fp = fopen(req->upload_path, "wb");
+                req->upload_size = 0;
+            }
 
-            req->upload_fp = fopen(req->upload_path, "wb");
             if (!req->upload_fp) {
                 log_error("Failed to open upload file: %s (%s)",
                           req->upload_path, strerror(errno));
@@ -349,8 +408,7 @@ request_handler(void *cls,
             }
 
             req->is_upload = true;
-            req->upload_size = 0;
-            log_info("Upload started: %s", req->upload_path);
+            log_info("Upload started: %s (offset: %zu)", req->upload_path, req->upload_size);
 
         } else if (strcmp(method, HTTP_POST) == 0 ||
                    strcmp(method, HTTP_PUT)  == 0) {
@@ -520,7 +578,7 @@ int http_server_start(const vod_config_t *config)
     int nops = 0;
 
     ops[nops].option = MHD_OPTION_CONNECTION_TIMEOUT;
-    ops[nops].value  = 600;  /* 10 minutes — large video uploads need time */
+    ops[nops].value  = 3600;  /* 1 hour — large video uploads over slow links need time */
     ops[nops].ptr_value = NULL;
     nops++;
 
