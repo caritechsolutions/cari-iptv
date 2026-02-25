@@ -381,5 +381,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/vod-server/markers/delete', [VodServerController::class, 'deleteMarker']);
 });
 
+// VOD Server webhook (no auth — called by the VOD server directly)
+$router->post('/admin/vod-server/webhook', [VodServerController::class, 'webhook']);
+
 // Dispatch the request
 $router->dispatch();

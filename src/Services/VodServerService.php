@@ -206,14 +206,18 @@ class VodServerService
     public function submitJob(int $serverId, string $contentId, string $sourcePath, array $options = []): array
     {
         $server = $this->requireServer($serverId);
-        return $this->request($server, 'POST', '/api/jobs', [
+        $body = [
             'content_id'  => $contentId,
             'source_path' => $sourcePath,
             'title'       => $options['title'] ?? $contentId,
             'source_type' => $options['source_type'] ?? 'file',
             'profile'     => $options['profile'] ?? 'standard',
             'priority'    => $options['priority'] ?? 5,
-        ]);
+        ];
+        if (!empty($options['callback_url'])) {
+            $body['callback_url'] = $options['callback_url'];
+        }
+        return $this->request($server, 'POST', '/api/jobs', $body);
     }
 
     public function getJobs(int $serverId, array $filters = []): array

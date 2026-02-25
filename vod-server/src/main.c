@@ -58,6 +58,9 @@ static void setup_signals(void)
 
     /* Ignore SIGPIPE (broken pipe from HTTP connections) */
     signal(SIGPIPE, SIG_IGN);
+
+    /* Auto-reap child processes (forked curl for job callbacks) */
+    signal(SIGCHLD, SIG_IGN);
 }
 
 static int write_pidfile(const char *path)
