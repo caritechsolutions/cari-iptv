@@ -2403,14 +2403,17 @@ img { max-width: 100%; display: block; }
 
 .player-page {
     background: #000;
-    height: calc(100vh - var(--p-header-h));
+    min-height: calc(100vh - var(--p-header-h));
     display: flex;
     flex-direction: column;
 }
 
 .player-container {
-    flex: 1;
     position: relative;
+    width: 100%;
+    /* 56.25% = 16:9 aspect ratio, capped so details are visible without scrolling */
+    height: min(56.25vw, 60vh);
+    flex-shrink: 0;
 }
 
 .player-container video {
@@ -2525,6 +2528,7 @@ img { max-width: 100%; display: block; }
     padding: 1.5rem 2rem;
     border-top: 1px solid var(--p-border);
     overflow-y: auto;
+    flex: 1;
 }
 
 .player-details-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }

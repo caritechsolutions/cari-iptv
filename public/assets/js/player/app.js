@@ -3124,31 +3124,27 @@ const CariApp = (function() {
 
     /**
      * Make fullscreen target the container instead of just the video.
-     * Native <video controls> fullscreen button internally fullscreens the
-     * video element — overlays (Skip Intro, Next Episode, CC) are children
-     * of the container and become invisible. We detect this and switch
-     * fullscreen to the container so all children remain visible.
+     * Native <video controls> fullscreen button calls video.requestFullscreen()
+     * which hides overlay children (Skip Intro, CC, etc.). We override the
+     * video element's requestFullscreen to redirect to the container.
      */
     function setupVodFullscreen(video, container) {
         if (!video || !container) return;
 
-        // Detect when native controls put the VIDEO in fullscreen,
-        // then switch to the CONTAINER so overlay children stay visible.
-        function onFsChange() {
-            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-            if (fsEl === video) {
-                // Video went fullscreen via native controls — switch to container
-                const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
-                const enterFs = container.requestFullscreen || container.webkitRequestFullscreen;
-                if (exitFs && enterFs) {
-                    exitFs.call(document).then(() => {
-                        enterFs.call(container).catch(() => {});
-                    }).catch(() => {});
-                }
-            }
+        // Override requestFullscreen on the video element so native controls
+        // fullscreen the container instead. This is reliable because it
+        // intercepts before fullscreen happens (no exit+re-enter race).
+        const origRequest = video.requestFullscreen || video.webkitRequestFullscreen;
+        if (video.requestFullscreen) {
+            video.requestFullscreen = function(opts) {
+                return container.requestFullscreen(opts);
+            };
         }
-        document.addEventListener('fullscreenchange', onFsChange);
-        document.addEventListener('webkitfullscreenchange', onFsChange);
+        if (video.webkitRequestFullscreen) {
+            video.webkitRequestFullscreen = function(opts) {
+                return (container.webkitRequestFullscreen || container.requestFullscreen).call(container, opts);
+            };
+        }
 
         // Double-click video → toggle fullscreen on container
         video.addEventListener('dblclick', (e) => {
