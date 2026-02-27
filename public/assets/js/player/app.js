@@ -2963,8 +2963,9 @@ const CariApp = (function() {
         el.innerHTML = `
             <div class="player-page">
                 <div class="player-container" id="playerContainer">
-                    <video id="mainVideo" autoplay controls></video>
+                    <video id="mainVideo" autoplay controls controlslist="nofullscreen"></video>
                     <button class="vod-cc-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
+                    <button class="vod-fs-btn" id="vodFsBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
                 </div>
                 <div class="player-details" id="playerDetails">${CariUI.loading()}</div>
             </div>
@@ -3124,17 +3125,16 @@ const CariApp = (function() {
 
     /**
      * Make fullscreen target the container instead of just the video.
-     * Native <video controls> fullscreen button calls video.requestFullscreen()
-     * which hides overlay children (Skip Intro, CC, etc.). We override the
-     * video element's requestFullscreen to redirect to the container.
+     * Uses a custom fullscreen button (native one hidden via controlslist="nofullscreen")
+     * and a fullscreenchange fallback to catch any browsers that bypass the override.
      */
     function setupVodFullscreen(video, container) {
         if (!video || !container) return;
 
-        // Override requestFullscreen on the video element so native controls
-        // fullscreen the container instead. This is reliable because it
-        // intercepts before fullscreen happens (no exit+re-enter race).
-        const origRequest = video.requestFullscreen || video.webkitRequestFullscreen;
+        const fsBtn = document.getElementById('vodFsBtn');
+
+        // Override requestFullscreen on the video element so any remaining
+        // native triggers fullscreen the container instead.
         if (video.requestFullscreen) {
             video.requestFullscreen = function(opts) {
                 return container.requestFullscreen(opts);
@@ -3145,6 +3145,38 @@ const CariApp = (function() {
                 return (container.webkitRequestFullscreen || container.requestFullscreen).call(container, opts);
             };
         }
+
+        // Custom fullscreen button — always fullscreens the container
+        if (fsBtn) {
+            fsBtn.addEventListener('click', () => {
+                const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+                if (fsEl) {
+                    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                } else {
+                    (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+                }
+            });
+        }
+
+        // Fallback: if native controls bypass our override and fullscreen the
+        // video directly, detect it and swap to container fullscreen
+        function onFullscreenChange() {
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            // Update button icon
+            if (fsBtn) {
+                const icon = fsBtn.querySelector('i');
+                if (icon) icon.className = fsEl ? 'lucide-minimize' : 'lucide-maximize';
+            }
+            // If the video was fullscreened directly (bypass), swap to container
+            if (fsEl === video) {
+                const exitFn = document.exitFullscreen || document.webkitExitFullscreen;
+                exitFn.call(document).then(() => {
+                    (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+                }).catch(() => {});
+            }
+        }
+        document.addEventListener('fullscreenchange', onFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
         // Double-click video → toggle fullscreen on container
         video.addEventListener('dblclick', (e) => {

@@ -1272,6 +1272,36 @@ img { max-width: 100%; display: block; }
     border-color: var(--p-primary);
 }
 
+/* VOD player custom fullscreen button */
+.vod-fs-btn {
+    position: absolute;
+    bottom: 4.5rem;
+    right: 0.625rem;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    border-radius: 6px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 15;
+    opacity: 0;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    padding: 0;
+    font-size: 1rem;
+}
+.player-container:hover .vod-fs-btn,
+.vod-fs-btn:focus {
+    opacity: 1;
+}
+.vod-fs-btn:hover {
+    background: rgba(99, 102, 241, 0.8);
+    border-color: var(--p-primary);
+}
+
 /* Shaka Player caption text styling */
 .shaka-text-container {
     bottom: 3rem !important;
@@ -2449,8 +2479,11 @@ img { max-width: 100%; display: block; }
     z-index: 2147483647;
 }
 .player-container:fullscreen .vod-cc-btn,
-.player-container:-webkit-full-screen .vod-cc-btn {
+.player-container:-webkit-full-screen .vod-cc-btn,
+.player-container:fullscreen .vod-fs-btn,
+.player-container:-webkit-full-screen .vod-fs-btn {
     z-index: 2147483647;
+    opacity: 1;
 }
 
 .player-overlay {
@@ -4689,6 +4722,11 @@ img { max-width: 100%; display: block; }
         right: 1rem;
         font-size: 0.8125rem;
         padding: 0.5rem 1rem;
+    }
+
+    .vod-fs-btn {
+        bottom: 3.5rem;
+        right: 0.5rem;
     }
 
     .autoplay-countdown {
