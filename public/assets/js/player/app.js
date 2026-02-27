@@ -518,8 +518,17 @@ const CariApp = (function() {
             const items = res?.data || [];
             if (!items.length) return;
 
+            // Enrich episode items with better display info
+            items.forEach(item => {
+                if (item.content_type === 'episode' && item.series_title) {
+                    item.year = 'S' + (item.season_number || '1') + ' E' + (item.episode_number || '');
+                }
+            });
+
             appendContentRow(el, 'Continue Watching', items, 'backdrop');
-        } catch {}
+        } catch (err) {
+            console.error('[CariApp] Continue watching failed:', err);
+        }
     }
 
     function handleItemClick(item, type) {
@@ -915,47 +924,74 @@ const CariApp = (function() {
             return;
         }
 
-        list.innerHTML = episodes.map(ep => {
-            const thumb = ep.still_url || '';
-            const epTitle = ep.title || ep.name || 'Episode ' + ep.episode_number;
-            const epNum = ep.episode_number || '';
-            const epDesc = ep.synopsis || ep.overview || '';
-            const runtime = ep.runtime || '';
-            const rating = ep.vote_average || '';
-            const hasStream = !!(ep.stream_url);
+        // Render episodes (progress bars added async below)
+        function renderEpisodeCards(progressMap) {
+            list.innerHTML = episodes.map(ep => {
+                const thumb = ep.still_url || '';
+                const epTitle = ep.title || ep.name || 'Episode ' + ep.episode_number;
+                const epNum = ep.episode_number || '';
+                const epDesc = ep.synopsis || ep.overview || '';
+                const runtime = ep.runtime || '';
+                const rating = ep.vote_average || '';
+                const hasStream = !!(ep.stream_url);
 
-            return `
-                <div class="episode-card" data-episode-idx="${ep.id}">
-                    <div class="episode-thumb">
-                        ${thumb ? '<img src="' + CariUI.esc(thumb) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
-                        ${hasStream ? '<div class="episode-play-overlay"><i class="lucide-play"></i></div>' : ''}
-                        <span class="episode-number">E${CariUI.esc(String(epNum))}</span>
-                    </div>
-                    <div class="episode-info">
-                        <div class="episode-title">${CariUI.esc(epTitle)}</div>
-                        <div class="episode-meta">
-                            ${runtime ? '<span>' + CariUI.esc(String(runtime)) + ' min</span>' : ''}
-                            ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.65rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                // Progress bar
+                const prog = progressMap[ep.id];
+                let progressHtml = '';
+                if (prog && prog.progress_seconds > 0 && prog.duration_seconds > 0) {
+                    const pct = Math.min(Math.round((prog.progress_seconds / prog.duration_seconds) * 100), 100);
+                    progressHtml = `<div class="episode-progress-bar"><div class="episode-progress-fill" style="width:${pct}%"></div></div>`;
+                }
+
+                return `
+                    <div class="episode-card" data-episode-idx="${ep.id}">
+                        <div class="episode-thumb">
+                            ${thumb ? '<img src="' + CariUI.esc(thumb) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
+                            ${hasStream ? '<div class="episode-play-overlay"><i class="lucide-play"></i></div>' : ''}
+                            <span class="episode-number">E${CariUI.esc(String(epNum))}</span>
+                            ${progressHtml}
                         </div>
-                        ${epDesc ? '<div class="episode-desc">' + CariUI.esc(epDesc) + '</div>' : ''}
+                        <div class="episode-info">
+                            <div class="episode-title">${CariUI.esc(epTitle)}</div>
+                            <div class="episode-meta">
+                                ${runtime ? '<span>' + CariUI.esc(String(runtime)) + ' min</span>' : ''}
+                                ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.65rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                            </div>
+                            ${epDesc ? '<div class="episode-desc">' + CariUI.esc(epDesc) + '</div>' : ''}
+                        </div>
                     </div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
 
-        // Build a lookup for episodes by id
-        const epMap = {};
-        episodes.forEach(ep => { epMap[ep.id] = ep; });
+            // Build a lookup for episodes by id
+            const epMap = {};
+            episodes.forEach(ep => { epMap[ep.id] = ep; });
 
-        // Make all episode cards clickable — open episode detail modal
-        list.querySelectorAll('.episode-card').forEach(card => {
-            card.style.cursor = 'pointer';
-            card.addEventListener('click', () => {
-                const epId = card.dataset.episodeIdx;
-                const ep = epMap[epId];
-                if (ep) showEpisodeDetail(ep, seriesId, season);
+            // Make all episode cards clickable — open episode detail modal
+            list.querySelectorAll('.episode-card').forEach(card => {
+                card.style.cursor = 'pointer';
+                card.addEventListener('click', () => {
+                    const epId = card.dataset.episodeIdx;
+                    const ep = epMap[epId];
+                    if (ep) showEpisodeDetail(ep, seriesId, season);
+                });
             });
-        });
+        }
+
+        // First render without progress, then fetch progress async
+        renderEpisodeCards({});
+
+        if (CariAPI.isAuthenticated()) {
+            const episodeIds = episodes.map(ep => ep.id).filter(Boolean);
+            if (episodeIds.length) {
+                CariAPI.getBatchWatchProgress('episode', episodeIds).then(res => {
+                    const progressMap = res?.data || {};
+                    if (Object.keys(progressMap).length > 0) {
+                        renderEpisodeCards(progressMap);
+                    }
+                }).catch(() => {});
+            }
+        }
     }
 
     function showEpisodeDetail(ep, seriesId, season) {
@@ -3270,7 +3306,7 @@ const CariApp = (function() {
             if (!timeDisplay) return;
             const cur = video.currentTime || 0;
             const dur = video.duration || 0;
-            timeDisplay.textContent = formatTime(cur) + ' / ' + (isFinite(dur) ? formatTime(dur) : '0:00');
+            timeDisplay.textContent = formatPlayerTime(cur) + ' / ' + (isFinite(dur) ? formatPlayerTime(dur) : '0:00');
         }
         video.addEventListener('timeupdate', updateTimeDisplay);
         video.addEventListener('loadedmetadata', updateTimeDisplay);
@@ -3312,7 +3348,7 @@ const CariApp = (function() {
                 const rect = progressWrap.getBoundingClientRect();
                 const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 const time = isFinite(video.duration) ? pct * video.duration : 0;
-                progressTooltip.textContent = formatTime(time);
+                progressTooltip.textContent = formatPlayerTime(time);
                 progressTooltip.style.left = (pct * 100) + '%';
                 progressTooltip.classList.add('visible');
             }
@@ -3765,7 +3801,7 @@ const CariApp = (function() {
         });
     }
 
-    function formatTime(seconds) {
+    function formatPlayerTime(seconds) {
         seconds = Math.floor(seconds);
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -3784,7 +3820,7 @@ const CariApp = (function() {
         prompt.className = 'resume-prompt';
         prompt.innerHTML = `
             <div class="resume-prompt-inner">
-                <div class="resume-prompt-text">Resume from ${formatTime(progressSeconds)}?</div>
+                <div class="resume-prompt-text">Resume from ${formatPlayerTime(progressSeconds)}?</div>
                 ${durationSeconds > 0 ? '<div class="resume-prompt-bar"><div class="resume-prompt-bar-fill" style="width:' + pct + '%"></div></div>' : ''}
                 <div class="resume-prompt-actions">
                     <button class="btn btn-play resume-btn" id="resumeYes"><i class="lucide-play"></i> Resume</button>

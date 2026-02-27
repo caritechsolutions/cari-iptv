@@ -200,6 +200,10 @@ const CariAPI = (function() {
         return get('/auth/watch-progress?content_type=' + encodeURIComponent(contentType) + '&content_id=' + encodeURIComponent(contentId));
     }
 
+    function getBatchWatchProgress(contentType, ids) {
+        return get('/auth/watch-progress/batch?content_type=' + encodeURIComponent(contentType) + '&ids=' + encodeURIComponent(ids.join(',')));
+    }
+
     function getContinueWatching() { return get('/auth/continue-watching'); }
     function toggleWatchlist(contentType, contentId) { return post('/auth/watchlist/toggle', { content_type: contentType, content_id: contentId }); }
     function getWatchlist() { return get('/auth/watchlist'); }
@@ -213,7 +217,7 @@ const CariAPI = (function() {
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
         getChannels, getChannel, getMovies, getMovie, getSeries, getSeriesDetail, getEpisode,
         getCategories, getPerson, search, getEpg, getProgrammeInfo,
-        updateWatchProgress, getWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
+        updateWatchProgress, getWatchProgress, getBatchWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
         bustAllCaches, clearCacheBust,
     };
