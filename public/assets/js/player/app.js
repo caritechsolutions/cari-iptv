@@ -2963,9 +2963,30 @@ const CariApp = (function() {
         el.innerHTML = `
             <div class="player-page">
                 <div class="player-container" id="playerContainer">
-                    <video id="mainVideo" autoplay controls controlslist="nofullscreen"></video>
-                    <button class="vod-cc-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
-                    <button class="vod-fs-btn" id="vodFsBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                    <video id="mainVideo" autoplay playsinline></video>
+                    <div class="vod-controls visible" id="vodControls">
+                        <div class="vod-progress-wrap" id="vodProgressWrap">
+                            <div class="vod-progress-bar">
+                                <div class="vod-progress-buffered" id="vodBuffered"></div>
+                                <div class="vod-progress-filled" id="vodProgressFilled"></div>
+                            </div>
+                            <div class="vod-progress-thumb" id="vodProgressThumb"></div>
+                            <div class="vod-progress-tooltip" id="vodProgressTooltip">0:00</div>
+                        </div>
+                        <div class="vod-controls-bar">
+                            <button class="vod-ctrl-btn" id="vodPlayPause" title="Play"><i class="lucide-play"></i></button>
+                            <button class="vod-ctrl-btn" id="vodRewind" title="Rewind 10s"><i class="lucide-rotate-ccw"></i></button>
+                            <button class="vod-ctrl-btn" id="vodForward" title="Forward 10s"><i class="lucide-rotate-cw"></i></button>
+                            <div class="vod-volume-wrap">
+                                <button class="vod-ctrl-btn" id="vodMuteBtn" title="Mute"><i class="lucide-volume-2"></i></button>
+                                <input type="range" class="vod-volume-slider" id="vodVolumeSlider" min="0" max="1" step="0.05" value="1">
+                            </div>
+                            <span class="vod-time" id="vodTimeDisplay">0:00 / 0:00</span>
+                            <div class="vod-controls-spacer"></div>
+                            <button class="vod-ctrl-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
+                            <button class="vod-ctrl-btn" id="vodFsBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                        </div>
+                    </div>
                 </div>
                 <div class="player-details" id="playerDetails">${CariUI.loading()}</div>
             </div>
@@ -3047,12 +3068,8 @@ const CariApp = (function() {
                 showResumePrompt(video, savedProgress.progress_seconds, savedProgress.duration_seconds);
             }
 
-            // CC toggle for VOD
-            const vodCCBtn = document.getElementById('vodCCBtn');
-            if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
-
-            // Fullscreen: use the container so overlays (Skip Intro, Next Episode) stay visible
-            setupVodFullscreen(video, document.getElementById('playerContainer'));
+            // Set up custom VOD controls (play/pause, seek, volume, CC, fullscreen, auto-hide)
+            setupVodControls(video, document.getElementById('playerContainer'));
 
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
@@ -3124,21 +3141,207 @@ const CariApp = (function() {
     }
 
     /**
-     * Make fullscreen target the container instead of just the video.
-     * Uses a custom fullscreen button (native one hidden via controlslist="nofullscreen")
-     * and a fullscreenchange fallback to catch any browsers that bypass the override.
+     * Set up all custom VOD controls: play/pause, seek bar, volume, CC, fullscreen, auto-hide.
      */
-    function setupVodFullscreen(video, container) {
+    function setupVodControls(video, container) {
         if (!video || !container) return;
 
+        const controls = document.getElementById('vodControls');
+        const playPauseBtn = document.getElementById('vodPlayPause');
+        const rewindBtn = document.getElementById('vodRewind');
+        const forwardBtn = document.getElementById('vodForward');
+        const muteBtn = document.getElementById('vodMuteBtn');
+        const volumeSlider = document.getElementById('vodVolumeSlider');
+        const timeDisplay = document.getElementById('vodTimeDisplay');
+        const progressWrap = document.getElementById('vodProgressWrap');
+        const progressFilled = document.getElementById('vodProgressFilled');
+        const progressThumb = document.getElementById('vodProgressThumb');
+        const progressTooltip = document.getElementById('vodProgressTooltip');
+        const bufferedBar = document.getElementById('vodBuffered');
+        const vodCCBtn = document.getElementById('vodCCBtn');
         const fsBtn = document.getElementById('vodFsBtn');
 
-        // Override requestFullscreen on the video element so any remaining
-        // native triggers fullscreen the container instead.
+        // ---- Auto-hide timer ----
+        let hideTimer = null;
+        const HIDE_DELAY = 3000;
+
+        function showControls() {
+            container.classList.add('controls-visible');
+            if (controls) controls.classList.add('visible');
+        }
+
+        function hideControls() {
+            if (video.paused) return;
+            container.classList.remove('controls-visible');
+            if (controls) controls.classList.remove('visible');
+        }
+
+        function resetHideTimer() {
+            showControls();
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(hideControls, HIDE_DELAY);
+        }
+
+        container.addEventListener('mousemove', resetHideTimer);
+        container.addEventListener('touchstart', resetHideTimer, { passive: true });
+        container.addEventListener('mouseleave', () => {
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(hideControls, 500);
+        });
+
+        // Keep controls visible while interacting with control bar
+        if (controls) {
+            controls.addEventListener('mouseenter', () => { clearTimeout(hideTimer); showControls(); });
+            controls.addEventListener('mouseleave', resetHideTimer);
+        }
+
+        // Show controls when paused, auto-hide when playing
+        video.addEventListener('pause', () => { clearTimeout(hideTimer); showControls(); });
+        video.addEventListener('play', resetHideTimer);
+
+        // ---- Play / Pause ----
+        function updatePlayPauseIcon() {
+            if (!playPauseBtn) return;
+            const icon = playPauseBtn.querySelector('i');
+            if (icon) icon.className = video.paused ? 'lucide-play' : 'lucide-pause';
+            playPauseBtn.title = video.paused ? 'Play' : 'Pause';
+        }
+
+        if (playPauseBtn) {
+            playPauseBtn.addEventListener('click', () => {
+                if (video.paused) video.play().catch(() => {});
+                else video.pause();
+            });
+        }
+
+        video.addEventListener('click', (e) => {
+            // Ignore double-click (handled by fullscreen)
+            if (e.detail > 1) return;
+            if (video.paused) video.play().catch(() => {});
+            else video.pause();
+        });
+
+        video.addEventListener('play', updatePlayPauseIcon);
+        video.addEventListener('pause', updatePlayPauseIcon);
+
+        // ---- Rewind / Forward ----
+        if (rewindBtn) rewindBtn.addEventListener('click', () => { video.currentTime = Math.max(0, video.currentTime - 10); });
+        if (forwardBtn) forwardBtn.addEventListener('click', () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
+
+        // ---- Volume ----
+        function updateVolumeIcon() {
+            if (!muteBtn) return;
+            const icon = muteBtn.querySelector('i');
+            if (!icon) return;
+            if (video.muted || video.volume === 0) {
+                icon.className = 'lucide-volume-x';
+                muteBtn.title = 'Unmute';
+            } else if (video.volume < 0.5) {
+                icon.className = 'lucide-volume-1';
+                muteBtn.title = 'Mute';
+            } else {
+                icon.className = 'lucide-volume-2';
+                muteBtn.title = 'Mute';
+            }
+        }
+
+        if (muteBtn) {
+            muteBtn.addEventListener('click', () => {
+                video.muted = !video.muted;
+                updateVolumeIcon();
+                if (volumeSlider) volumeSlider.value = video.muted ? 0 : video.volume;
+            });
+        }
+
+        if (volumeSlider) {
+            volumeSlider.addEventListener('input', () => {
+                video.volume = parseFloat(volumeSlider.value);
+                video.muted = video.volume === 0;
+                updateVolumeIcon();
+            });
+            video.addEventListener('volumechange', () => {
+                volumeSlider.value = video.muted ? 0 : video.volume;
+                updateVolumeIcon();
+            });
+        }
+
+        // ---- Time Display ----
+        function updateTimeDisplay() {
+            if (!timeDisplay) return;
+            const cur = video.currentTime || 0;
+            const dur = video.duration || 0;
+            timeDisplay.textContent = formatTime(cur) + ' / ' + (isFinite(dur) ? formatTime(dur) : '0:00');
+        }
+        video.addEventListener('timeupdate', updateTimeDisplay);
+        video.addEventListener('loadedmetadata', updateTimeDisplay);
+
+        // ---- Progress / Seek Bar ----
+        function updateProgress() {
+            if (!progressFilled || !progressThumb) return;
+            const dur = video.duration || 0;
+            const pct = dur > 0 ? (video.currentTime / dur) * 100 : 0;
+            progressFilled.style.width = pct + '%';
+            progressThumb.style.left = pct + '%';
+        }
+
+        function updateBuffered() {
+            if (!bufferedBar || !video.buffered || !video.duration) return;
+            if (video.buffered.length > 0) {
+                const end = video.buffered.end(video.buffered.length - 1);
+                bufferedBar.style.width = (end / video.duration) * 100 + '%';
+            }
+        }
+
+        video.addEventListener('timeupdate', updateProgress);
+        video.addEventListener('progress', updateBuffered);
+
+        if (progressWrap) {
+            let isSeeking = false;
+
+            function seekFromEvent(e) {
+                const rect = progressWrap.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                if (isFinite(video.duration) && video.duration > 0) {
+                    video.currentTime = pct * video.duration;
+                }
+                updateProgress();
+            }
+
+            function showTooltip(e) {
+                if (!progressTooltip) return;
+                const rect = progressWrap.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const time = isFinite(video.duration) ? pct * video.duration : 0;
+                progressTooltip.textContent = formatTime(time);
+                progressTooltip.style.left = (pct * 100) + '%';
+                progressTooltip.classList.add('visible');
+            }
+
+            progressWrap.addEventListener('mousedown', (e) => {
+                isSeeking = true;
+                seekFromEvent(e);
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isSeeking) seekFromEvent(e);
+            });
+
+            document.addEventListener('mouseup', () => { isSeeking = false; });
+
+            progressWrap.addEventListener('mousemove', showTooltip);
+            progressWrap.addEventListener('mouseleave', () => {
+                if (progressTooltip) progressTooltip.classList.remove('visible');
+            });
+        }
+
+        // ---- CC Toggle ----
+        if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
+
+        // ---- Fullscreen ----
+        // Override requestFullscreen on the video element to always fullscreen the container
         if (video.requestFullscreen) {
-            video.requestFullscreen = function(opts) {
-                return container.requestFullscreen(opts);
-            };
+            video.requestFullscreen = function(opts) { return container.requestFullscreen(opts); };
         }
         if (video.webkitRequestFullscreen) {
             video.webkitRequestFullscreen = function(opts) {
@@ -3146,7 +3349,6 @@ const CariApp = (function() {
             };
         }
 
-        // Custom fullscreen button — always fullscreens the container
         if (fsBtn) {
             fsBtn.addEventListener('click', () => {
                 const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
@@ -3158,16 +3360,13 @@ const CariApp = (function() {
             });
         }
 
-        // Fallback: if native controls bypass our override and fullscreen the
-        // video directly, detect it and swap to container fullscreen
         function onFullscreenChange() {
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-            // Update button icon
             if (fsBtn) {
                 const icon = fsBtn.querySelector('i');
                 if (icon) icon.className = fsEl ? 'lucide-minimize' : 'lucide-maximize';
             }
-            // If the video was fullscreened directly (bypass), swap to container
+            // If video was fullscreened directly (bypass), swap to container
             if (fsEl === video) {
                 const exitFn = document.exitFullscreen || document.webkitExitFullscreen;
                 exitFn.call(document).then(() => {
@@ -3188,6 +3387,64 @@ const CariApp = (function() {
                 (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
             }
         });
+
+        // ---- Keyboard shortcuts ----
+        function onKeyDown(e) {
+            // Only handle when player is visible
+            if (!document.getElementById('playerContainer')) return;
+            // Don't hijack input fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            switch (e.key) {
+                case ' ':
+                case 'k':
+                    e.preventDefault();
+                    if (video.paused) video.play().catch(() => {});
+                    else video.pause();
+                    resetHideTimer();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    video.currentTime = Math.max(0, video.currentTime - 10);
+                    resetHideTimer();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+                    resetHideTimer();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    video.volume = Math.min(1, video.volume + 0.1);
+                    resetHideTimer();
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    video.volume = Math.max(0, video.volume - 0.1);
+                    resetHideTimer();
+                    break;
+                case 'f':
+                    e.preventDefault();
+                    if (fsBtn) fsBtn.click();
+                    break;
+                case 'm':
+                    e.preventDefault();
+                    video.muted = !video.muted;
+                    resetHideTimer();
+                    break;
+                case 'c':
+                    e.preventDefault();
+                    toggleCC();
+                    resetHideTimer();
+                    break;
+            }
+        }
+        document.addEventListener('keydown', onKeyDown);
+
+        // Initial state
+        updatePlayPauseIcon();
+        updateVolumeIcon();
+        resetHideTimer();
     }
 
     /**
