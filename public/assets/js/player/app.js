@@ -3803,13 +3803,6 @@ const CariApp = (function() {
             console.log('[CariApp] DRM enabled: ClearKey, scheme=' + (drmConfig.scheme || 'cenc'));
         }
 
-        // Use custom text displayer for subtitle sync offset support
-        config.textDisplayFactory = () => {
-            return new OffsetTextDisplayer(
-                videoEl.parentElement, videoEl, {}
-            );
-        };
-
         shakaPlayer.configure(config);
 
         shakaPlayer.addEventListener('error', (e) => {
@@ -3874,7 +3867,11 @@ const CariApp = (function() {
                 shakaPlayer.selectTextTrack(preferred);
             }
             shakaPlayer.setTextTrackVisibility(ccEnabled);
-            if (ccEnabled && _subtitleOffset !== 0) applySubtitleOffset();
+            // Apply sync offset after a short delay to let cues load
+            if (ccEnabled && _subtitleOffset !== 0) {
+                _originalCueTimes = null; // Reset for new track
+                setTimeout(applySubtitleOffset, 500);
+            }
         } catch (e) {
             console.warn('[CariApp] CC state error:', e);
         }
@@ -3905,66 +3902,49 @@ const CariApp = (function() {
 
     // Subtitle sync offset in seconds (positive = subtitles appear later)
     let _subtitleOffset = parseFloat(localStorage.getItem('cari_cc_offset') || '0');
-    let _offsetDisplayer = null; // Reference to our custom TextDisplayer wrapper
+    // Track original cue times so we can re-apply different offsets
+    let _originalCueTimes = null;
 
     /**
-     * Custom TextDisplayer wrapper that applies a time offset to all cues.
-     * Wraps Shaka's built-in UITextDisplayer, intercepts append() to shift cue times.
-     * Reads _subtitleOffset directly so offset changes take effect on next append.
-     */
-    class OffsetTextDisplayer {
-        constructor(videoContainer, video, config) {
-            this._inner = new shaka.text.UITextDisplayer(videoContainer, video, config);
-            _offsetDisplayer = this;
-        }
-
-        append(cues) {
-            if (_subtitleOffset !== 0) {
-                for (const cue of cues) {
-                    cue.startTime += _subtitleOffset;
-                    cue.endTime += _subtitleOffset;
-                    if (cue.nestedCues) {
-                        for (const nested of cue.nestedCues) {
-                            nested.startTime += _subtitleOffset;
-                            nested.endTime += _subtitleOffset;
-                        }
-                    }
-                }
-            }
-            this._inner.append(cues);
-        }
-
-        remove(start, end) { return this._inner.remove(start, end); }
-        isTextVisible() { return this._inner.isTextVisible(); }
-        setTextVisibility(on) { this._inner.setTextVisibility(on); }
-        destroy() { _offsetDisplayer = null; return this._inner.destroy(); }
-
-        // Methods that may be called by Shaka 4.x
-        configure(config) { if (this._inner.configure) this._inner.configure(config); }
-        setTextLanguage(lang) { if (this._inner.setTextLanguage) this._inner.setTextLanguage(lang); }
-        enableTextDisplayer() { if (this._inner.enableTextDisplayer) this._inner.enableTextDisplayer(); }
-    }
-
-    /**
-     * Apply subtitle offset — force Shaka to reload text tracks so new offset takes effect.
-     * We update the live offset value (read by OffsetTextDisplayer.append) then
-     * clear and re-select the text track so cues are re-parsed with the new offset.
+     * Apply subtitle sync offset by adjusting VTTCue startTime/endTime
+     * on the video element's active text track.
      */
     function applySubtitleOffset() {
-        if (!shakaPlayer) return;
-        // The OffsetTextDisplayer reads _subtitleOffset directly at append time,
-        // so we just need to force text to be re-loaded.
-        try {
-            const tracks = shakaPlayer.getTextTracks();
-            const active = tracks.find(t => t.active);
-            if (active && shakaPlayer.isTextTrackVisible()) {
-                // Remove buffered text and re-select to force re-append with new offset
-                shakaPlayer.setTextTrackVisibility(false);
-                shakaPlayer.selectTextTrack(active);
-                shakaPlayer.setTextTrackVisibility(true);
+        const video = document.getElementById('mainVideo');
+        if (!video) return;
+
+        // Find the active/showing text track
+        let track = null;
+        for (let i = 0; i < video.textTracks.length; i++) {
+            if (video.textTracks[i].mode === 'showing' || video.textTracks[i].mode === 'hidden') {
+                track = video.textTracks[i];
+                if (video.textTracks[i].mode === 'showing') break;
             }
-        } catch (e) {
-            console.warn('[CariApp] Subtitle offset apply error:', e);
+        }
+        if (!track || !track.cues || track.cues.length === 0) return;
+
+        // Save original times on first call (or if track changed)
+        if (!_originalCueTimes || _originalCueTimes.trackLabel !== (track.label || track.language)) {
+            _originalCueTimes = { trackLabel: track.label || track.language, cues: [] };
+            for (let i = 0; i < track.cues.length; i++) {
+                _originalCueTimes.cues.push({
+                    startTime: track.cues[i].startTime,
+                    endTime: track.cues[i].endTime,
+                });
+            }
+        }
+
+        // Apply offset relative to original times
+        const n = Math.min(track.cues.length, _originalCueTimes.cues.length);
+        for (let i = 0; i < n; i++) {
+            try {
+                track.cues[i].startTime = _originalCueTimes.cues[i].startTime + _subtitleOffset;
+                track.cues[i].endTime = _originalCueTimes.cues[i].endTime + _subtitleOffset;
+            } catch (e) {
+                // Some browsers don't allow modifying cue times — bail out
+                console.warn('[CariApp] Cannot modify cue times:', e);
+                return;
+            }
         }
     }
 
