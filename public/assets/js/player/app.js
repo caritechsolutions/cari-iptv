@@ -518,10 +518,10 @@ const CariApp = (function() {
             const items = res?.data || [];
             if (!items.length) return;
 
-            // Enrich episode items with better display info
+            // Enrich series items with resume info
             items.forEach(item => {
-                if (item.content_type === 'episode' && item.series_title) {
-                    item.year = 'S' + (item.season_number || '1') + ' E' + (item.episode_number || '');
+                if (item.content_type === 'series' && item.resume_season_number) {
+                    item.year = 'S' + (item.resume_season_number || '1') + ' E' + (item.resume_episode_number || '');
                 }
             });
 
@@ -539,6 +539,13 @@ const CariApp = (function() {
                 } else {
                     CariRouter.navigate('/live/' + item.id);
                 }
+            } else if (type === 'series') {
+                // Navigate to series detail page — include season hash if resuming
+                let path = '/series/' + item.id;
+                if (item.resume_season_number) {
+                    path += '?season=' + item.resume_season_number;
+                }
+                CariRouter.navigate(path);
             } else {
                 CariUI.showDetail(item, playContent, isContentLocked(item));
             }
@@ -895,9 +902,24 @@ const CariApp = (function() {
                 });
             }
 
-            // Render seasons/episodes
+            // Render seasons/episodes — check for ?season= param to preselect
             if (seasons.length) {
-                renderEpisodes(seasons[0], show.id);
+                let initialIdx = 0;
+                const urlParams = new URLSearchParams(window.location.search);
+                const requestedSeason = parseInt(urlParams.get('season'));
+                if (requestedSeason) {
+                    const found = seasons.findIndex(s => s.season_number == requestedSeason);
+                    if (found >= 0) initialIdx = found;
+                }
+
+                renderEpisodes(seasons[initialIdx], show.id);
+
+                // Activate the correct tab
+                if (initialIdx > 0) {
+                    document.querySelectorAll('.season-tab').forEach((t, i) => {
+                        t.classList.toggle('active', i === initialIdx);
+                    });
+                }
 
                 document.getElementById('seasonTabs').addEventListener('click', (e) => {
                     const tab = e.target.closest('.season-tab');
@@ -3125,6 +3147,9 @@ const CariApp = (function() {
                 _markerCleanup = setupMarkerOverlays(video, markers, nextEpisode, type, item);
             }
 
+            // Restore fullscreen if transitioning between episodes
+            _restoreFullscreenState(document.getElementById('playerContainer'));
+
             // Render details
             const title = displayTitle || item.title || item.name || '';
             const details = document.getElementById('playerDetails');
@@ -3225,6 +3250,7 @@ const CariApp = (function() {
         }
 
         container.addEventListener('mousemove', resetHideTimer);
+        video.addEventListener('mousemove', resetHideTimer);
         container.addEventListener('touchstart', resetHideTimer, { passive: true });
         container.addEventListener('mouseleave', () => {
             clearTimeout(hideTimer);
@@ -3493,6 +3519,34 @@ const CariApp = (function() {
      * Set up marker-based overlays: Skip Intro button, Credits countdown + auto-play next
      * Returns a cleanup function to remove listeners on navigation.
      */
+    /**
+     * Save fullscreen state before episode transition so we can restore it.
+     */
+    function _saveFullscreenState() {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (isFs) {
+            sessionStorage.setItem('cari_restore_fs', '1');
+        }
+    }
+
+    /**
+     * Restore fullscreen state after episode transition.
+     */
+    function _restoreFullscreenState(container) {
+        if (sessionStorage.getItem('cari_restore_fs') === '1') {
+            sessionStorage.removeItem('cari_restore_fs');
+            // Small delay to let DOM settle before requesting fullscreen
+            setTimeout(() => {
+                try {
+                    const reqFs = container.requestFullscreen || container.webkitRequestFullscreen;
+                    if (reqFs) reqFs.call(container);
+                } catch (e) {
+                    console.warn('[CariApp] Could not restore fullscreen:', e);
+                }
+            }, 300);
+        }
+    }
+
     function setupMarkerOverlays(video, markers, nextEpisode, type, item) {
         const container = document.getElementById('playerContainer');
         if (!container) return () => {};
@@ -3604,6 +3658,7 @@ const CariApp = (function() {
                 }
                 if (remaining <= 0) {
                     clearInterval(countdownTimer);
+                    _saveFullscreenState();
                     CariRouter.navigate('/watch/episode/' + nextEp.id);
                 }
             }, 1000);
@@ -3611,6 +3666,7 @@ const CariApp = (function() {
             // Play now button
             countdownOverlay.querySelector('#autoplayNow')?.addEventListener('click', () => {
                 clearInterval(countdownTimer);
+                _saveFullscreenState();
                 CariRouter.navigate('/watch/episode/' + nextEp.id);
             });
 
@@ -3628,6 +3684,7 @@ const CariApp = (function() {
         function onEnded() {
             if (!creditsTriggered && nextEpisode && nextEpisode.stream_url) {
                 creditsTriggered = true;
+                _saveFullscreenState();
                 showAutoPlayCountdown(nextEpisode);
             }
         }
@@ -3810,6 +3867,7 @@ const CariApp = (function() {
                 shakaPlayer.selectTextTrack(preferred);
             }
             shakaPlayer.setTextTrackVisibility(ccEnabled);
+            if (ccEnabled && _subtitleOffset !== 0) applySubtitleOffset();
         } catch (e) {
             console.warn('[CariApp] CC state error:', e);
         }
@@ -3817,20 +3875,40 @@ const CariApp = (function() {
     }
 
     /**
-     * Toggle closed captions on/off. If turning on and multiple tracks exist, show picker.
+     * Toggle closed captions — always show language picker if multiple tracks exist.
      */
     function toggleCC(e) {
         const tracks = shakaPlayer ? shakaPlayer.getTextTracks() : [];
-        if (!ccEnabled && tracks.length > 1 && e && e.currentTarget) {
-            // Turning on with multiple tracks — show language picker
-            showSubtitleMenu(e.currentTarget);
+        // If multiple tracks, always show the picker (for on AND off)
+        if (tracks.length > 1 && e && e.currentTarget) {
+            const menu = document.getElementById('subtitleMenu');
+            if (menu) {
+                closeSubtitleMenu();
+            } else {
+                showSubtitleMenu(e.currentTarget);
+            }
             return;
         }
+        // Single track or no tracks — simple toggle
         ccEnabled = !ccEnabled;
         localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
         applyCCState();
-        // Close any open subtitle menu
         closeSubtitleMenu();
+    }
+
+    // Subtitle sync offset in seconds (positive = subtitles appear later)
+    let _subtitleOffset = parseFloat(localStorage.getItem('cari_cc_offset') || '0');
+
+    /**
+     * Apply subtitle offset to Shaka Player.
+     */
+    function applySubtitleOffset() {
+        if (!shakaPlayer) return;
+        try {
+            shakaPlayer.configure('textDisplayer.textOffset', _subtitleOffset);
+        } catch (e) {
+            console.warn('[CariApp] Subtitle offset not supported:', e);
+        }
     }
 
     /**
@@ -3862,6 +3940,18 @@ const CariApp = (function() {
             const isActive = ccEnabled && lang === activeLang;
             html += '<div class="subtitle-menu-item' + (isActive ? ' active' : '') + '" data-lang="' + CariUI.esc(lang) + '">' + CariUI.esc(label) + '</div>';
         }
+
+        // Subtitle sync control
+        const offsetDisplay = (_subtitleOffset >= 0 ? '+' : '') + _subtitleOffset.toFixed(1) + 's';
+        html += '<div class="subtitle-menu-divider"></div>';
+        html += '<div class="subtitle-sync-row">';
+        html += '<span class="subtitle-sync-label">Sync</span>';
+        html += '<button class="subtitle-sync-btn" data-sync="-0.5" title="Earlier">-</button>';
+        html += '<span class="subtitle-sync-value" id="subtitleSyncValue">' + offsetDisplay + '</span>';
+        html += '<button class="subtitle-sync-btn" data-sync="+0.5" title="Later">+</button>';
+        html += '<button class="subtitle-sync-btn subtitle-sync-reset" data-sync="reset" title="Reset">0</button>';
+        html += '</div>';
+
         menu.innerHTML = html;
 
         // Position above the CC button
@@ -3874,26 +3964,43 @@ const CariApp = (function() {
 
         // Position near the button
         const btnRect = anchorBtn.getBoundingClientRect();
-        const menuRect = menu.getBoundingClientRect();
         const containerRect = (container || anchorBtn.parentElement).getBoundingClientRect();
         menu.style.position = 'absolute';
         menu.style.bottom = (containerRect.bottom - btnRect.top + 4) + 'px';
         menu.style.right = (containerRect.right - btnRect.right) + 'px';
 
-        // Handle clicks
+        // Handle language clicks
         menu.addEventListener('click', (ev) => {
             const item = ev.target.closest('.subtitle-menu-item');
-            if (!item) return;
-            const lang = item.dataset.lang;
-            if (lang === 'off') {
-                ccEnabled = false;
-            } else {
-                ccEnabled = true;
-                localStorage.setItem('cari_cc_lang', lang);
+            if (item) {
+                const lang = item.dataset.lang;
+                if (lang === 'off') {
+                    ccEnabled = false;
+                } else {
+                    ccEnabled = true;
+                    localStorage.setItem('cari_cc_lang', lang);
+                }
+                localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
+                applyCCState();
+                closeSubtitleMenu();
+                return;
             }
-            localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
-            applyCCState();
-            closeSubtitleMenu();
+
+            // Handle sync buttons
+            const syncBtn = ev.target.closest('.subtitle-sync-btn');
+            if (syncBtn) {
+                const action = syncBtn.dataset.sync;
+                if (action === 'reset') {
+                    _subtitleOffset = 0;
+                } else {
+                    _subtitleOffset = Math.round((_subtitleOffset + parseFloat(action)) * 10) / 10;
+                    _subtitleOffset = Math.max(-10, Math.min(10, _subtitleOffset));
+                }
+                localStorage.setItem('cari_cc_offset', String(_subtitleOffset));
+                applySubtitleOffset();
+                const valEl = document.getElementById('subtitleSyncValue');
+                if (valEl) valEl.textContent = (_subtitleOffset >= 0 ? '+' : '') + _subtitleOffset.toFixed(1) + 's';
+            }
         });
 
         // Close on outside click (delayed to avoid immediate close)

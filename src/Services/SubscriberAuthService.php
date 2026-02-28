@@ -419,7 +419,9 @@ class SubscriberAuthService
     }
 
     /**
-     * Get continue watching list with enriched content metadata
+     * Get continue watching list with enriched content metadata.
+     * Episodes are grouped by series — only the most recently watched episode per series is shown,
+     * presented as the TV show with resume info for the last episode watched.
      */
     public function getContinueWatching(int $subscriberId, int $limit = 20): array
     {
@@ -429,11 +431,13 @@ class SubscriberAuthService
              FROM subscriber_watch_history wh
              WHERE wh.subscriber_id = ? AND wh.completed = 0 AND wh.progress_seconds > 0
              ORDER BY wh.last_watched_at DESC LIMIT ?",
-            [$subscriberId, $limit]
+            [$subscriberId, $limit * 2]
         ) ?: [];
 
-        // Enrich with content metadata
-        foreach ($items as &$item) {
+        $result = [];
+        $seenSeries = [];
+
+        foreach ($items as $item) {
             if ($item['content_type'] === 'movie') {
                 $movie = $this->db->fetch(
                     "SELECT id, title, slug, year, poster_url, backdrop_url, runtime, vote_average, stream_url
@@ -445,37 +449,54 @@ class SubscriberAuthService
                 } else {
                     $item['title'] = 'Unknown Movie';
                 }
+                $result[] = $item;
             } elseif ($item['content_type'] === 'episode') {
                 $episode = $this->db->fetch(
-                    "SELECT e.id, e.name as title, e.episode_number, e.still_url,
+                    "SELECT e.id as episode_id, e.name as episode_title, e.episode_number, e.still_url,
                             e.stream_url, e.runtime, e.vote_average,
-                            sn.season_number,
-                            s.title as series_title, s.poster_url, s.backdrop_url, s.id as series_id
+                            sn.id as season_id, sn.season_number,
+                            s.title, s.slug, s.year, s.poster_url, s.backdrop_url, s.id as series_id
                      FROM series_episodes e
                      LEFT JOIN series_seasons sn ON e.season_id = sn.id
                      LEFT JOIN series s ON e.series_id = s.id
-                     WHERE e.id = ?",
+                     WHERE e.id = ? AND s.status = 'published'",
                     [$item['content_id']]
                 );
-                if ($episode) {
-                    $item = array_merge($item, $episode);
-                    // Use still_url as backdrop_url for episode cards
-                    if (!empty($episode['still_url'])) {
-                        $item['backdrop_url'] = $episode['still_url'];
-                    } elseif (!empty($episode['backdrop_url'])) {
-                        $item['backdrop_url'] = $episode['backdrop_url'];
-                    }
-                    // Use series poster as fallback
-                    if (empty($item['poster_url']) && !empty($episode['poster_url'])) {
-                        $item['poster_url'] = $episode['poster_url'];
-                    }
-                } else {
-                    $item['title'] = 'Unknown Episode';
+                if (!$episode || empty($episode['series_id'])) {
+                    continue;
                 }
+
+                // Only keep the most recently watched episode per series
+                $seriesId = (int) $episode['series_id'];
+                if (isset($seenSeries[$seriesId])) {
+                    continue;
+                }
+                $seenSeries[$seriesId] = true;
+
+                // Present as a series item with resume episode info
+                $item['content_type'] = 'series';
+                $item['id'] = $seriesId;
+                $item['title'] = $episode['title'];
+                $item['slug'] = $episode['slug'] ?? '';
+                $item['year'] = $episode['year'] ?? '';
+                $item['poster_url'] = $episode['poster_url'] ?? '';
+                $item['backdrop_url'] = $episode['backdrop_url'] ?? '';
+                // Include resume episode details so player knows where to pick up
+                $item['resume_episode_id'] = $episode['episode_id'];
+                $item['resume_season_id'] = $episode['season_id'];
+                $item['resume_season_number'] = $episode['season_number'];
+                $item['resume_episode_number'] = $episode['episode_number'];
+                $item['resume_episode_title'] = $episode['episode_title'];
+
+                $result[] = $item;
+            }
+
+            if (count($result) >= $limit) {
+                break;
             }
         }
 
-        return $items;
+        return $result;
     }
 
     /**
