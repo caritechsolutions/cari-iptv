@@ -405,6 +405,90 @@
                 </form>
             </div>
         </div>
+
+        <!-- OpenSubtitles Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="lucide-subtitles"></i>
+                    OpenSubtitles
+                </h3>
+                <span class="status-badge <?= ($integrationStatus['subtitles']['configured'] ?? false) ? 'connected' : 'disconnected' ?>">
+                    <?= ($integrationStatus['subtitles']['configured'] ?? false) ? 'Configured' : 'Not Configured' ?>
+                </span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">OpenSubtitles provides subtitles in 60+ languages for movies and TV shows. Used as the primary subtitle source with FFmpeg extraction as fallback.</p>
+
+                <form action="/admin/settings/subtitles" method="POST">
+                    <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+                    <div class="form-group">
+                        <label class="form-label" for="opensubtitles_api_key">API Key</label>
+                        <div class="input-with-button">
+                            <input type="password" id="opensubtitles_api_key" name="opensubtitles_api_key" class="form-input"
+                                   placeholder="<?= !empty($settings['subtitles']['opensubtitles_api_key']) ? '••••••••••••••••' : 'Enter API key' ?>"
+                                   autocomplete="off">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="testOpenSubtitlesConnection()">
+                                <i class="lucide-plug"></i> Test
+                            </button>
+                        </div>
+                        <small class="form-help">
+                            Get a free API key at <a href="https://www.opensubtitles.com/en/consumers" target="_blank">opensubtitles.com/consumers</a>
+                        </small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="opensubtitles_username">Username</label>
+                            <input type="text" id="opensubtitles_username" name="opensubtitles_username" class="form-input"
+                                   value="<?= htmlspecialchars($settings['subtitles']['opensubtitles_username'] ?? '') ?>"
+                                   placeholder="OpenSubtitles username" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="opensubtitles_password">Password</label>
+                            <input type="password" id="opensubtitles_password" name="opensubtitles_password" class="form-input"
+                                   placeholder="<?= !empty($settings['subtitles']['opensubtitles_password']) ? '••••••••' : 'Password' ?>"
+                                   autocomplete="off">
+                        </div>
+                    </div>
+                    <small class="form-help" style="margin-top:-0.5rem;display:block;margin-bottom:1rem">Username and password are required for downloading subtitles. API key alone only allows searching.</small>
+
+                    <div class="form-group">
+                        <label class="form-label" for="preferred_languages">Preferred Languages</label>
+                        <input type="text" id="preferred_languages" name="preferred_languages" class="form-input"
+                               value="<?= htmlspecialchars($settings['subtitles']['preferred_languages'] ?? 'en') ?>"
+                               placeholder="en,es,fr">
+                        <small class="form-help">Comma-separated ISO 639-1 codes. These languages will be fetched by default when searching for subtitles.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="auto_fetch_subtitles" value="1"
+                                   <?= !empty($settings['subtitles']['auto_fetch_subtitles']) ? 'checked' : '' ?>>
+                            <span class="checkbox-text">
+                                <strong>Auto-fetch Subtitles</strong>
+                                <small>Automatically search for subtitles when importing movies from TMDB</small>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="info-box">
+                        <i class="lucide-info"></i>
+                        <div>
+                            <strong>Free Tier Limits</strong>
+                            <p>OpenSubtitles free tier allows 20 subtitle downloads per day and 5 requests per second.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="lucide-save"></i> Save Subtitle Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1408,6 +1492,17 @@ function testYoutubeConnection() {
     .then(r => r.json())
     .then(data => showTestResult('YouTube Data API Connection', data.message, data.success))
     .catch(() => showTestResult('YouTube Data API Connection', 'Connection test failed', false));
+}
+
+function testOpenSubtitlesConnection() {
+    fetch('/admin/settings/test-opensubtitles', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: '_token=<?= $csrf ?>'
+    })
+    .then(r => r.json())
+    .then(data => showTestResult('OpenSubtitles Connection', data.message, data.success))
+    .catch(() => showTestResult('OpenSubtitles Connection', 'Connection test failed', false));
 }
 
 // Close modal on overlay click

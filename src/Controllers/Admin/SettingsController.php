@@ -15,6 +15,7 @@ use CariIPTV\Services\AIService;
 use CariIPTV\Services\MetadataService;
 use CariIPTV\Services\ImageService;
 use CariIPTV\Services\VodServerService;
+use CariIPTV\Services\SubtitleService;
 
 class SettingsController
 {
@@ -40,9 +41,12 @@ class SettingsController
         $aiService = new AIService();
         $metadataService = new MetadataService();
 
+        $subtitleService = new SubtitleService();
+
         $integrationStatus = [
             'ai' => $aiService->getStatus(),
             'metadata' => $metadataService->getStatus(),
+            'subtitles' => $subtitleService->getStatus(),
             'image' => [
                 'webp_supported' => ImageService::isWebPSupported(),
             ],
@@ -550,5 +554,75 @@ class SettingsController
 
         Session::flash('success', 'Image settings updated successfully.');
         Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Update Subtitle/OpenSubtitles settings
+     */
+    public function updateSubtitles(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        // Get current keys to preserve if not provided
+        $currentApiKey = $this->settings->get('opensubtitles_api_key', '', 'subtitles');
+        $currentPassword = $this->settings->get('opensubtitles_password', '', 'subtitles');
+
+        $newApiKey = trim($_POST['opensubtitles_api_key'] ?? '');
+        $newPassword = $_POST['opensubtitles_password'] ?? '';
+
+        $this->settings->setMany([
+            'opensubtitles_api_key' => !empty($newApiKey) ? $newApiKey : $currentApiKey,
+            'opensubtitles_username' => trim($_POST['opensubtitles_username'] ?? ''),
+            'opensubtitles_password' => !empty($newPassword) ? $newPassword : $currentPassword,
+            'auto_fetch_subtitles' => isset($_POST['auto_fetch_subtitles']) ? '1' : '0',
+            'preferred_languages' => trim($_POST['preferred_languages'] ?? 'en'),
+        ], 'subtitles');
+
+        // Clear cached token when credentials change
+        if (!empty($newApiKey) || !empty($newPassword)) {
+            $this->settings->setMany([
+                'opensubtitles_token' => '',
+                'opensubtitles_token_expires' => '0',
+            ], 'subtitles');
+        }
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'subtitles']);
+
+        Session::flash('success', 'Subtitle settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
+    /**
+     * Test OpenSubtitles API connection
+     */
+    public function testOpenSubtitles(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Response::json(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+
+        if (!$subtitleService->isConfigured()) {
+            Response::json([
+                'success' => false,
+                'message' => 'OpenSubtitles API key not configured.',
+            ]);
+            return;
+        }
+
+        $connected = $subtitleService->testConnection();
+
+        Response::json([
+            'success' => $connected,
+            'message' => $connected ? 'OpenSubtitles connection successful!' : 'Connection failed. Check your API key.',
+        ]);
     }
 }

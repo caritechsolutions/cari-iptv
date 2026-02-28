@@ -74,6 +74,9 @@ int api_get_drm_license(http_request_t *req);
 int api_post_drm_license(http_request_t *req);
 int api_get_drm_raw_key(http_request_t *req, const char *content_id);
 
+/* Subtitle extraction route */
+int api_extract_subtitles(http_request_t *req, int job_id);
+
 /**
  * Set the configuration pointer used by API routes.
  * Must be called before handling requests (typically at startup).

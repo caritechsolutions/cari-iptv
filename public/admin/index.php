@@ -129,6 +129,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/test-tmdb', [SettingsController::class, 'testTmdb']);
     $router->post('/settings/youtube', [SettingsController::class, 'updateYoutube']);
     $router->post('/settings/test-youtube', [SettingsController::class, 'testYoutube']);
+    $router->post('/settings/subtitles', [SettingsController::class, 'updateSubtitles']);
+    $router->post('/settings/test-opensubtitles', [SettingsController::class, 'testOpenSubtitles']);
 
     // Channel Management
     $router->get('/channels', [ChannelController::class, 'index']);
@@ -175,6 +177,14 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/movies/search-free', [MovieController::class, 'searchFreeContent']);
     $router->post('/movies/import-free', [MovieController::class, 'importFreeContent']);
     $router->post('/movies/{id}/process-images', [MovieController::class, 'processMovieImages']);
+
+    // Movie Subtitles
+    $router->post('/movies/{id}/subtitles/upload', [MovieController::class, 'uploadSubtitle']);
+    $router->post('/movies/{id}/subtitles/search', [MovieController::class, 'searchSubtitles']);
+    $router->post('/movies/{id}/subtitles/fetch', [MovieController::class, 'fetchSubtitles']);
+    $router->post('/movies/{id}/subtitles/extract', [MovieController::class, 'extractSubtitles']);
+    $router->post('/movies/{id}/subtitles/{sid}/delete', [MovieController::class, 'deleteSubtitle']);
+    $router->post('/movies/{id}/subtitles/{sid}/default', [MovieController::class, 'setDefaultSubtitle']);
 
     // TV Shows (Series) Management
     $router->get('/series', [SeriesController::class, 'index']);

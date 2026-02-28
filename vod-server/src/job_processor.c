@@ -388,6 +388,72 @@ static void handle_job_completed(active_job_t *job)
     log_info("Job %d: Packaging complete%s", job_id,
              pkg.drm_encrypted ? " (DRM encrypted)" : "");
 
+    /* ---- Subtitle Extraction ---- */
+    int has_subtitles = 0;
+    char subtitle_tracks_json[4096] = "[]";
+    if (g_config->subtitles_enabled && g_config->subtitles_auto_extract &&
+        job->media_info.has_subtitles && job->media_info.subtitle_count > 0) {
+
+        log_info("Job %d: Extracting %d embedded subtitle track(s)",
+                 job_id, job->media_info.subtitle_count);
+
+        {
+            sqlite3_stmt *stmt = NULL;
+            int rc = sqlite3_prepare_v2(db,
+                "UPDATE jobs SET current_step = 'Extracting subtitles...' WHERE id = ?",
+                -1, &stmt, NULL);
+            if (rc == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, job_id);
+                sqlite3_step(stmt);
+                sqlite3_finalize(stmt);
+            }
+        }
+
+        int sub_count = transcoder_extract_subtitles(st->source_path, st->output_dir);
+        if (sub_count > 0) {
+            has_subtitles = 1;
+
+            /* Build subtitle_tracks JSON from the extracted files.
+             * Use media_info subtitle track details for language info. */
+            char *p = subtitle_tracks_json;
+            int remaining = (int)sizeof(subtitle_tracks_json);
+            int written = snprintf(p, remaining, "[");
+            p += written; remaining -= written;
+
+            int actual_tracks = (job->media_info.subtitle_count < MAX_SUBTITLE_TRACKS)
+                ? job->media_info.subtitle_count : MAX_SUBTITLE_TRACKS;
+            int json_count = 0;
+
+            for (int s = 0; s < actual_tracks && remaining > 200; s++) {
+                subtitle_track_info_t *st_info = &job->media_info.subtitle_tracks[s];
+                if (!st_info->is_text_based) continue;
+
+                /* Check if the extracted file exists */
+                char sub_path[MAX_PATH_LEN + 64];
+                snprintf(sub_path, sizeof(sub_path),
+                         "%s/sub_%d_%s.vtt", st->output_dir, s, st_info->language);
+
+                struct stat fst;
+                if (stat(sub_path, &fst) != 0 || fst.st_size == 0) continue;
+
+                written = snprintf(p, remaining,
+                    "%s{\"lang\":\"%s\",\"name\":\"%s\",\"path\":\"sub_%d_%s.vtt\",\"forced\":%s}",
+                    (json_count > 0) ? "," : "",
+                    st_info->language,
+                    st_info->language_name[0] ? st_info->language_name : st_info->language,
+                    s, st_info->language,
+                    st_info->is_forced ? "true" : "false");
+                p += written; remaining -= written;
+                json_count++;
+            }
+            snprintf(p, remaining, "]");
+
+            log_info("Job %d: Extracted %d subtitle track(s)", job_id, sub_count);
+        } else {
+            log_warn("Job %d: Subtitle extraction returned 0 tracks (non-fatal)", job_id);
+        }
+    }
+
     /* ---- Thumbnails ---- */
     int has_thumbnails = 0;
     if (g_config->thumbnails_enabled) {
@@ -500,9 +566,9 @@ static void handle_job_completed(active_job_t *job)
         int rc = sqlite3_prepare_v2(db,
             "INSERT OR REPLACE INTO content "
             "(content_id, title, path, source_file, codec, renditions, "
-            " duration, size_bytes, has_thumbnails, has_subtitles, "
+            " duration, size_bytes, has_thumbnails, has_subtitles, subtitle_tracks, "
             " hls_path, dash_path, metadata, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'ready', "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', "
             " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             -1, &stmt, NULL);
         if (rc == SQLITE_OK) {
@@ -515,9 +581,11 @@ static void handle_job_completed(active_job_t *job)
             sqlite3_bind_double(stmt, 7, job->media_info.duration);
             sqlite3_bind_int64(stmt, 8, (sqlite3_int64)total_size);
             sqlite3_bind_int(stmt, 9, has_thumbnails);
-            sqlite3_bind_text(stmt, 10, hls_path, -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, 11, dash_path, -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, 12, metadata_json, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(stmt, 10, has_subtitles);
+            sqlite3_bind_text(stmt, 11, subtitle_tracks_json, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 12, hls_path, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 13, dash_path, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 14, metadata_json, -1, SQLITE_TRANSIENT);
             rc = sqlite3_step(stmt);
             sqlite3_finalize(stmt);
 
