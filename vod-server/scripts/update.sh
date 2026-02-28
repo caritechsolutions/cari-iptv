@@ -7,7 +7,7 @@
 set -eo pipefail
 
 # Branch to pull updates from
-BRANCH="claude/vod-server-setup-458YL"
+BRANCH="claude/fix-opensubtitle-connection-TvyOH"
 
 # Colors
 RED='\033[0;31m'
