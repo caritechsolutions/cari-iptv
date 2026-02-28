@@ -3768,6 +3768,17 @@ const CariApp = (function() {
         shakaPlayer = new shaka.Player();
         await shakaPlayer.attach(videoEl);
 
+        // Set video container so UITextDisplayer can render subtitles as DOM
+        // elements inside .shaka-text-container (proper positioning & CSS control).
+        const playerContainer = videoEl.parentElement;
+        if (playerContainer) {
+            shakaPlayer.setVideoContainer(playerContainer);
+        }
+
+        // Use our OffsetTextDisplayer wrapper for subtitle sync offset support.
+        // It wraps UITextDisplayer and shifts cue times by _subtitleOffset.
+        shakaPlayer.configure('textDisplayFactory', () => new OffsetTextDisplayer(shakaPlayer));
+
         const config = {
             streaming: {
                 bufferingGoal: 15,
@@ -3868,19 +3879,7 @@ const CariApp = (function() {
                 shakaPlayer.selectTextTrack(preferred);
             }
             shakaPlayer.setTextTrackVisibility(ccEnabled);
-            // When enabling CC, reset offset tracking (fresh cues) and apply
-            if (ccEnabled) {
-                resetSubtitleOffset();
-                if (_subtitleOffset !== 0) {
-                    // Retry a few times — cues load asynchronously
-                    const tryApply = (attempts) => {
-                        applySubtitleOffset();
-                        if (_appliedOffset === 0 && _subtitleOffset !== 0 && attempts > 0) {
-                            setTimeout(() => tryApply(attempts - 1), 300);
-                        }
-                    };
-                    setTimeout(() => tryApply(5), 200);
-                }
+            // Offset is applied automatically at cue append time via OffsetTextDisplayer
             }
         } catch (e) {
             console.warn('[CariApp] CC state error:', e);
@@ -3893,8 +3892,8 @@ const CariApp = (function() {
      */
     function toggleCC(e) {
         const tracks = shakaPlayer ? shakaPlayer.getTextTracks() : [];
-        // If multiple tracks, always show the picker (for on AND off)
-        if (tracks.length > 1 && e && e.currentTarget) {
+        // Show menu whenever there are subtitle tracks (language + sync controls)
+        if (tracks.length >= 1 && e && e.currentTarget) {
             const menu = document.getElementById('subtitleMenu');
             if (menu) {
                 closeSubtitleMenu();
@@ -3903,7 +3902,7 @@ const CariApp = (function() {
             }
             return;
         }
-        // Single track or no tracks — simple toggle
+        // No tracks at all — simple toggle
         ccEnabled = !ccEnabled;
         localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
         applyCCState();
@@ -3913,50 +3912,75 @@ const CariApp = (function() {
     // Subtitle sync offset in seconds
     // Negative = subtitles appear earlier, Positive = subtitles appear later
     let _subtitleOffset = parseFloat(localStorage.getItem('cari_cc_offset') || '0');
-    // The offset that is currently baked into the cue times on the active track
-    let _appliedOffset = 0;
 
     /**
-     * Apply subtitle sync offset by adjusting VTTCue startTime/endTime
-     * on the video element's active text track.
+     * Custom TextDisplayer that wraps UITextDisplayer to apply a subtitle
+     * sync offset. Intercepts append() to shift cue startTime/endTime
+     * by _subtitleOffset before passing to the real displayer.
      *
-     * We track what offset is currently applied and shift by the delta,
-     * so repeated calls don't drift. New cues added by Shaka later will
-     * be shifted on the next call.
+     * Cue objects are cloned so the originals in Shaka's buffer stay clean,
+     * allowing re-append with a different offset when the user changes it.
      */
-    function applySubtitleOffset() {
-        const video = document.getElementById('mainVideo');
-        if (!video) return;
-
-        const delta = _subtitleOffset - _appliedOffset;
-        if (delta === 0) return;
-
-        // Find the active/showing text track
-        let track = null;
-        for (let i = 0; i < video.textTracks.length; i++) {
-            const t = video.textTracks[i];
-            if (t.mode === 'showing') { track = t; break; }
-            if (t.mode === 'hidden' && !track) track = t;
+    class OffsetTextDisplayer {
+        constructor(player) {
+            this._inner = new shaka.text.UITextDisplayer(player);
         }
-        if (!track || !track.cues || track.cues.length === 0) return;
 
-        for (let i = 0; i < track.cues.length; i++) {
-            try {
-                track.cues[i].startTime += delta;
-                track.cues[i].endTime += delta;
-            } catch (e) {
-                console.warn('[CariApp] Cannot modify cue times:', e);
-                return;
+        append(cues) {
+            if (_subtitleOffset !== 0 && cues.length > 0) {
+                // Clone cues with adjusted times so Shaka's internal copies stay clean
+                const shifted = cues.map(cue => {
+                    const c = Object.create(Object.getPrototypeOf(cue));
+                    Object.assign(c, cue);
+                    c.startTime = cue.startTime + _subtitleOffset;
+                    c.endTime = cue.endTime + _subtitleOffset;
+                    if (cue.nestedCues && cue.nestedCues.length) {
+                        c.nestedCues = cue.nestedCues.map(nc => {
+                            const n = Object.create(Object.getPrototypeOf(nc));
+                            Object.assign(n, nc);
+                            n.startTime = nc.startTime + _subtitleOffset;
+                            n.endTime = nc.endTime + _subtitleOffset;
+                            return n;
+                        });
+                    }
+                    return c;
+                });
+                this._inner.append(shifted);
+            } else {
+                this._inner.append(cues);
             }
         }
-        _appliedOffset = _subtitleOffset;
+
+        remove(start, end) { return this._inner.remove(start, end); }
+        isTextVisible() { return this._inner.isTextVisible(); }
+        setTextVisibility(on) { this._inner.setTextVisibility(on); }
+        destroy() { return this._inner.destroy(); }
+        configure(config) { if (this._inner.configure) this._inner.configure(config); }
+        setTextLanguage(lang) { if (this._inner.setTextLanguage) this._inner.setTextLanguage(lang); }
+        enableTextDisplayer() { if (this._inner.enableTextDisplayer) this._inner.enableTextDisplayer(); }
     }
 
     /**
-     * Reset applied offset tracking when switching content or tracks.
+     * Apply subtitle sync offset — force text track reload so cues are
+     * re-appended through OffsetTextDisplayer with the current offset.
      */
+    function applySubtitleOffset() {
+        if (!shakaPlayer) return;
+        try {
+            const tracks = shakaPlayer.getTextTracks();
+            const active = tracks.find(t => t.active);
+            if (active && shakaPlayer.isTextTrackVisible()) {
+                shakaPlayer.setTextTrackVisibility(false);
+                shakaPlayer.selectTextTrack(active);
+                shakaPlayer.setTextTrackVisibility(true);
+            }
+        } catch (e) {
+            console.warn('[CariApp] Subtitle offset apply error:', e);
+        }
+    }
+
     function resetSubtitleOffset() {
-        _appliedOffset = 0;
+        // No state to reset — offset is read from _subtitleOffset at append time
     }
 
     /**
