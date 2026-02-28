@@ -3099,6 +3099,12 @@ const CariApp = (function() {
                 video.play().catch(() => {});
             }
 
+            // Load external subtitle tracks from API
+            const subtitles = item.subtitles || [];
+            if (subtitles.length > 0) {
+                loadExternalSubtitles(video, subtitles);
+            }
+
             // Show resume prompt if we have saved progress
             if (savedProgress) {
                 showResumePrompt(video, savedProgress.progress_seconds, savedProgress.duration_seconds);
@@ -3762,18 +3768,46 @@ const CariApp = (function() {
     }
 
     /**
-     * Apply current CC state to Shaka Player — select CC1 track and show/hide.
+     * Load external VTT subtitle tracks into Shaka Player.
+     * Called after stream is loaded with subtitle data from the API.
+     */
+    function loadExternalSubtitles(videoEl, subtitles) {
+        if (!shakaPlayer || !subtitles || subtitles.length === 0) return;
+        try {
+            for (const sub of subtitles) {
+                const vttUrl = sub.file_path;
+                if (!vttUrl) continue;
+                shakaPlayer.addTextTrackAsync(
+                    vttUrl,
+                    sub.language_code || 'und',
+                    'subtitle',
+                    '',  // mime type (auto-detect for VTT)
+                    undefined,  // codec
+                    sub.language_name || sub.language_code || 'Unknown'
+                ).catch(e => console.warn('[CariApp] Failed to add subtitle track:', sub.language_code, e));
+            }
+            // Re-apply CC state after external tracks are added
+            setTimeout(() => applyCCState(), 200);
+        } catch (e) {
+            console.warn('[CariApp] loadExternalSubtitles error:', e);
+        }
+    }
+
+    /**
+     * Apply current CC state to Shaka Player — select preferred track and show/hide.
      */
     function applyCCState() {
         if (!shakaPlayer) return;
         try {
             const tracks = shakaPlayer.getTextTracks();
             if (tracks.length > 0 && ccEnabled) {
-                // Prefer CC1 / eng, fall back to first available
-                const cc1 = tracks.find(t => (t.label || '').toLowerCase().includes('cc1'))
-                          || tracks.find(t => t.language === 'en')
-                          || tracks[0];
-                shakaPlayer.selectTextTrack(cc1);
+                const savedLang = localStorage.getItem('cari_cc_lang') || 'en';
+                // Try saved language, then CC1, then English, then first
+                const preferred = tracks.find(t => t.language === savedLang)
+                    || tracks.find(t => (t.label || '').toLowerCase().includes('cc1'))
+                    || tracks.find(t => t.language === 'en')
+                    || tracks[0];
+                shakaPlayer.selectTextTrack(preferred);
             }
             shakaPlayer.setTextTrackVisibility(ccEnabled);
         } catch (e) {
@@ -3783,12 +3817,102 @@ const CariApp = (function() {
     }
 
     /**
-     * Toggle closed captions on/off.
+     * Toggle closed captions on/off. If turning on and multiple tracks exist, show picker.
      */
-    function toggleCC() {
+    function toggleCC(e) {
+        const tracks = shakaPlayer ? shakaPlayer.getTextTracks() : [];
+        if (!ccEnabled && tracks.length > 1 && e && e.currentTarget) {
+            // Turning on with multiple tracks — show language picker
+            showSubtitleMenu(e.currentTarget);
+            return;
+        }
         ccEnabled = !ccEnabled;
         localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
         applyCCState();
+        // Close any open subtitle menu
+        closeSubtitleMenu();
+    }
+
+    /**
+     * Show subtitle language picker menu above the CC button.
+     */
+    function showSubtitleMenu(anchorBtn) {
+        closeSubtitleMenu();
+        if (!shakaPlayer) return;
+        const tracks = shakaPlayer.getTextTracks();
+        if (tracks.length === 0) return;
+
+        const menu = document.createElement('div');
+        menu.className = 'subtitle-menu';
+        menu.id = 'subtitleMenu';
+
+        const activeLang = ccEnabled
+            ? (tracks.find(t => t.active) || {}).language || ''
+            : '';
+
+        // "Off" option
+        let html = '<div class="subtitle-menu-item' + (!ccEnabled ? ' active' : '') + '" data-lang="off">Off</div>';
+        // Language options — deduplicate by language code
+        const seen = new Set();
+        for (const t of tracks) {
+            const lang = t.language || 'und';
+            if (seen.has(lang)) continue;
+            seen.add(lang);
+            const label = t.label || t.language || 'Unknown';
+            const isActive = ccEnabled && lang === activeLang;
+            html += '<div class="subtitle-menu-item' + (isActive ? ' active' : '') + '" data-lang="' + CariUI.esc(lang) + '">' + CariUI.esc(label) + '</div>';
+        }
+        menu.innerHTML = html;
+
+        // Position above the CC button
+        const container = anchorBtn.closest('.vod-controls, .live-player-controls, .fs-overlay-bottom');
+        if (container) {
+            container.appendChild(menu);
+        } else {
+            anchorBtn.parentElement.appendChild(menu);
+        }
+
+        // Position near the button
+        const btnRect = anchorBtn.getBoundingClientRect();
+        const menuRect = menu.getBoundingClientRect();
+        const containerRect = (container || anchorBtn.parentElement).getBoundingClientRect();
+        menu.style.position = 'absolute';
+        menu.style.bottom = (containerRect.bottom - btnRect.top + 4) + 'px';
+        menu.style.right = (containerRect.right - btnRect.right) + 'px';
+
+        // Handle clicks
+        menu.addEventListener('click', (ev) => {
+            const item = ev.target.closest('.subtitle-menu-item');
+            if (!item) return;
+            const lang = item.dataset.lang;
+            if (lang === 'off') {
+                ccEnabled = false;
+            } else {
+                ccEnabled = true;
+                localStorage.setItem('cari_cc_lang', lang);
+            }
+            localStorage.setItem('cari_cc_enabled', ccEnabled ? '1' : '0');
+            applyCCState();
+            closeSubtitleMenu();
+        });
+
+        // Close on outside click (delayed to avoid immediate close)
+        setTimeout(() => {
+            document.addEventListener('click', _subtitleMenuOutsideClick);
+        }, 50);
+    }
+
+    function _subtitleMenuOutsideClick(e) {
+        const menu = document.getElementById('subtitleMenu');
+        if (menu && !menu.contains(e.target) && !e.target.closest('.cc-toggle-btn')) {
+            closeSubtitleMenu();
+        }
+    }
+
+    function closeSubtitleMenu() {
+        const menu = document.getElementById('subtitleMenu');
+        if (menu) menu.remove();
+        document.removeEventListener('click', _subtitleMenuOutsideClick);
     }
 
     /**

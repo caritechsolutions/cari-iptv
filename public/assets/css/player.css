@@ -1408,6 +1408,44 @@ img { max-width: 100%; display: block; }
     letter-spacing: 0.5px;
 }
 
+/* ---- Subtitle Language Menu ---- */
+.subtitle-menu {
+    position: absolute;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 4px 0;
+    min-width: 140px;
+    max-height: 240px;
+    overflow-y: auto;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.subtitle-menu-item {
+    padding: 8px 16px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.subtitle-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.subtitle-menu-item.active {
+    color: var(--p-primary, #6366f1);
+    font-weight: 600;
+}
+
+.subtitle-menu-item.active::before {
+    content: '\2713\00a0';
+}
+
 /* ---- Volume ---- */
 .vod-volume-wrap {
     display: flex;

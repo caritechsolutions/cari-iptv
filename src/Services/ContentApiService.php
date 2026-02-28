@@ -546,6 +546,13 @@ class ContentApiService
         // Content markers (intro, credits, ad cues)
         $movie['markers'] = $this->getContentMarkers('movie', $id);
 
+        // Subtitles (external VTT files)
+        $movie['subtitles'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, language_code, language_name, file_path, format, is_default, is_forced
+             FROM movie_subtitles WHERE movie_id = ? ORDER BY is_default DESC, language_name ASC",
+            [$id]
+        ), []);
+
         return $movie;
     }
 
@@ -788,6 +795,13 @@ class ContentApiService
 
         // Content markers (intro, credits, ad cues)
         $episode['markers'] = $this->getContentMarkers('episode', $id);
+
+        // Subtitles (external VTT files)
+        $episode['subtitles'] = $this->safeQuery(fn() => $this->db->fetchAll(
+            "SELECT id, language_code, language_name, file_path, format, is_default, is_forced
+             FROM episode_subtitles WHERE episode_id = ? ORDER BY is_default DESC, language_name ASC",
+            [$id]
+        ), []);
 
         // Next episode in the same season (for auto-play)
         $episode['next_episode'] = $this->safeQuery(fn() => $this->db->fetch(
