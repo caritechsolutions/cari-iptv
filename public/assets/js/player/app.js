@@ -3803,6 +3803,13 @@ const CariApp = (function() {
             console.log('[CariApp] DRM enabled: ClearKey, scheme=' + (drmConfig.scheme || 'cenc'));
         }
 
+        // Use custom text displayer for subtitle sync offset support
+        config.textDisplayFactory = () => {
+            return new OffsetTextDisplayer(
+                videoEl.parentElement, videoEl, {}
+            );
+        };
+
         shakaPlayer.configure(config);
 
         shakaPlayer.addEventListener('error', (e) => {
@@ -3898,16 +3905,66 @@ const CariApp = (function() {
 
     // Subtitle sync offset in seconds (positive = subtitles appear later)
     let _subtitleOffset = parseFloat(localStorage.getItem('cari_cc_offset') || '0');
+    let _offsetDisplayer = null; // Reference to our custom TextDisplayer wrapper
 
     /**
-     * Apply subtitle offset to Shaka Player.
+     * Custom TextDisplayer wrapper that applies a time offset to all cues.
+     * Wraps Shaka's built-in UITextDisplayer, intercepts append() to shift cue times.
+     * Reads _subtitleOffset directly so offset changes take effect on next append.
+     */
+    class OffsetTextDisplayer {
+        constructor(videoContainer, video, config) {
+            this._inner = new shaka.text.UITextDisplayer(videoContainer, video, config);
+            _offsetDisplayer = this;
+        }
+
+        append(cues) {
+            if (_subtitleOffset !== 0) {
+                for (const cue of cues) {
+                    cue.startTime += _subtitleOffset;
+                    cue.endTime += _subtitleOffset;
+                    if (cue.nestedCues) {
+                        for (const nested of cue.nestedCues) {
+                            nested.startTime += _subtitleOffset;
+                            nested.endTime += _subtitleOffset;
+                        }
+                    }
+                }
+            }
+            this._inner.append(cues);
+        }
+
+        remove(start, end) { return this._inner.remove(start, end); }
+        isTextVisible() { return this._inner.isTextVisible(); }
+        setTextVisibility(on) { this._inner.setTextVisibility(on); }
+        destroy() { _offsetDisplayer = null; return this._inner.destroy(); }
+
+        // Methods that may be called by Shaka 4.x
+        configure(config) { if (this._inner.configure) this._inner.configure(config); }
+        setTextLanguage(lang) { if (this._inner.setTextLanguage) this._inner.setTextLanguage(lang); }
+        enableTextDisplayer() { if (this._inner.enableTextDisplayer) this._inner.enableTextDisplayer(); }
+    }
+
+    /**
+     * Apply subtitle offset — force Shaka to reload text tracks so new offset takes effect.
+     * We update the live offset value (read by OffsetTextDisplayer.append) then
+     * clear and re-select the text track so cues are re-parsed with the new offset.
      */
     function applySubtitleOffset() {
         if (!shakaPlayer) return;
+        // The OffsetTextDisplayer reads _subtitleOffset directly at append time,
+        // so we just need to force text to be re-loaded.
         try {
-            shakaPlayer.configure('textDisplayer.textOffset', _subtitleOffset);
+            const tracks = shakaPlayer.getTextTracks();
+            const active = tracks.find(t => t.active);
+            if (active && shakaPlayer.isTextTrackVisible()) {
+                // Remove buffered text and re-select to force re-append with new offset
+                shakaPlayer.setTextTrackVisibility(false);
+                shakaPlayer.selectTextTrack(active);
+                shakaPlayer.setTextTrackVisibility(true);
+            }
         } catch (e) {
-            console.warn('[CariApp] Subtitle offset not supported:', e);
+            console.warn('[CariApp] Subtitle offset apply error:', e);
         }
     }
 
