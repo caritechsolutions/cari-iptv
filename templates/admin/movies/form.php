@@ -1647,6 +1647,30 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 .mt-2 {
     margin-top: 1rem;
 }
+
+.toast {
+    position: fixed;
+    top: 80px;
+    right: 1.5rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: 8px;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    transform: translateX(120%);
+    transition: transform 0.3s ease;
+    max-width: 400px;
+}
+.toast.show { transform: translateX(0); }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--primary); }
+.toast-warning { background: var(--warning); }
 </style>
 
 <script>
@@ -2003,6 +2027,22 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('tmdbSearchQuery').value = title;
     }
 });
+
+/* ===================== Toast Notifications ===================== */
+function showToast(message, type) {
+    var existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + (type || 'info');
+    var icon = type === 'success' ? 'lucide-check-circle' : (type === 'error' ? 'lucide-alert-circle' : 'lucide-info');
+    toast.innerHTML = '<i class="' + icon + '"></i> ' + escapeHtml(message);
+    document.body.appendChild(toast);
+    requestAnimationFrame(function() { toast.classList.add('show'); });
+    setTimeout(function() {
+        toast.classList.remove('show');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 4000);
+}
 
 /* ===================== Subtitle Management ===================== */
 var subCsrf = '<?= $csrf ?>';

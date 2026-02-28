@@ -11,6 +11,7 @@ use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\SeriesService;
 use CariIPTV\Services\MetadataService;
+use CariIPTV\Services\SubtitleService;
 
 class SeriesController
 {
@@ -619,6 +620,17 @@ class SeriesController
             // Table may not exist yet
         }
 
+        // Get subtitles for each episode
+        $episodeSubtitles = [];
+        try {
+            $subtitleService = new SubtitleService();
+            foreach ($season['episodes'] as $ep) {
+                $episodeSubtitles[$ep['id']] = $subtitleService->getEpisodeSubtitles($ep['id']);
+            }
+        } catch (\Exception $e) {
+            // Table may not exist yet
+        }
+
         Response::view('admin/series/episodes', [
             'pageTitle' => $season['name'] . ' - ' . $show['title'],
             'show' => $show,
@@ -626,6 +638,8 @@ class SeriesController
             'episodes' => $season['episodes'],
             'trailers' => $season['trailers'],
             'vodServers' => $vodServers,
+            'episodeSubtitles' => $episodeSubtitles,
+            'subtitleLanguages' => SubtitleService::LANGUAGES,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -1017,6 +1031,217 @@ class SeriesController
     // ========================================================================
     // PRIVATE HELPERS
     // ========================================================================
+
+    // ========================================================================
+    // Episode Subtitle Management
+    // ========================================================================
+
+    /**
+     * Upload a subtitle file for an episode
+     */
+    public function uploadEpisodeSubtitle(int $id, int $seasonId, int $episodeId): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $episode = $this->seriesService->getEpisode($episodeId);
+        if (!$episode) {
+            $this->sendJson(['success' => false, 'message' => 'Episode not found']);
+            return;
+        }
+
+        $languageCode = trim($_POST['language_code'] ?? '');
+        $languageName = trim($_POST['language_name'] ?? '');
+
+        if (empty($languageCode) || empty($languageName)) {
+            $this->sendJson(['success' => false, 'message' => 'Language is required']);
+            return;
+        }
+
+        if (empty($_FILES['subtitle_file']['tmp_name']) || $_FILES['subtitle_file']['error'] !== UPLOAD_ERR_OK) {
+            $this->sendJson(['success' => false, 'message' => 'No file uploaded']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->uploadEpisodeSubtitle($_FILES['subtitle_file'], $episodeId, $languageCode, $languageName);
+
+        if (!$result['success']) {
+            $this->sendJson($result);
+            return;
+        }
+
+        $isDefault = !empty($_POST['is_default']) ? 1 : 0;
+        $subtitleId = $subtitleService->addEpisodeSubtitle($episodeId, [
+            'language_code' => $languageCode,
+            'language_name' => $languageName,
+            'file_path' => $result['file_path'],
+            'format' => $result['format'],
+            'source' => 'upload',
+            'is_default' => $isDefault,
+        ]);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => "Subtitle ({$languageName}) uploaded successfully.",
+            'subtitle' => [
+                'id' => $subtitleId,
+                'language_code' => $languageCode,
+                'language_name' => $languageName,
+                'source' => 'upload',
+                'is_default' => $isDefault,
+                'file_path' => $result['file_path'],
+            ],
+        ]);
+    }
+
+    /**
+     * Search for subtitles on OpenSubtitles for an episode
+     */
+    public function searchEpisodeSubtitles(int $id, int $seasonId, int $episodeId): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $show = $this->seriesService->getShow($id);
+        if (!$show) {
+            $this->sendJson(['success' => false, 'message' => 'TV show not found']);
+            return;
+        }
+
+        $season = $this->seriesService->getSeason($seasonId);
+        $episode = $this->seriesService->getEpisode($episodeId);
+        if (!$season || !$episode) {
+            $this->sendJson(['success' => false, 'message' => 'Episode not found']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->searchEpisodeSubtitles(
+            $show['tmdb_id'] ?? null,
+            (int)($season['season_number'] ?? 1),
+            (int)($episode['episode_number'] ?? 1),
+            $show['title'] ?? null
+        );
+
+        $this->sendJson($result);
+    }
+
+    /**
+     * Download and save a subtitle from OpenSubtitles for an episode
+     */
+    public function fetchEpisodeSubtitles(int $id, int $seasonId, int $episodeId): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $episode = $this->seriesService->getEpisode($episodeId);
+        if (!$episode) {
+            $this->sendJson(['success' => false, 'message' => 'Episode not found']);
+            return;
+        }
+
+        $fileId = (int)($_POST['file_id'] ?? 0);
+        $languageCode = trim($_POST['language_code'] ?? '');
+        $languageName = trim($_POST['language_name'] ?? '');
+
+        if (!$fileId || empty($languageCode)) {
+            $this->sendJson(['success' => false, 'message' => 'Missing file_id or language']);
+            return;
+        }
+
+        if (empty($languageName)) {
+            $languageName = SubtitleService::LANGUAGES[$languageCode] ?? ucfirst($languageCode);
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->downloadEpisodeSubtitle($fileId, $episodeId, $languageCode, $languageName);
+
+        if (!$result['success']) {
+            $this->sendJson($result);
+            return;
+        }
+
+        $subtitleId = $subtitleService->addEpisodeSubtitle($episodeId, [
+            'language_code' => $languageCode,
+            'language_name' => $languageName,
+            'file_path' => $result['file_path'],
+            'format' => $result['format'],
+            'source' => 'opensubtitles',
+            'external_id' => (string)$fileId,
+        ]);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => "Subtitle ({$languageName}) downloaded from OpenSubtitles.",
+            'subtitle' => [
+                'id' => $subtitleId,
+                'language_code' => $languageCode,
+                'language_name' => $languageName,
+                'source' => 'opensubtitles',
+                'file_path' => $result['file_path'],
+            ],
+            'remaining_downloads' => $result['remaining_downloads'] ?? null,
+        ]);
+    }
+
+    /**
+     * Delete an episode subtitle
+     */
+    public function deleteEpisodeSubtitle(int $id, int $seasonId, int $episodeId, int $sid): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $subtitle = $subtitleService->getEpisodeSubtitle($sid);
+
+        if (!$subtitle || (int)$subtitle['episode_id'] !== $episodeId) {
+            $this->sendJson(['success' => false, 'message' => 'Subtitle not found']);
+            return;
+        }
+
+        $subtitleService->deleteEpisodeSubtitle($sid);
+        $this->sendJson(['success' => true, 'message' => 'Subtitle deleted.']);
+    }
+
+    /**
+     * Set an episode subtitle as default
+     */
+    public function setDefaultEpisodeSubtitle(int $id, int $seasonId, int $episodeId, int $sid): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $subtitleService->setEpisodeDefault($episodeId, $sid);
+        $this->sendJson(['success' => true, 'message' => 'Default subtitle updated.']);
+    }
 
     /**
      * Send clean JSON response

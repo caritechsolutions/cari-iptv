@@ -223,6 +223,13 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/series/{id}/seasons/{seasonId}/trailers/add', [SeriesController::class, 'addTrailer']);
     $router->post('/series/{id}/seasons/{seasonId}/trailers/{trailerId}/remove', [SeriesController::class, 'removeTrailer']);
 
+    // TV Shows Episode Subtitles
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/subtitles/upload', [SeriesController::class, 'uploadEpisodeSubtitle']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/subtitles/search', [SeriesController::class, 'searchEpisodeSubtitles']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/subtitles/fetch', [SeriesController::class, 'fetchEpisodeSubtitles']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/subtitles/{sid}/delete', [SeriesController::class, 'deleteEpisodeSubtitle']);
+    $router->post('/series/{id}/seasons/{seasonId}/episodes/{episodeId}/subtitles/{sid}/default', [SeriesController::class, 'setDefaultEpisodeSubtitle']);
+
     // Categories Management
     $router->get('/categories', [CategoryController::class, 'index']);
     $router->post('/categories/store', [CategoryController::class, 'store']);

@@ -221,6 +221,293 @@ class SubtitleService
     }
 
     // -------------------------------------------------------------------------
+    // Episode CRUD Operations
+    // -------------------------------------------------------------------------
+
+    /**
+     * Get all subtitles for an episode
+     */
+    public function getEpisodeSubtitles(int $episodeId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT * FROM episode_subtitles WHERE episode_id = ? ORDER BY is_default DESC, language_name ASC",
+            [$episodeId]
+        );
+    }
+
+    /**
+     * Get a single episode subtitle by ID
+     */
+    public function getEpisodeSubtitle(int $id): ?array
+    {
+        return $this->db->fetch("SELECT * FROM episode_subtitles WHERE id = ?", [$id]);
+    }
+
+    /**
+     * Add an episode subtitle record
+     */
+    public function addEpisodeSubtitle(int $episodeId, array $data): int
+    {
+        if (!empty($data['is_default'])) {
+            $this->db->execute(
+                "UPDATE episode_subtitles SET is_default = 0 WHERE episode_id = ?",
+                [$episodeId]
+            );
+        }
+
+        $this->db->execute(
+            "INSERT INTO episode_subtitles (episode_id, language_code, language_name, source, external_id, file_path, format, is_default, is_forced)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE file_path = VALUES(file_path), source = VALUES(source),
+             external_id = VALUES(external_id), format = VALUES(format), is_default = VALUES(is_default),
+             is_forced = VALUES(is_forced), updated_at = CURRENT_TIMESTAMP",
+            [
+                $episodeId,
+                $data['language_code'],
+                $data['language_name'],
+                $data['source'] ?? 'upload',
+                $data['external_id'] ?? null,
+                $data['file_path'],
+                $data['format'] ?? 'vtt',
+                $data['is_default'] ?? 0,
+                $data['is_forced'] ?? 0,
+            ]
+        );
+
+        return (int)$this->db->lastInsertId();
+    }
+
+    /**
+     * Delete an episode subtitle
+     */
+    public function deleteEpisodeSubtitle(int $subtitleId): bool
+    {
+        $subtitle = $this->getEpisodeSubtitle($subtitleId);
+        if (!$subtitle) {
+            return false;
+        }
+
+        if (!empty($subtitle['file_path'])) {
+            $fullPath = dirname(__DIR__, 2) . '/public' . $subtitle['file_path'];
+            if (file_exists($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+
+        $this->db->execute("DELETE FROM episode_subtitles WHERE id = ?", [$subtitleId]);
+        return true;
+    }
+
+    /**
+     * Set an episode subtitle as default
+     */
+    public function setEpisodeDefault(int $episodeId, int $subtitleId): bool
+    {
+        $this->db->execute(
+            "UPDATE episode_subtitles SET is_default = 0 WHERE episode_id = ?",
+            [$episodeId]
+        );
+        $this->db->execute(
+            "UPDATE episode_subtitles SET is_default = 1 WHERE id = ? AND episode_id = ?",
+            [$subtitleId, $episodeId]
+        );
+        return true;
+    }
+
+    // -------------------------------------------------------------------------
+    // Episode File Upload
+    // -------------------------------------------------------------------------
+
+    /**
+     * Upload a subtitle file for an episode
+     */
+    public function uploadEpisodeSubtitle(array $file, int $episodeId, string $languageCode, string $languageName): array
+    {
+        $allowedExtensions = ['srt', 'vtt', 'ass', 'ssa'];
+        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+        if (!in_array($extension, $allowedExtensions)) {
+            return ['success' => false, 'error' => 'Invalid file type. Allowed: ' . implode(', ', $allowedExtensions)];
+        }
+
+        $maxSize = 5 * 1024 * 1024;
+        if ($file['size'] > $maxSize) {
+            return ['success' => false, 'error' => 'File too large. Maximum size is 5MB.'];
+        }
+
+        $uploadDir = dirname(__DIR__, 2) . '/public/uploads/episodes/' . $episodeId . '/subtitles';
+        if (!is_dir($uploadDir)) {
+            if (!@mkdir($uploadDir, 0775, true)) {
+                return ['success' => false, 'error' => 'Failed to create subtitle directory.'];
+            }
+        }
+
+        $vttFilename = $languageCode . '.vtt';
+        $vttPath = $uploadDir . '/' . $vttFilename;
+
+        if ($extension === 'vtt') {
+            if (!move_uploaded_file($file['tmp_name'], $vttPath)) {
+                return ['success' => false, 'error' => 'Failed to save subtitle file.'];
+            }
+        } elseif ($extension === 'srt') {
+            $tmpSrt = $uploadDir . '/' . $languageCode . '_tmp.srt';
+            if (!move_uploaded_file($file['tmp_name'], $tmpSrt)) {
+                return ['success' => false, 'error' => 'Failed to save subtitle file.'];
+            }
+            if (!$this->convertSrtToVtt($tmpSrt, $vttPath)) {
+                @unlink($tmpSrt);
+                return ['success' => false, 'error' => 'Failed to convert SRT to WebVTT.'];
+            }
+            @unlink($tmpSrt);
+        } else {
+            $tmpFile = $uploadDir . '/' . $languageCode . '_tmp.' . $extension;
+            if (!move_uploaded_file($file['tmp_name'], $tmpFile)) {
+                return ['success' => false, 'error' => 'Failed to save subtitle file.'];
+            }
+            if (!$this->convertToVttWithFfmpeg($tmpFile, $vttPath)) {
+                @unlink($tmpFile);
+                return ['success' => false, 'error' => 'Failed to convert subtitle to WebVTT.'];
+            }
+            @unlink($tmpFile);
+        }
+
+        $relativePath = '/uploads/episodes/' . $episodeId . '/subtitles/' . $vttFilename;
+
+        return [
+            'success' => true,
+            'file_path' => $relativePath,
+            'format' => 'vtt',
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Episode OpenSubtitles Search
+    // -------------------------------------------------------------------------
+
+    /**
+     * Search OpenSubtitles for episode subtitles
+     */
+    public function searchEpisodeSubtitles(?int $tmdbShowId, int $seasonNumber, int $episodeNumber, ?string $title = null): array
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'error' => 'OpenSubtitles API key not configured. Go to Settings > Integrations.'];
+        }
+
+        $params = [];
+
+        if (!empty($tmdbShowId)) {
+            $params['parent_tmdb_id'] = $tmdbShowId;
+            $params['season_number'] = $seasonNumber;
+            $params['episode_number'] = $episodeNumber;
+        } elseif (!empty($title)) {
+            $params['query'] = $title;
+            $params['season_number'] = $seasonNumber;
+            $params['episode_number'] = $episodeNumber;
+        } else {
+            return ['success' => false, 'error' => 'No search criteria provided.'];
+        }
+
+        $params['type'] = 'episode';
+
+        $languages = $this->getPreferredLanguages();
+        if (!empty($languages)) {
+            $params['languages'] = implode(',', $languages);
+        }
+
+        $params['order_by'] = 'download_count';
+        $params['order_direction'] = 'desc';
+
+        $response = $this->apiRequest('GET', '/subtitles', $params);
+
+        if ($response === null) {
+            return ['success' => false, 'error' => 'Failed to connect to OpenSubtitles API.'];
+        }
+
+        if (empty($response['data'])) {
+            return ['success' => true, 'results' => [], 'message' => 'No subtitles found.'];
+        }
+
+        $results = [];
+        foreach ($response['data'] as $item) {
+            $attrs = $item['attributes'] ?? [];
+            $results[] = [
+                'file_id' => $attrs['files'][0]['file_id'] ?? null,
+                'language' => $attrs['language'] ?? 'unknown',
+                'release' => $attrs['release'] ?? '',
+                'download_count' => $attrs['download_count'] ?? 0,
+                'hearing_impaired' => $attrs['hearing_impaired'] ?? false,
+                'machine_translated' => $attrs['machine_translated'] ?? false,
+                'uploader' => $attrs['uploader']['name'] ?? 'Unknown',
+                'fps' => $attrs['fps'] ?? null,
+                'feature' => $attrs['feature_details']['movie_name'] ?? ($attrs['feature_details']['title'] ?? ''),
+                'year' => $attrs['feature_details']['year'] ?? '',
+            ];
+        }
+
+        return ['success' => true, 'results' => $results, 'total' => $response['total_count'] ?? count($results)];
+    }
+
+    /**
+     * Download a subtitle from OpenSubtitles for an episode
+     */
+    public function downloadEpisodeSubtitle(int $fileId, int $episodeId, string $languageCode, string $languageName): array
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'error' => 'OpenSubtitles API not configured.'];
+        }
+
+        $response = $this->apiRequest('POST', '/download', ['file_id' => $fileId]);
+
+        if ($response === null || empty($response['link'])) {
+            return ['success' => false, 'error' => 'Failed to get download link from OpenSubtitles.'];
+        }
+
+        $downloadUrl = $response['link'];
+
+        $ch = curl_init($downloadUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+        $srtContent = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || empty($srtContent)) {
+            return ['success' => false, 'error' => 'Failed to download subtitle file.'];
+        }
+
+        $uploadDir = dirname(__DIR__, 2) . '/public/uploads/episodes/' . $episodeId . '/subtitles';
+        if (!is_dir($uploadDir)) {
+            if (!@mkdir($uploadDir, 0775, true)) {
+                return ['success' => false, 'error' => 'Failed to create subtitle directory.'];
+            }
+        }
+
+        $tmpSrt = $uploadDir . '/' . $languageCode . '_tmp.srt';
+        file_put_contents($tmpSrt, $srtContent);
+
+        $vttFilename = $languageCode . '.vtt';
+        $vttPath = $uploadDir . '/' . $vttFilename;
+
+        if (!$this->convertSrtToVtt($tmpSrt, $vttPath)) {
+            @unlink($tmpSrt);
+            return ['success' => false, 'error' => 'Failed to convert subtitle to WebVTT.'];
+        }
+        @unlink($tmpSrt);
+
+        $relativePath = '/uploads/episodes/' . $episodeId . '/subtitles/' . $vttFilename;
+
+        return [
+            'success' => true,
+            'file_path' => $relativePath,
+            'format' => 'vtt',
+            'remaining_downloads' => $response['remaining'] ?? null,
+        ];
+    }
+
+    // -------------------------------------------------------------------------
     // File Upload
     // -------------------------------------------------------------------------
 
