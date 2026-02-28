@@ -3015,8 +3015,9 @@ const CariApp = (function() {
         const type = params.type;
         const id = params.id;
 
-        // Clean up previous marker listeners
+        // Clean up previous state
         if (_markerCleanup) { _markerCleanup(); _markerCleanup = null; }
+        resetSubtitleOffset();
 
         el.innerHTML = `
             <div class="player-page">
@@ -3867,10 +3868,19 @@ const CariApp = (function() {
                 shakaPlayer.selectTextTrack(preferred);
             }
             shakaPlayer.setTextTrackVisibility(ccEnabled);
-            // Apply sync offset after a short delay to let cues load
-            if (ccEnabled && _subtitleOffset !== 0) {
-                _originalCueTimes = null; // Reset for new track
-                setTimeout(applySubtitleOffset, 500);
+            // When enabling CC, reset offset tracking (fresh cues) and apply
+            if (ccEnabled) {
+                resetSubtitleOffset();
+                if (_subtitleOffset !== 0) {
+                    // Retry a few times — cues load asynchronously
+                    const tryApply = (attempts) => {
+                        applySubtitleOffset();
+                        if (_appliedOffset === 0 && _subtitleOffset !== 0 && attempts > 0) {
+                            setTimeout(() => tryApply(attempts - 1), 300);
+                        }
+                    };
+                    setTimeout(() => tryApply(5), 200);
+                }
             }
         } catch (e) {
             console.warn('[CariApp] CC state error:', e);
@@ -3900,52 +3910,53 @@ const CariApp = (function() {
         closeSubtitleMenu();
     }
 
-    // Subtitle sync offset in seconds (positive = subtitles appear later)
+    // Subtitle sync offset in seconds
+    // Negative = subtitles appear earlier, Positive = subtitles appear later
     let _subtitleOffset = parseFloat(localStorage.getItem('cari_cc_offset') || '0');
-    // Track original cue times so we can re-apply different offsets
-    let _originalCueTimes = null;
+    // The offset that is currently baked into the cue times on the active track
+    let _appliedOffset = 0;
 
     /**
      * Apply subtitle sync offset by adjusting VTTCue startTime/endTime
      * on the video element's active text track.
+     *
+     * We track what offset is currently applied and shift by the delta,
+     * so repeated calls don't drift. New cues added by Shaka later will
+     * be shifted on the next call.
      */
     function applySubtitleOffset() {
         const video = document.getElementById('mainVideo');
         if (!video) return;
 
+        const delta = _subtitleOffset - _appliedOffset;
+        if (delta === 0) return;
+
         // Find the active/showing text track
         let track = null;
         for (let i = 0; i < video.textTracks.length; i++) {
-            if (video.textTracks[i].mode === 'showing' || video.textTracks[i].mode === 'hidden') {
-                track = video.textTracks[i];
-                if (video.textTracks[i].mode === 'showing') break;
-            }
+            const t = video.textTracks[i];
+            if (t.mode === 'showing') { track = t; break; }
+            if (t.mode === 'hidden' && !track) track = t;
         }
         if (!track || !track.cues || track.cues.length === 0) return;
 
-        // Save original times on first call (or if track changed)
-        if (!_originalCueTimes || _originalCueTimes.trackLabel !== (track.label || track.language)) {
-            _originalCueTimes = { trackLabel: track.label || track.language, cues: [] };
-            for (let i = 0; i < track.cues.length; i++) {
-                _originalCueTimes.cues.push({
-                    startTime: track.cues[i].startTime,
-                    endTime: track.cues[i].endTime,
-                });
-            }
-        }
-
-        // Apply offset relative to original times
-        const n = Math.min(track.cues.length, _originalCueTimes.cues.length);
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < track.cues.length; i++) {
             try {
-                track.cues[i].startTime = _originalCueTimes.cues[i].startTime + _subtitleOffset;
-                track.cues[i].endTime = _originalCueTimes.cues[i].endTime + _subtitleOffset;
+                track.cues[i].startTime += delta;
+                track.cues[i].endTime += delta;
             } catch (e) {
-                // Some browsers don't allow modifying cue times — bail out
                 console.warn('[CariApp] Cannot modify cue times:', e);
                 return;
             }
         }
+        _appliedOffset = _subtitleOffset;
+    }
+
+    /**
+     * Reset applied offset tracking when switching content or tracks.
+     */
+    function resetSubtitleOffset() {
+        _appliedOffset = 0;
     }
 
     /**
@@ -3979,14 +3990,17 @@ const CariApp = (function() {
         }
 
         // Subtitle sync control
-        const offsetDisplay = (_subtitleOffset >= 0 ? '+' : '') + _subtitleOffset.toFixed(1) + 's';
+        // Negative = subs appear earlier, Positive = subs appear later
+        const offsetVal = _subtitleOffset.toFixed(1);
+        const offsetDisplay = (_subtitleOffset === 0) ? '0.0s'
+            : (_subtitleOffset > 0 ? '+' + offsetVal + 's' : offsetVal + 's');
         html += '<div class="subtitle-menu-divider"></div>';
         html += '<div class="subtitle-sync-row">';
         html += '<span class="subtitle-sync-label">Sync</span>';
-        html += '<button class="subtitle-sync-btn" data-sync="-0.5" title="Earlier">-</button>';
+        html += '<button class="subtitle-sync-btn" data-sync="-0.5" title="Subtitles earlier">\u25C0</button>';
         html += '<span class="subtitle-sync-value" id="subtitleSyncValue">' + offsetDisplay + '</span>';
-        html += '<button class="subtitle-sync-btn" data-sync="+0.5" title="Later">+</button>';
-        html += '<button class="subtitle-sync-btn subtitle-sync-reset" data-sync="reset" title="Reset">0</button>';
+        html += '<button class="subtitle-sync-btn" data-sync="+0.5" title="Subtitles later">\u25B6</button>';
+        html += '<button class="subtitle-sync-btn subtitle-sync-reset" data-sync="reset" title="Reset to 0">0</button>';
         html += '</div>';
 
         menu.innerHTML = html;
@@ -4036,7 +4050,11 @@ const CariApp = (function() {
                 localStorage.setItem('cari_cc_offset', String(_subtitleOffset));
                 applySubtitleOffset();
                 const valEl = document.getElementById('subtitleSyncValue');
-                if (valEl) valEl.textContent = (_subtitleOffset >= 0 ? '+' : '') + _subtitleOffset.toFixed(1) + 's';
+                if (valEl) {
+                    const v = _subtitleOffset.toFixed(1);
+                    valEl.textContent = (_subtitleOffset === 0) ? '0.0s'
+                        : (_subtitleOffset > 0 ? '+' + v + 's' : v + 's');
+                }
             }
         });
 
