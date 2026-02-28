@@ -99,6 +99,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/auth/me', [AuthController::class, 'me'], ['api_auth']);
     $router->post('/auth/watch-progress', [AuthController::class, 'updateWatchProgress'], ['api_auth']);
     $router->get('/auth/watch-progress', [AuthController::class, 'getWatchProgress'], ['api_auth']);
+    $router->get('/auth/watch-progress/batch', [AuthController::class, 'getBatchWatchProgress'], ['api_auth']);
     $router->get('/auth/continue-watching', [AuthController::class, 'continueWatching'], ['api_auth']);
     $router->post('/auth/watchlist/toggle', [AuthController::class, 'toggleWatchlist'], ['api_auth']);
     $router->get('/auth/watchlist', [AuthController::class, 'getWatchlist'], ['api_auth']);

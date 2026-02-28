@@ -168,6 +168,10 @@ static int config_ini_callback(void *user, const char *section, const char *name
     else if (MATCH("drm", "key_server_url"))   COPY_STR(config->drm_key_server_url);
     else if (MATCH("drm", "auto_generate"))    config->drm_auto_generate = (atoi(value) || strcasecmp(value, "true") == 0);
 
+    /* [subtitles] */
+    else if (MATCH("subtitles", "enabled"))      config->subtitles_enabled = (atoi(value) || strcasecmp(value, "true") == 0);
+    else if (MATCH("subtitles", "auto_extract")) config->subtitles_auto_extract = (atoi(value) || strcasecmp(value, "true") == 0);
+
     /* [acme] */
     else if (MATCH("acme", "enabled"))         config->acme_enabled = (atoi(value) || strcasecmp(value, "true") == 0);
     else if (MATCH("acme", "http_port"))       config->acme_http_port = atoi(value);
@@ -251,6 +255,10 @@ void config_set_defaults(vod_config_t *config)
     snprintf(config->drm_scheme, sizeof(config->drm_scheme), "%s", "cenc");
     config->drm_key_server_url[0] = '\0';
     config->drm_auto_generate = true;
+
+    /* Subtitles */
+    config->subtitles_enabled = true;
+    config->subtitles_auto_extract = true;
 
     /* ACME */
     config->acme_enabled = false;

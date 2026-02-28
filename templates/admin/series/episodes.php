@@ -141,6 +141,12 @@ $episodeCount = count($episodes);
                                         </td>
                                         <td>
                                             <div class="action-buttons">
+                                                <button type="button" class="btn btn-sm" style="background:var(--primary);color:#fff" onclick="openSubtitleModal(<?= $ep['id'] ?>)" title="Subtitles">
+                                                    <i class="lucide-subtitles"></i>
+                                                    <?php $subCount = count($episodeSubtitles[$ep['id']] ?? []); if ($subCount > 0): ?>
+                                                        <span style="font-size:0.7rem;margin-left:2px"><?= $subCount ?></span>
+                                                    <?php endif; ?>
+                                                </button>
                                                 <?php if (!empty($vodServers)): ?>
                                                 <button type="button" class="btn btn-sm" style="background:var(--accent,#8b5cf6);color:#fff" onclick="openVodModal(<?= $ep['id'] ?>)" title="VOD & Markers">
                                                     <i class="lucide-hard-drive"></i>
@@ -381,6 +387,66 @@ $episodeCount = count($episodes);
             <button type="button" class="btn btn-danger" id="confirmDeleteEpisodeBtn" onclick="confirmDeleteEpisode()">
                 <i class="lucide-trash-2"></i> Delete
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Subtitle Management Modal -->
+<div class="modal-overlay" id="subtitleModal" style="display: none;">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 id="subtitleModalTitle"><i class="lucide-subtitles"></i> Subtitles</h3>
+            <button type="button" class="modal-close" onclick="closeSubtitleModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <!-- Action buttons -->
+            <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="subtitleSearchOS()">
+                    <i class="lucide-search"></i> OpenSubtitles
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="subtitleShowUpload()">
+                    <i class="lucide-upload"></i> Upload
+                </button>
+            </div>
+
+            <!-- Current subtitles list -->
+            <div id="subtitlesList"></div>
+            <div id="noSubtitles" class="text-muted text-center" style="padding:1rem;">
+                No subtitles yet. Use OpenSubtitles to search or Upload a file.
+            </div>
+
+            <!-- Upload form (hidden by default) -->
+            <div id="subtitleUploadForm" style="display:none;margin-top:1rem;padding:1rem;background:var(--bg-dark);border-radius:8px">
+                <div class="form-row" style="gap:0.75rem">
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Language</label>
+                        <select id="subtitle-lang" class="form-input">
+                            <option value="">Select language...</option>
+                            <?php foreach (($subtitleLanguages ?? \CariIPTV\Services\SubtitleService::LANGUAGES) as $code => $name): ?>
+                                <option value="<?= $code ?>" data-name="<?= htmlspecialchars($name) ?>"><?= htmlspecialchars($name) ?> (<?= $code ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:2">
+                        <label class="form-label">File (.srt, .vtt, .ass)</label>
+                        <input type="file" id="subtitle-file" class="form-input" accept=".srt,.vtt,.ass,.ssa">
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                    <label class="checkbox-label" style="padding:0">
+                        <input type="checkbox" id="subtitle-default" value="1">
+                        <span class="checkbox-text" style="font-size:0.85rem">Set as default</span>
+                    </label>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="subtitleUpload()">
+                        <i class="lucide-upload"></i> Upload
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('subtitleUploadForm').style.display='none'">
+                        Cancel
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -1086,6 +1152,30 @@ $episodeCount = count($episodes);
 .text-muted {
     color: var(--text-muted);
 }
+
+.toast {
+    position: fixed;
+    top: 80px;
+    right: 1.5rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: 8px;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    transform: translateX(120%);
+    transition: transform 0.3s ease;
+    max-width: 400px;
+}
+.toast.show { transform: translateX(0); }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--primary); }
+.toast-warning { background: var(--warning); }
 </style>
 
 <script>
@@ -1444,6 +1534,292 @@ function closeTrailerPreview() {
     const iframe = document.getElementById('trailerPreviewFrame');
     iframe.src = '';
     modal.style.display = 'none';
+}
+
+// ========================================================================
+// SUBTITLE MANAGEMENT
+// ========================================================================
+
+var subEpisodeId = 0;
+var subLanguages = <?= json_encode(\CariIPTV\Services\SubtitleService::LANGUAGES) ?>;
+
+// Pre-load episode subtitles from PHP
+var episodeSubtitlesData = <?= json_encode($episodeSubtitles ?? []) ?>;
+
+function showToast(message, type) {
+    var existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + (type || 'info');
+    var icon = type === 'success' ? 'lucide-check-circle' : (type === 'error' ? 'lucide-alert-circle' : 'lucide-info');
+    toast.innerHTML = '<i class="' + icon + '"></i> ' + escapeHtml(message);
+    document.body.appendChild(toast);
+    requestAnimationFrame(function() { toast.classList.add('show'); });
+    setTimeout(function() {
+        toast.classList.remove('show');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 4000);
+}
+
+function openSubtitleModal(episodeId) {
+    subEpisodeId = episodeId;
+    var row = document.getElementById('episode-row-' + episodeId);
+    var epName = row ? (row.dataset.name || 'Episode ' + row.dataset.episodeNumber) : 'Episode';
+    document.getElementById('subtitleModalTitle').innerHTML = '<i class="lucide-subtitles"></i> ' + escapeHtml(epName) + ' — Subtitles';
+
+    // Populate existing subtitles
+    var list = document.getElementById('subtitlesList');
+    list.innerHTML = '';
+    var subs = episodeSubtitlesData[episodeId] || [];
+    if (subs.length > 0) {
+        subs.forEach(function(sub) { subtitleAddRow(sub); });
+        document.getElementById('noSubtitles').style.display = 'none';
+    } else {
+        document.getElementById('noSubtitles').style.display = 'block';
+    }
+
+    // Reset upload form
+    document.getElementById('subtitleUploadForm').style.display = 'none';
+    document.getElementById('subtitleModal').style.display = 'flex';
+}
+
+function closeSubtitleModal() {
+    document.getElementById('subtitleModal').style.display = 'none';
+    subEpisodeId = 0;
+}
+
+function subtitleShowUpload() {
+    document.getElementById('subtitleUploadForm').style.display = 'block';
+}
+
+function subtitleUpload() {
+    var lang = document.getElementById('subtitle-lang');
+    var file = document.getElementById('subtitle-file');
+    if (!lang.value) { showToast('Please select a language.', 'error'); return; }
+    if (!file.files[0]) { showToast('Please select a subtitle file.', 'error'); return; }
+
+    var fd = new FormData();
+    fd.append('_token', csrfToken);
+    fd.append('subtitle_file', file.files[0]);
+    fd.append('language_code', lang.value);
+    fd.append('language_name', lang.options[lang.selectedIndex].dataset.name || lang.options[lang.selectedIndex].text);
+    fd.append('is_default', document.getElementById('subtitle-default').checked ? '1' : '0');
+
+    fetch('/admin/series/' + showId + '/seasons/' + seasonId + '/episodes/' + subEpisodeId + '/subtitles/upload', {method:'POST', body:fd})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            showToast(data.message, 'success');
+            subtitleAddRow(data.subtitle);
+            document.getElementById('subtitleUploadForm').style.display = 'none';
+            file.value = '';
+            lang.value = '';
+            subtitleUpdateCache(subEpisodeId, data.subtitle, 'add');
+        } else {
+            showToast(data.error || data.message, 'error');
+        }
+    })
+    .catch(function() { showToast('Upload failed.', 'error'); });
+}
+
+function subtitleSearchOS() {
+    showToast('Searching OpenSubtitles...', 'info');
+    fetch('/admin/series/' + showId + '/seasons/' + seasonId + '/episodes/' + subEpisodeId + '/subtitles/search', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'_token=' + csrfToken
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.success) { showToast(data.error || data.message, 'error'); return; }
+        if (!data.results || data.results.length === 0) { showToast('No subtitles found on OpenSubtitles.', 'warning'); return; }
+        subtitleShowSearchResults(data.results);
+    })
+    .catch(function() { showToast('Search failed.', 'error'); });
+}
+
+function subtitleShowSearchResults(results) {
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'subtitleSearchResultsModal';
+    overlay.style.display = 'flex';
+    overlay.style.zIndex = '10001';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    var html = '<div class="modal-content" style="max-width:700px;max-height:80vh">'
+        + '<div class="modal-header"><h3>OpenSubtitles Results (' + results.length + ')</h3>'
+        + '<button type="button" class="modal-close" onclick="document.getElementById(\'subtitleSearchResultsModal\').remove()">&times;</button></div>'
+        + '<div class="modal-body" style="overflow-y:auto;max-height:60vh">'
+        + '<table style="width:100%;font-size:0.85rem"><thead><tr>'
+        + '<th>Language</th><th>Release</th><th>Downloads</th><th>Uploader</th><th></th>'
+        + '</tr></thead><tbody>';
+
+    results.forEach(function(r) {
+        if (!r.file_id) return;
+        var langName = r.language || 'unknown';
+        html += '<tr>'
+            + '<td><span class="badge" style="background:var(--primary);color:#fff;font-size:0.7rem;padding:0.1rem 0.4rem;text-transform:uppercase">' + escapeHtml(langName) + '</span></td>'
+            + '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeAttr(r.release || '') + '">' + escapeHtml(r.release || 'N/A') + '</td>'
+            + '<td>' + (r.download_count || 0) + '</td>'
+            + '<td>' + escapeHtml(r.uploader || '') + '</td>'
+            + '<td><button type="button" class="btn btn-xs btn-primary" onclick="subtitleDownloadOS(' + r.file_id + ',\'' + escapeAttr(langName) + '\')"><i class="lucide-download"></i></button></td>'
+            + '</tr>';
+    });
+
+    html += '</tbody></table></div></div>';
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+}
+
+function subtitleDownloadOS(fileId, langCode) {
+    var resolvedCode = langCode;
+    var resolvedName = langCode;
+    for (var code in subLanguages) {
+        if (subLanguages[code].toLowerCase() === langCode.toLowerCase() || code === langCode.toLowerCase()) {
+            resolvedCode = code;
+            resolvedName = subLanguages[code];
+            break;
+        }
+    }
+
+    showToast('Downloading subtitle...', 'info');
+    var modal = document.getElementById('subtitleSearchResultsModal');
+    if (modal) modal.remove();
+
+    fetch('/admin/series/' + showId + '/seasons/' + seasonId + '/episodes/' + subEpisodeId + '/subtitles/fetch', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'_token=' + csrfToken + '&file_id=' + fileId + '&language_code=' + encodeURIComponent(resolvedCode) + '&language_name=' + encodeURIComponent(resolvedName)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            showToast(data.message, 'success');
+            subtitleAddRow(data.subtitle);
+            subtitleUpdateCache(subEpisodeId, data.subtitle, 'add');
+        } else {
+            showToast(data.error || data.message, 'error');
+        }
+    })
+    .catch(function() { showToast('Download failed.', 'error'); });
+}
+
+function subtitleDelete(id) {
+    if (!confirm('Delete this subtitle?')) return;
+    fetch('/admin/series/' + showId + '/seasons/' + seasonId + '/episodes/' + subEpisodeId + '/subtitles/' + id + '/delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'_token=' + csrfToken
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            var el = document.querySelector('[data-sub-id="' + id + '"]');
+            if (el) el.remove();
+            subtitleCheckEmpty();
+            showToast('Subtitle deleted.', 'success');
+            subtitleUpdateCache(subEpisodeId, {id: id}, 'remove');
+        } else {
+            showToast(data.message, 'error');
+        }
+    })
+    .catch(function() { showToast('Delete failed.', 'error'); });
+}
+
+function subtitleSetDefault(id) {
+    fetch('/admin/series/' + showId + '/seasons/' + seasonId + '/episodes/' + subEpisodeId + '/subtitles/' + id + '/default', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'_token=' + csrfToken
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            document.querySelectorAll('#subtitlesList .badge-success').forEach(function(b) { b.remove(); });
+            document.querySelectorAll('#subtitlesList [data-sub-id]').forEach(function(row) {
+                var actions = row.querySelector('div:last-child');
+                if (!actions) return;
+                var subId = parseInt(row.dataset.subId);
+                var existingStar = actions.querySelector('[title="Set as default"]');
+                if (subId === id) {
+                    if (existingStar) existingStar.remove();
+                    var info = row.querySelector('div:first-child div div:last-child');
+                    if (info) info.innerHTML += ' <span class="badge badge-success" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.25rem">default</span>';
+                } else if (!existingStar) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-xs btn-secondary';
+                    btn.title = 'Set as default';
+                    btn.innerHTML = '<i class="lucide-star"></i>';
+                    btn.onclick = function() { subtitleSetDefault(subId); };
+                    actions.insertBefore(btn, actions.firstChild);
+                }
+            });
+            showToast('Default subtitle updated.', 'success');
+        }
+    })
+    .catch(function() { showToast('Failed to update default.', 'error'); });
+}
+
+function subtitleAddRow(sub) {
+    document.getElementById('noSubtitles').style.display = 'none';
+    var list = document.getElementById('subtitlesList');
+    var existing = list.querySelector('[data-sub-id="' + sub.id + '"]');
+    if (existing) existing.remove();
+
+    var div = document.createElement('div');
+    div.className = 'subtitle-item';
+    div.dataset.subId = sub.id;
+    div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid var(--border-color)';
+    div.innerHTML = '<div style="display:flex;align-items:center;gap:0.75rem">'
+        + '<span class="badge" style="background:var(--primary);color:#fff;font-size:0.7rem;padding:0.15rem 0.5rem;text-transform:uppercase">' + escapeHtml(sub.language_code || '') + '</span>'
+        + '<div><strong style="font-size:0.9rem">' + escapeHtml(sub.language_name || '') + '</strong>'
+        + '<div style="font-size:0.75rem;color:var(--text-muted)">' + escapeHtml(sub.source || 'upload')
+        + (sub.is_default ? ' <span class="badge badge-success" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.25rem">default</span>' : '')
+        + '</div></div></div>'
+        + '<div style="display:flex;gap:0.25rem">'
+        + (!sub.is_default ? '<button type="button" class="btn btn-xs btn-secondary" onclick="subtitleSetDefault(' + sub.id + ')" title="Set as default"><i class="lucide-star"></i></button>' : '')
+        + '<button type="button" class="btn btn-xs btn-danger" onclick="subtitleDelete(' + sub.id + ')" title="Delete"><i class="lucide-trash-2"></i></button>'
+        + '</div>';
+    list.appendChild(div);
+}
+
+function subtitleCheckEmpty() {
+    var list = document.getElementById('subtitlesList');
+    var items = list.querySelectorAll('[data-sub-id]');
+    document.getElementById('noSubtitles').style.display = items.length === 0 ? 'block' : 'none';
+}
+
+function subtitleUpdateCache(episodeId, subtitle, action) {
+    if (!episodeSubtitlesData[episodeId]) episodeSubtitlesData[episodeId] = [];
+    if (action === 'add') {
+        var idx = episodeSubtitlesData[episodeId].findIndex(function(s) { return s.id === subtitle.id; });
+        if (idx >= 0) {
+            episodeSubtitlesData[episodeId][idx] = subtitle;
+        } else {
+            episodeSubtitlesData[episodeId].push(subtitle);
+        }
+    } else if (action === 'remove') {
+        episodeSubtitlesData[episodeId] = episodeSubtitlesData[episodeId].filter(function(s) { return s.id !== subtitle.id; });
+    }
+    // Update badge on episode row
+    var btn = document.querySelector('#episode-row-' + episodeId + ' [onclick*="openSubtitleModal"]');
+    if (btn) {
+        var count = (episodeSubtitlesData[episodeId] || []).length;
+        var badge = btn.querySelector('span');
+        if (count > 0) {
+            if (badge) {
+                badge.textContent = count;
+            } else {
+                var sp = document.createElement('span');
+                sp.style.cssText = 'font-size:0.7rem;margin-left:2px';
+                sp.textContent = count;
+                btn.appendChild(sp);
+            }
+        } else if (badge) {
+            badge.remove();
+        }
+    }
 }
 
 // ========================================================================

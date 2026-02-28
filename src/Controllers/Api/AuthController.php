@@ -250,6 +250,39 @@ class AuthController extends BaseApiController
     }
 
     /**
+     * GET /api/v1/auth/watch-progress/batch?content_type=episode&ids=1,2,3
+     * Returns progress for multiple content items
+     */
+    public function getBatchWatchProgress(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $contentType = $_GET['content_type'] ?? 'episode';
+        $idsStr = $_GET['ids'] ?? '';
+
+        if (empty($idsStr)) {
+            $this->json(['data' => []], 200);
+            return;
+        }
+
+        $ids = array_filter(array_map('intval', explode(',', $idsStr)), fn($id) => $id > 0);
+        if (empty($ids)) {
+            $this->json(['data' => []], 200);
+            return;
+        }
+
+        // Limit to 100 IDs per request
+        $ids = array_slice($ids, 0, 100);
+
+        $progress = $this->auth->getBatchWatchProgress($subscriberId, $contentType, $ids);
+        $this->json(['data' => $progress], 200);
+    }
+
+    /**
      * GET /api/v1/auth/continue-watching
      */
     public function continueWatching(): void

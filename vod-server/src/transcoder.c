@@ -228,6 +228,50 @@ int transcoder_probe(const char *source_path, media_info_t *info)
                 }
             } else if (strcmp(codec_type->valuestring, "subtitle") == 0) {
                 info->has_subtitles = true;
+                if (info->subtitle_count < MAX_SUBTITLE_TRACKS) {
+                    subtitle_track_info_t *st = &info->subtitle_tracks[info->subtitle_count];
+                    st->stream_index = i;
+
+                    /* Codec name */
+                    cJSON *codec_name = cJSON_GetObjectItemCaseSensitive(stream, "codec_name");
+                    if (codec_name && cJSON_IsString(codec_name)) {
+                        snprintf(st->codec_name, sizeof(st->codec_name), "%s", codec_name->valuestring);
+                        /* Determine if text-based (extractable to VTT) */
+                        st->is_text_based = (
+                            strcmp(codec_name->valuestring, "subrip") == 0 ||
+                            strcmp(codec_name->valuestring, "srt") == 0 ||
+                            strcmp(codec_name->valuestring, "ass") == 0 ||
+                            strcmp(codec_name->valuestring, "ssa") == 0 ||
+                            strcmp(codec_name->valuestring, "webvtt") == 0 ||
+                            strcmp(codec_name->valuestring, "mov_text") == 0 ||
+                            strcmp(codec_name->valuestring, "text") == 0
+                        );
+                    }
+
+                    /* Language from tags */
+                    cJSON *tags = cJSON_GetObjectItemCaseSensitive(stream, "tags");
+                    if (tags) {
+                        cJSON *lang = cJSON_GetObjectItemCaseSensitive(tags, "language");
+                        if (lang && cJSON_IsString(lang)) {
+                            snprintf(st->language, sizeof(st->language), "%s", lang->valuestring);
+                        } else {
+                            snprintf(st->language, sizeof(st->language), "und");
+                        }
+                        cJSON *title = cJSON_GetObjectItemCaseSensitive(tags, "title");
+                        if (title && cJSON_IsString(title)) {
+                            snprintf(st->language_name, sizeof(st->language_name), "%s", title->valuestring);
+                        }
+                    } else {
+                        snprintf(st->language, sizeof(st->language), "und");
+                    }
+
+                    /* Forced flag from disposition */
+                    cJSON *disposition = cJSON_GetObjectItemCaseSensitive(stream, "disposition");
+                    if (disposition) {
+                        cJSON *forced = cJSON_GetObjectItemCaseSensitive(disposition, "forced");
+                        st->is_forced = (forced && cJSON_IsNumber(forced) && forced->valueint == 1);
+                    }
+                }
                 info->subtitle_count++;
             }
         }

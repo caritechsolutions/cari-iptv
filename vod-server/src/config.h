@@ -90,6 +90,10 @@ typedef struct {
     char         drm_key_server_url[512];   /* Base URL for key delivery */
     bool         drm_auto_generate;         /* Auto-generate keys for new jobs */
 
+    /* [subtitles] */
+    bool         subtitles_enabled;         /* Enable subtitle extraction */
+    bool         subtitles_auto_extract;    /* Auto-extract embedded subs during transcode */
+
     /* [acme] */
     bool         acme_enabled;              /* Enable HTTP listener for ACME challenges */
     int          acme_http_port;            /* HTTP port (default 80) */

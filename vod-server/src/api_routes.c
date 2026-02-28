@@ -12,6 +12,7 @@
 #include "drm.h"
 #include "storage.h"
 #include "job_processor.h"
+#include "transcoder.h"
 #include "cluster.h"
 #include "migration.h"
 #include "logger.h"
@@ -277,9 +278,20 @@ int api_handle_request(http_request_t *req)
 
     /* --- Job routes --- */
 
-    /* GET|DELETE /api/jobs/{id} */
+    /* GET|DELETE /api/jobs/{id} and POST /api/jobs/{id}/extract-subtitles */
     if (strncmp(url, "/api/jobs/", 10) == 0 && strlen(url) > 10) {
         if (sscanf(url + 10, "%d", &id) == 1 && id > 0) {
+            /* Check for sub-path: /api/jobs/{id}/extract-subtitles */
+            char sub_path[128] = {0};
+            char *slash = strchr(url + 10, '/');
+            if (slash) {
+                snprintf(sub_path, sizeof(sub_path), "%s", slash);
+            }
+
+            if (strcmp(sub_path, "/extract-subtitles") == 0 && strcmp(method, HTTP_POST) == 0) {
+                return api_extract_subtitles(req, id);
+            }
+
             if (strcmp(method, HTTP_GET) == 0)    return api_get_job(req, id);
             if (strcmp(method, HTTP_DELETE) == 0)  return api_delete_job(req, id);
             return http_send_error(req->connection, MHD_HTTP_METHOD_NOT_ALLOWED,
@@ -3600,4 +3612,151 @@ void api_routes_set_config(const vod_config_t *config)
     if (s_start_time == 0) {
         s_start_time = time(NULL);
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * POST /api/jobs/{id}/extract-subtitles
+ * Trigger subtitle extraction for an existing job's content.
+ * Looks up the job's source file and content directory, runs FFmpeg extraction.
+ * Returns the list of extracted subtitle tracks.
+ * ------------------------------------------------------------------------- */
+int api_extract_subtitles(http_request_t *req, int job_id)
+{
+    ensure_init();
+
+    sqlite3 *db = db_handle();
+    if (!db) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Database unavailable");
+    }
+
+    /* Look up the job to get source_path and content_id */
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db,
+        "SELECT j.source_path, j.content_id, j.status, c.path "
+        "FROM jobs j LEFT JOIN content c ON j.content_id = c.content_id "
+        "WHERE j.id = ?",
+        -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Database query failed");
+    }
+
+    sqlite3_bind_int(stmt, 1, job_id);
+    rc = sqlite3_step(stmt);
+
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return http_send_error(req->connection, MHD_HTTP_NOT_FOUND,
+                               "Job not found");
+    }
+
+    const char *source_path = (const char *)sqlite3_column_text(stmt, 0);
+    const char *content_id  = (const char *)sqlite3_column_text(stmt, 1);
+    const char *job_status  = (const char *)sqlite3_column_text(stmt, 2);
+    const char *content_path = (const char *)sqlite3_column_text(stmt, 3);
+
+    /* Job must be complete to extract subtitles */
+    if (!job_status || strcmp(job_status, "complete") != 0) {
+        sqlite3_finalize(stmt);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "Job must be complete before extracting subtitles");
+    }
+
+    if (!source_path || !source_path[0]) {
+        sqlite3_finalize(stmt);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "No source file recorded for this job");
+    }
+
+    /* Determine output directory (content library path) */
+    char output_dir[MAX_PATH_LEN];
+    if (content_path && content_path[0]) {
+        snprintf(output_dir, sizeof(output_dir), "%s/%s",
+                 s_config->library_path, content_path);
+    } else if (content_id && content_id[0]) {
+        snprintf(output_dir, sizeof(output_dir), "%s/%s",
+                 s_config->library_path, content_id);
+    } else {
+        sqlite3_finalize(stmt);
+        return http_send_error(req->connection, MHD_HTTP_BAD_REQUEST,
+                               "No content directory found for this job");
+    }
+
+    /* Copy strings before finalizing statement */
+    char src_copy[MAX_PATH_LEN];
+    char cid_copy[256];
+    snprintf(src_copy, sizeof(src_copy), "%s", source_path);
+    snprintf(cid_copy, sizeof(cid_copy), "%s", content_id ? content_id : "");
+    sqlite3_finalize(stmt);
+
+    /* Run subtitle extraction */
+    log_info("API: Extracting subtitles for job %d from %s", job_id, src_copy);
+    int extracted = transcoder_extract_subtitles(src_copy, output_dir);
+
+    if (extracted < 0) {
+        return http_send_error(req->connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                               "Subtitle extraction failed");
+    }
+
+    /* Scan output directory for extracted .vtt files */
+    cJSON *result = cJSON_CreateObject();
+    cJSON_AddBoolToObject(result, "success", extracted > 0);
+    cJSON_AddNumberToObject(result, "extracted_count", extracted);
+
+    cJSON *tracks = cJSON_CreateArray();
+    DIR *dp = opendir(output_dir);
+    if (dp) {
+        struct dirent *entry;
+        while ((entry = readdir(dp)) != NULL) {
+            const char *name = entry->d_name;
+            size_t len = strlen(name);
+            if (len < 8 || strncmp(name, "sub_", 4) != 0) continue;
+            if (strcmp(name + len - 4, ".vtt") != 0) continue;
+
+            /* Parse language from filename: sub_0_eng.vtt */
+            char lang[16] = "und";
+            const char *under2 = strchr(name + 4, '_');
+            if (under2) {
+                const char *ls = under2 + 1;
+                const char *dot = strrchr(ls, '.');
+                if (dot && (dot - ls) < (int)sizeof(lang)) {
+                    snprintf(lang, dot - ls + 1, "%s", ls);
+                }
+            }
+
+            cJSON *track = cJSON_CreateObject();
+            cJSON_AddStringToObject(track, "language", lang);
+            cJSON_AddStringToObject(track, "filename", name);
+
+            char rel_path[MAX_PATH_LEN];
+            snprintf(rel_path, sizeof(rel_path), "%s/%s", cid_copy, name);
+            cJSON_AddStringToObject(track, "path", rel_path);
+
+            cJSON_AddItemToArray(tracks, track);
+        }
+        closedir(dp);
+    }
+
+    cJSON_AddItemToObject(result, "tracks", tracks);
+
+    /* Update content record if we extracted subtitles */
+    if (extracted > 0 && cid_copy[0]) {
+        /* Build subtitle_tracks JSON from the tracks array */
+        char *tracks_str = cJSON_PrintUnformatted(tracks);
+        sqlite3_stmt *upd = NULL;
+        int urc = sqlite3_prepare_v2(db,
+            "UPDATE content SET has_subtitles = 1, subtitle_tracks = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE content_id = ?",
+            -1, &upd, NULL);
+        if (urc == SQLITE_OK) {
+            sqlite3_bind_text(upd, 1, tracks_str ? tracks_str : "[]", -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(upd, 2, cid_copy, -1, SQLITE_TRANSIENT);
+            sqlite3_step(upd);
+            sqlite3_finalize(upd);
+        }
+        if (tracks_str) free(tracks_str);
+    }
+
+    return send_json_obj(req->connection, MHD_HTTP_OK, result);
 }

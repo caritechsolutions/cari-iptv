@@ -310,7 +310,48 @@ int packager_run(package_state_t *state, const vod_config_t *config)
     }
 
     fprintf(master, "#EXTM3U\n");
-    fprintf(master, "#EXT-X-VERSION:3\n\n");
+    fprintf(master, "#EXT-X-VERSION:3\n");
+
+    /* --- Scan for extracted subtitle files and add as media entries --- */
+    bool has_subs = false;
+    {
+        /* Look for sub_*.vtt files in the input directory */
+        DIR *sub_dp = opendir(state->input_dir);
+        if (sub_dp) {
+            struct dirent *sub_entry;
+            while ((sub_entry = readdir(sub_dp)) != NULL) {
+                const char *sname = sub_entry->d_name;
+                size_t slen = strlen(sname);
+                if (slen < 8) continue; /* sub_X_xx.vtt minimum */
+                if (strncmp(sname, "sub_", 4) != 0) continue;
+                if (strcmp(sname + slen - 4, ".vtt") != 0) continue;
+
+                /* Extract language code from filename: sub_0_eng.vtt → eng */
+                char lang[16] = "und";
+                const char *underscore2 = strchr(sname + 4, '_');
+                if (underscore2) {
+                    const char *lang_start = underscore2 + 1;
+                    const char *dot = strrchr(lang_start, '.');
+                    if (dot && (dot - lang_start) < (int)sizeof(lang)) {
+                        snprintf(lang, dot - lang_start + 1, "%s", lang_start);
+                    }
+                }
+
+                /* Determine if this is the first (default) subtitle */
+                const char *def_str = has_subs ? "NO" : "YES";
+
+                fprintf(master,
+                    "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\","
+                    "NAME=\"%s\",DEFAULT=%s,AUTOSELECT=YES,"
+                    "LANGUAGE=\"%s\",URI=\"%s\"\n",
+                    lang, def_str, lang, sname);
+                has_subs = true;
+            }
+            closedir(sub_dp);
+        }
+    }
+
+    fprintf(master, "\n");
 
     for (int i = 0; i < video_count; i++) {
         char cmd[16384];
@@ -385,9 +426,15 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         int bandwidth, width, height;
         estimate_stream_info(video_labels[i], &bandwidth, &width, &height);
 
-        fprintf(master,
-                "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
-                bandwidth, width, height, video_labels[i]);
+        if (has_subs) {
+            fprintf(master,
+                    "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\",SUBTITLES=\"subs\"\n",
+                    bandwidth, width, height, video_labels[i]);
+        } else {
+            fprintf(master,
+                    "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
+                    bandwidth, width, height, video_labels[i]);
+        }
         fprintf(master, "%s\n", variant_playlist);
 
         state->progress = 10.0 + ((double)(i + 1) / video_count) * 80.0;

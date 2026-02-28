@@ -11,6 +11,7 @@ use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\MovieService;
 use CariIPTV\Services\MetadataService;
+use CariIPTV\Services\SubtitleService;
 
 class MovieController
 {
@@ -163,11 +164,22 @@ class MovieController
             // Table may not exist yet
         }
 
+        // Get subtitles for this movie
+        $subtitles = [];
+        try {
+            $subtitleService = new SubtitleService();
+            $subtitles = $subtitleService->getMovieSubtitles($id);
+        } catch (\Exception $e) {
+            // Table may not exist yet
+        }
+
         Response::view('admin/movies/form', [
             'pageTitle' => 'Edit Movie',
             'movie' => $movie,
             'categories' => $categories,
             'vodServers' => $vodServers,
+            'subtitles' => $subtitles,
+            'subtitleLanguages' => SubtitleService::LANGUAGES,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -872,6 +884,269 @@ class MovieController
                 'message' => 'Image processing failed: ' . $e->getMessage(),
             ]);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Subtitle Management
+    // -------------------------------------------------------------------------
+
+    /**
+     * Upload a subtitle file for a movie
+     */
+    public function uploadSubtitle(int $id): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $movie = $this->movieService->getMovie($id);
+        if (!$movie) {
+            $this->sendJson(['success' => false, 'message' => 'Movie not found']);
+            return;
+        }
+
+        $languageCode = trim($_POST['language_code'] ?? '');
+        $languageName = trim($_POST['language_name'] ?? '');
+
+        if (empty($languageCode) || empty($languageName)) {
+            $this->sendJson(['success' => false, 'message' => 'Language is required']);
+            return;
+        }
+
+        if (empty($_FILES['subtitle_file']['tmp_name']) || $_FILES['subtitle_file']['error'] !== UPLOAD_ERR_OK) {
+            $this->sendJson(['success' => false, 'message' => 'No file uploaded']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->uploadSubtitle($_FILES['subtitle_file'], $id, $languageCode, $languageName);
+
+        if (!$result['success']) {
+            $this->sendJson($result);
+            return;
+        }
+
+        // Save to database
+        $isDefault = !empty($_POST['is_default']) ? 1 : 0;
+        $subtitleId = $subtitleService->addSubtitle($id, [
+            'language_code' => $languageCode,
+            'language_name' => $languageName,
+            'file_path' => $result['file_path'],
+            'format' => $result['format'],
+            'source' => 'upload',
+            'is_default' => $isDefault,
+        ]);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => "Subtitle ({$languageName}) uploaded successfully.",
+            'subtitle' => [
+                'id' => $subtitleId,
+                'language_code' => $languageCode,
+                'language_name' => $languageName,
+                'source' => 'upload',
+                'is_default' => $isDefault,
+                'file_path' => $result['file_path'],
+            ],
+        ]);
+    }
+
+    /**
+     * Search for subtitles on OpenSubtitles
+     */
+    public function searchSubtitles(int $id): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $movie = $this->movieService->getMovie($id);
+        if (!$movie) {
+            $this->sendJson(['success' => false, 'message' => 'Movie not found']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->searchSubtitles(
+            $id,
+            $movie['tmdb_id'] ?? null,
+            $movie['imdb_id'] ?? null,
+            $movie['title'] ?? null
+        );
+
+        $this->sendJson($result);
+    }
+
+    /**
+     * Download and save a subtitle from OpenSubtitles
+     */
+    public function fetchSubtitles(int $id): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $movie = $this->movieService->getMovie($id);
+        if (!$movie) {
+            $this->sendJson(['success' => false, 'message' => 'Movie not found']);
+            return;
+        }
+
+        $fileId = (int)($_POST['file_id'] ?? 0);
+        $languageCode = trim($_POST['language_code'] ?? '');
+        $languageName = trim($_POST['language_name'] ?? '');
+
+        if (!$fileId || empty($languageCode)) {
+            $this->sendJson(['success' => false, 'message' => 'Missing file_id or language']);
+            return;
+        }
+
+        if (empty($languageName)) {
+            $languageName = SubtitleService::LANGUAGES[$languageCode] ?? ucfirst($languageCode);
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->downloadSubtitle($fileId, $id, $languageCode, $languageName);
+
+        if (!$result['success']) {
+            $this->sendJson($result);
+            return;
+        }
+
+        // Save to database
+        $subtitleId = $subtitleService->addSubtitle($id, [
+            'language_code' => $languageCode,
+            'language_name' => $languageName,
+            'file_path' => $result['file_path'],
+            'format' => $result['format'],
+            'source' => 'opensubtitles',
+            'external_id' => (string)$fileId,
+        ]);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => "Subtitle ({$languageName}) downloaded from OpenSubtitles.",
+            'subtitle' => [
+                'id' => $subtitleId,
+                'language_code' => $languageCode,
+                'language_name' => $languageName,
+                'source' => 'opensubtitles',
+                'file_path' => $result['file_path'],
+            ],
+            'remaining_downloads' => $result['remaining_downloads'] ?? null,
+        ]);
+    }
+
+    /**
+     * Extract embedded subtitles from source file using FFmpeg
+     */
+    public function extractSubtitles(int $id): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $movie = $this->movieService->getMovie($id);
+        if (!$movie) {
+            $this->sendJson(['success' => false, 'message' => 'Movie not found']);
+            return;
+        }
+
+        // Determine source path - use stream_url or VOD source
+        $sourcePath = $_POST['source_path'] ?? ($movie['stream_url'] ?? '');
+        if (empty($sourcePath)) {
+            $this->sendJson(['success' => false, 'message' => 'No source file available for extraction.']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $result = $subtitleService->extractFromSource($sourcePath, $id);
+
+        if (!$result['success']) {
+            $this->sendJson($result);
+            return;
+        }
+
+        // Save extracted subtitles to database
+        $saved = [];
+        foreach ($result['extracted'] as $track) {
+            $subId = $subtitleService->addSubtitle($id, $track);
+            $track['id'] = $subId;
+            $saved[] = $track;
+        }
+
+        $this->sendJson([
+            'success' => true,
+            'message' => count($saved) . ' subtitle(s) extracted from source.',
+            'subtitles' => $saved,
+        ]);
+    }
+
+    /**
+     * Delete a subtitle
+     */
+    public function deleteSubtitle(int $id, int $sid): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $subtitle = $subtitleService->getSubtitle($sid);
+
+        if (!$subtitle || (int)$subtitle['movie_id'] !== $id) {
+            $this->sendJson(['success' => false, 'message' => 'Subtitle not found']);
+            return;
+        }
+
+        $subtitleService->deleteSubtitle($sid);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => 'Subtitle deleted.',
+        ]);
+    }
+
+    /**
+     * Set a subtitle as default
+     */
+    public function setDefaultSubtitle(int $id, int $sid): void
+    {
+        while (ob_get_level() > 0) ob_end_clean();
+
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $subtitleService = new SubtitleService();
+        $subtitleService->setDefault($id, $sid);
+
+        $this->sendJson([
+            'success' => true,
+            'message' => 'Default subtitle updated.',
+        ]);
     }
 
     /**

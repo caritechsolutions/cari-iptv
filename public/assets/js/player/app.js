@@ -518,8 +518,17 @@ const CariApp = (function() {
             const items = res?.data || [];
             if (!items.length) return;
 
+            // Enrich episode items with better display info
+            items.forEach(item => {
+                if (item.content_type === 'episode' && item.series_title) {
+                    item.year = 'S' + (item.season_number || '1') + ' E' + (item.episode_number || '');
+                }
+            });
+
             appendContentRow(el, 'Continue Watching', items, 'backdrop');
-        } catch {}
+        } catch (err) {
+            console.error('[CariApp] Continue watching failed:', err);
+        }
     }
 
     function handleItemClick(item, type) {
@@ -915,47 +924,74 @@ const CariApp = (function() {
             return;
         }
 
-        list.innerHTML = episodes.map(ep => {
-            const thumb = ep.still_url || '';
-            const epTitle = ep.title || ep.name || 'Episode ' + ep.episode_number;
-            const epNum = ep.episode_number || '';
-            const epDesc = ep.synopsis || ep.overview || '';
-            const runtime = ep.runtime || '';
-            const rating = ep.vote_average || '';
-            const hasStream = !!(ep.stream_url);
+        // Render episodes (progress bars added async below)
+        function renderEpisodeCards(progressMap) {
+            list.innerHTML = episodes.map(ep => {
+                const thumb = ep.still_url || '';
+                const epTitle = ep.title || ep.name || 'Episode ' + ep.episode_number;
+                const epNum = ep.episode_number || '';
+                const epDesc = ep.synopsis || ep.overview || '';
+                const runtime = ep.runtime || '';
+                const rating = ep.vote_average || '';
+                const hasStream = !!(ep.stream_url);
 
-            return `
-                <div class="episode-card" data-episode-idx="${ep.id}">
-                    <div class="episode-thumb">
-                        ${thumb ? '<img src="' + CariUI.esc(thumb) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
-                        ${hasStream ? '<div class="episode-play-overlay"><i class="lucide-play"></i></div>' : ''}
-                        <span class="episode-number">E${CariUI.esc(String(epNum))}</span>
-                    </div>
-                    <div class="episode-info">
-                        <div class="episode-title">${CariUI.esc(epTitle)}</div>
-                        <div class="episode-meta">
-                            ${runtime ? '<span>' + CariUI.esc(String(runtime)) + ' min</span>' : ''}
-                            ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.65rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                // Progress bar
+                const prog = progressMap[ep.id];
+                let progressHtml = '';
+                if (prog && prog.progress_seconds > 0 && prog.duration_seconds > 0) {
+                    const pct = Math.min(Math.round((prog.progress_seconds / prog.duration_seconds) * 100), 100);
+                    progressHtml = `<div class="episode-progress-bar"><div class="episode-progress-fill" style="width:${pct}%"></div></div>`;
+                }
+
+                return `
+                    <div class="episode-card" data-episode-idx="${ep.id}">
+                        <div class="episode-thumb">
+                            ${thumb ? '<img src="' + CariUI.esc(thumb) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : ''}
+                            ${hasStream ? '<div class="episode-play-overlay"><i class="lucide-play"></i></div>' : ''}
+                            <span class="episode-number">E${CariUI.esc(String(epNum))}</span>
+                            ${progressHtml}
                         </div>
-                        ${epDesc ? '<div class="episode-desc">' + CariUI.esc(epDesc) + '</div>' : ''}
+                        <div class="episode-info">
+                            <div class="episode-title">${CariUI.esc(epTitle)}</div>
+                            <div class="episode-meta">
+                                ${runtime ? '<span>' + CariUI.esc(String(runtime)) + ' min</span>' : ''}
+                                ${rating ? '<span class="rating"><i class="lucide-star" style="font-size:.65rem"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                            </div>
+                            ${epDesc ? '<div class="episode-desc">' + CariUI.esc(epDesc) + '</div>' : ''}
+                        </div>
                     </div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
 
-        // Build a lookup for episodes by id
-        const epMap = {};
-        episodes.forEach(ep => { epMap[ep.id] = ep; });
+            // Build a lookup for episodes by id
+            const epMap = {};
+            episodes.forEach(ep => { epMap[ep.id] = ep; });
 
-        // Make all episode cards clickable — open episode detail modal
-        list.querySelectorAll('.episode-card').forEach(card => {
-            card.style.cursor = 'pointer';
-            card.addEventListener('click', () => {
-                const epId = card.dataset.episodeIdx;
-                const ep = epMap[epId];
-                if (ep) showEpisodeDetail(ep, seriesId, season);
+            // Make all episode cards clickable — open episode detail modal
+            list.querySelectorAll('.episode-card').forEach(card => {
+                card.style.cursor = 'pointer';
+                card.addEventListener('click', () => {
+                    const epId = card.dataset.episodeIdx;
+                    const ep = epMap[epId];
+                    if (ep) showEpisodeDetail(ep, seriesId, season);
+                });
             });
-        });
+        }
+
+        // First render without progress, then fetch progress async
+        renderEpisodeCards({});
+
+        if (CariAPI.isAuthenticated()) {
+            const episodeIds = episodes.map(ep => ep.id).filter(Boolean);
+            if (episodeIds.length) {
+                CariAPI.getBatchWatchProgress('episode', episodeIds).then(res => {
+                    const progressMap = res?.data || {};
+                    if (Object.keys(progressMap).length > 0) {
+                        renderEpisodeCards(progressMap);
+                    }
+                }).catch(() => {});
+            }
+        }
     }
 
     function showEpisodeDetail(ep, seriesId, season) {
@@ -2963,8 +2999,30 @@ const CariApp = (function() {
         el.innerHTML = `
             <div class="player-page">
                 <div class="player-container" id="playerContainer">
-                    <video id="mainVideo" autoplay controls></video>
-                    <button class="vod-cc-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
+                    <video id="mainVideo" autoplay playsinline></video>
+                    <div class="vod-controls visible" id="vodControls">
+                        <div class="vod-progress-wrap" id="vodProgressWrap">
+                            <div class="vod-progress-bar">
+                                <div class="vod-progress-buffered" id="vodBuffered"></div>
+                                <div class="vod-progress-filled" id="vodProgressFilled"></div>
+                            </div>
+                            <div class="vod-progress-thumb" id="vodProgressThumb"></div>
+                            <div class="vod-progress-tooltip" id="vodProgressTooltip">0:00</div>
+                        </div>
+                        <div class="vod-controls-bar">
+                            <button class="vod-ctrl-btn" id="vodPlayPause" title="Play"><i class="lucide-play"></i></button>
+                            <button class="vod-ctrl-btn" id="vodRewind" title="Rewind 10s"><i class="lucide-rotate-ccw"></i></button>
+                            <button class="vod-ctrl-btn" id="vodForward" title="Forward 10s"><i class="lucide-rotate-cw"></i></button>
+                            <div class="vod-volume-wrap">
+                                <button class="vod-ctrl-btn" id="vodMuteBtn" title="Mute"><i class="lucide-volume-2"></i></button>
+                                <input type="range" class="vod-volume-slider" id="vodVolumeSlider" min="0" max="1" step="0.05" value="1">
+                            </div>
+                            <span class="vod-time" id="vodTimeDisplay">0:00 / 0:00</span>
+                            <div class="vod-controls-spacer"></div>
+                            <button class="vod-ctrl-btn cc-toggle-btn${ccEnabled ? ' cc-active' : ''}" id="vodCCBtn" title="${ccEnabled ? 'Captions On' : 'Captions Off'}">CC</button>
+                            <button class="vod-ctrl-btn" id="vodFsBtn" title="Fullscreen"><i class="lucide-maximize"></i></button>
+                        </div>
+                    </div>
                 </div>
                 <div class="player-details" id="playerDetails">${CariUI.loading()}</div>
             </div>
@@ -3046,12 +3104,8 @@ const CariApp = (function() {
                 showResumePrompt(video, savedProgress.progress_seconds, savedProgress.duration_seconds);
             }
 
-            // CC toggle for VOD
-            const vodCCBtn = document.getElementById('vodCCBtn');
-            if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
-
-            // Fullscreen: use the container so overlays (Skip Intro, Next Episode) stay visible
-            setupVodFullscreen(video, document.getElementById('playerContainer'));
+            // Set up custom VOD controls (play/pause, seek, volume, CC, fullscreen, auto-hide)
+            setupVodControls(video, document.getElementById('playerContainer'));
 
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
@@ -3123,32 +3177,241 @@ const CariApp = (function() {
     }
 
     /**
-     * Make fullscreen target the container instead of just the video.
-     * Native <video controls> fullscreen button internally fullscreens the
-     * video element — overlays (Skip Intro, Next Episode, CC) are children
-     * of the container and become invisible. We detect this and switch
-     * fullscreen to the container so all children remain visible.
+     * Set up all custom VOD controls: play/pause, seek bar, volume, CC, fullscreen, auto-hide.
      */
-    function setupVodFullscreen(video, container) {
+    function setupVodControls(video, container) {
         if (!video || !container) return;
 
-        // Detect when native controls put the VIDEO in fullscreen,
-        // then switch to the CONTAINER so overlay children stay visible.
-        function onFsChange() {
-            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-            if (fsEl === video) {
-                // Video went fullscreen via native controls — switch to container
-                const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
-                const enterFs = container.requestFullscreen || container.webkitRequestFullscreen;
-                if (exitFs && enterFs) {
-                    exitFs.call(document).then(() => {
-                        enterFs.call(container).catch(() => {});
-                    }).catch(() => {});
-                }
+        const controls = document.getElementById('vodControls');
+        const playPauseBtn = document.getElementById('vodPlayPause');
+        const rewindBtn = document.getElementById('vodRewind');
+        const forwardBtn = document.getElementById('vodForward');
+        const muteBtn = document.getElementById('vodMuteBtn');
+        const volumeSlider = document.getElementById('vodVolumeSlider');
+        const timeDisplay = document.getElementById('vodTimeDisplay');
+        const progressWrap = document.getElementById('vodProgressWrap');
+        const progressFilled = document.getElementById('vodProgressFilled');
+        const progressThumb = document.getElementById('vodProgressThumb');
+        const progressTooltip = document.getElementById('vodProgressTooltip');
+        const bufferedBar = document.getElementById('vodBuffered');
+        const vodCCBtn = document.getElementById('vodCCBtn');
+        const fsBtn = document.getElementById('vodFsBtn');
+
+        // ---- Auto-hide timer ----
+        let hideTimer = null;
+        const HIDE_DELAY = 3000;
+
+        function showControls() {
+            container.classList.add('controls-visible');
+            if (controls) controls.classList.add('visible');
+        }
+
+        function hideControls() {
+            if (video.paused) return;
+            container.classList.remove('controls-visible');
+            if (controls) controls.classList.remove('visible');
+        }
+
+        function resetHideTimer() {
+            showControls();
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(hideControls, HIDE_DELAY);
+        }
+
+        container.addEventListener('mousemove', resetHideTimer);
+        container.addEventListener('touchstart', resetHideTimer, { passive: true });
+        container.addEventListener('mouseleave', () => {
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(hideControls, 500);
+        });
+
+        // Keep controls visible while interacting with control bar
+        if (controls) {
+            controls.addEventListener('mouseenter', () => { clearTimeout(hideTimer); showControls(); });
+            controls.addEventListener('mouseleave', resetHideTimer);
+        }
+
+        // Show controls when paused, auto-hide when playing
+        video.addEventListener('pause', () => { clearTimeout(hideTimer); showControls(); });
+        video.addEventListener('play', resetHideTimer);
+
+        // ---- Play / Pause ----
+        function updatePlayPauseIcon() {
+            if (!playPauseBtn) return;
+            const icon = playPauseBtn.querySelector('i');
+            if (icon) icon.className = video.paused ? 'lucide-play' : 'lucide-pause';
+            playPauseBtn.title = video.paused ? 'Play' : 'Pause';
+        }
+
+        if (playPauseBtn) {
+            playPauseBtn.addEventListener('click', () => {
+                if (video.paused) video.play().catch(() => {});
+                else video.pause();
+            });
+        }
+
+        video.addEventListener('click', (e) => {
+            // Ignore double-click (handled by fullscreen)
+            if (e.detail > 1) return;
+            if (video.paused) video.play().catch(() => {});
+            else video.pause();
+        });
+
+        video.addEventListener('play', updatePlayPauseIcon);
+        video.addEventListener('pause', updatePlayPauseIcon);
+
+        // ---- Rewind / Forward ----
+        if (rewindBtn) rewindBtn.addEventListener('click', () => { video.currentTime = Math.max(0, video.currentTime - 10); });
+        if (forwardBtn) forwardBtn.addEventListener('click', () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
+
+        // ---- Volume ----
+        function updateVolumeIcon() {
+            if (!muteBtn) return;
+            const icon = muteBtn.querySelector('i');
+            if (!icon) return;
+            if (video.muted || video.volume === 0) {
+                icon.className = 'lucide-volume-x';
+                muteBtn.title = 'Unmute';
+            } else if (video.volume < 0.5) {
+                icon.className = 'lucide-volume-1';
+                muteBtn.title = 'Mute';
+            } else {
+                icon.className = 'lucide-volume-2';
+                muteBtn.title = 'Mute';
             }
         }
-        document.addEventListener('fullscreenchange', onFsChange);
-        document.addEventListener('webkitfullscreenchange', onFsChange);
+
+        if (muteBtn) {
+            muteBtn.addEventListener('click', () => {
+                video.muted = !video.muted;
+                updateVolumeIcon();
+                if (volumeSlider) volumeSlider.value = video.muted ? 0 : video.volume;
+            });
+        }
+
+        if (volumeSlider) {
+            volumeSlider.addEventListener('input', () => {
+                video.volume = parseFloat(volumeSlider.value);
+                video.muted = video.volume === 0;
+                updateVolumeIcon();
+            });
+            video.addEventListener('volumechange', () => {
+                volumeSlider.value = video.muted ? 0 : video.volume;
+                updateVolumeIcon();
+            });
+        }
+
+        // ---- Time Display ----
+        function updateTimeDisplay() {
+            if (!timeDisplay) return;
+            const cur = video.currentTime || 0;
+            const dur = video.duration || 0;
+            timeDisplay.textContent = formatPlayerTime(cur) + ' / ' + (isFinite(dur) ? formatPlayerTime(dur) : '0:00');
+        }
+        video.addEventListener('timeupdate', updateTimeDisplay);
+        video.addEventListener('loadedmetadata', updateTimeDisplay);
+
+        // ---- Progress / Seek Bar ----
+        function updateProgress() {
+            if (!progressFilled || !progressThumb) return;
+            const dur = video.duration || 0;
+            const pct = dur > 0 ? (video.currentTime / dur) * 100 : 0;
+            progressFilled.style.width = pct + '%';
+            progressThumb.style.left = pct + '%';
+        }
+
+        function updateBuffered() {
+            if (!bufferedBar || !video.buffered || !video.duration) return;
+            if (video.buffered.length > 0) {
+                const end = video.buffered.end(video.buffered.length - 1);
+                bufferedBar.style.width = (end / video.duration) * 100 + '%';
+            }
+        }
+
+        video.addEventListener('timeupdate', updateProgress);
+        video.addEventListener('progress', updateBuffered);
+
+        if (progressWrap) {
+            let isSeeking = false;
+
+            function seekFromEvent(e) {
+                const rect = progressWrap.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                if (isFinite(video.duration) && video.duration > 0) {
+                    video.currentTime = pct * video.duration;
+                }
+                updateProgress();
+            }
+
+            function showTooltip(e) {
+                if (!progressTooltip) return;
+                const rect = progressWrap.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const time = isFinite(video.duration) ? pct * video.duration : 0;
+                progressTooltip.textContent = formatPlayerTime(time);
+                progressTooltip.style.left = (pct * 100) + '%';
+                progressTooltip.classList.add('visible');
+            }
+
+            progressWrap.addEventListener('mousedown', (e) => {
+                isSeeking = true;
+                seekFromEvent(e);
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isSeeking) seekFromEvent(e);
+            });
+
+            document.addEventListener('mouseup', () => { isSeeking = false; });
+
+            progressWrap.addEventListener('mousemove', showTooltip);
+            progressWrap.addEventListener('mouseleave', () => {
+                if (progressTooltip) progressTooltip.classList.remove('visible');
+            });
+        }
+
+        // ---- CC Toggle ----
+        if (vodCCBtn) vodCCBtn.addEventListener('click', toggleCC);
+
+        // ---- Fullscreen ----
+        // Override requestFullscreen on the video element to always fullscreen the container
+        if (video.requestFullscreen) {
+            video.requestFullscreen = function(opts) { return container.requestFullscreen(opts); };
+        }
+        if (video.webkitRequestFullscreen) {
+            video.webkitRequestFullscreen = function(opts) {
+                return (container.webkitRequestFullscreen || container.requestFullscreen).call(container, opts);
+            };
+        }
+
+        if (fsBtn) {
+            fsBtn.addEventListener('click', () => {
+                const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+                if (fsEl) {
+                    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                } else {
+                    (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+                }
+            });
+        }
+
+        function onFullscreenChange() {
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (fsBtn) {
+                const icon = fsBtn.querySelector('i');
+                if (icon) icon.className = fsEl ? 'lucide-minimize' : 'lucide-maximize';
+            }
+            // If video was fullscreened directly (bypass), swap to container
+            if (fsEl === video) {
+                const exitFn = document.exitFullscreen || document.webkitExitFullscreen;
+                exitFn.call(document).then(() => {
+                    (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+                }).catch(() => {});
+            }
+        }
+        document.addEventListener('fullscreenchange', onFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
         // Double-click video → toggle fullscreen on container
         video.addEventListener('dblclick', (e) => {
@@ -3160,6 +3423,64 @@ const CariApp = (function() {
                 (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
             }
         });
+
+        // ---- Keyboard shortcuts ----
+        function onKeyDown(e) {
+            // Only handle when player is visible
+            if (!document.getElementById('playerContainer')) return;
+            // Don't hijack input fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            switch (e.key) {
+                case ' ':
+                case 'k':
+                    e.preventDefault();
+                    if (video.paused) video.play().catch(() => {});
+                    else video.pause();
+                    resetHideTimer();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    video.currentTime = Math.max(0, video.currentTime - 10);
+                    resetHideTimer();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+                    resetHideTimer();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    video.volume = Math.min(1, video.volume + 0.1);
+                    resetHideTimer();
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    video.volume = Math.max(0, video.volume - 0.1);
+                    resetHideTimer();
+                    break;
+                case 'f':
+                    e.preventDefault();
+                    if (fsBtn) fsBtn.click();
+                    break;
+                case 'm':
+                    e.preventDefault();
+                    video.muted = !video.muted;
+                    resetHideTimer();
+                    break;
+                case 'c':
+                    e.preventDefault();
+                    toggleCC();
+                    resetHideTimer();
+                    break;
+            }
+        }
+        document.addEventListener('keydown', onKeyDown);
+
+        // Initial state
+        updatePlayPauseIcon();
+        updateVolumeIcon();
+        resetHideTimer();
     }
 
     /**
@@ -3480,7 +3801,7 @@ const CariApp = (function() {
         });
     }
 
-    function formatTime(seconds) {
+    function formatPlayerTime(seconds) {
         seconds = Math.floor(seconds);
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -3499,7 +3820,7 @@ const CariApp = (function() {
         prompt.className = 'resume-prompt';
         prompt.innerHTML = `
             <div class="resume-prompt-inner">
-                <div class="resume-prompt-text">Resume from ${formatTime(progressSeconds)}?</div>
+                <div class="resume-prompt-text">Resume from ${formatPlayerTime(progressSeconds)}?</div>
                 ${durationSeconds > 0 ? '<div class="resume-prompt-bar"><div class="resume-prompt-bar-fill" style="width:' + pct + '%"></div></div>' : ''}
                 <div class="resume-prompt-actions">
                     <button class="btn btn-play resume-btn" id="resumeYes"><i class="lucide-play"></i> Resume</button>

@@ -391,6 +391,34 @@ class SubscriberAuthService
     }
 
     /**
+     * Get batch watch progress for multiple content items of the same type
+     */
+    public function getBatchWatchProgress(int $subscriberId, string $contentType, array $contentIds): array
+    {
+        if (empty($contentIds)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($contentIds), '?'));
+        $params = array_merge([$subscriberId, $contentType], $contentIds);
+
+        $rows = $this->db->fetchAll(
+            "SELECT content_id, progress_seconds, duration_seconds, completed
+             FROM subscriber_watch_history
+             WHERE subscriber_id = ? AND content_type = ? AND content_id IN ($placeholders)",
+            $params
+        ) ?: [];
+
+        // Index by content_id for easy lookup
+        $result = [];
+        foreach ($rows as $row) {
+            $result[(int) $row['content_id']] = $row;
+        }
+
+        return $result;
+    }
+
+    /**
      * Get continue watching list with enriched content metadata
      */
     public function getContinueWatching(int $subscriberId, int $limit = 20): array
@@ -419,16 +447,25 @@ class SubscriberAuthService
                 }
             } elseif ($item['content_type'] === 'episode') {
                 $episode = $this->db->fetch(
-                    "SELECT e.id, e.title, e.season_number, e.episode_number, e.still_url,
-                            s.title as series_title, s.poster_url, s.id as series_id
-                     FROM episodes e
+                    "SELECT e.id, e.name as title, e.episode_number, e.still_url,
+                            e.stream_url, e.runtime, e.vote_average,
+                            sn.season_number,
+                            s.title as series_title, s.poster_url, s.backdrop_url, s.id as series_id
+                     FROM series_episodes e
+                     LEFT JOIN series_seasons sn ON e.season_id = sn.id
                      LEFT JOIN series s ON e.series_id = s.id
                      WHERE e.id = ?",
                     [$item['content_id']]
                 );
                 if ($episode) {
                     $item = array_merge($item, $episode);
-                    // Use series poster as fallback for episode poster
+                    // Use still_url as backdrop_url for episode cards
+                    if (!empty($episode['still_url'])) {
+                        $item['backdrop_url'] = $episode['still_url'];
+                    } elseif (!empty($episode['backdrop_url'])) {
+                        $item['backdrop_url'] = $episode['backdrop_url'];
+                    }
+                    // Use series poster as fallback
                     if (empty($item['poster_url']) && !empty($episode['poster_url'])) {
                         $item['poster_url'] = $episode['poster_url'];
                     }

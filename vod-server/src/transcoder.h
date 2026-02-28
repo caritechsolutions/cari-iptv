@@ -18,6 +18,19 @@ typedef struct {
     bool        cancelled;
 } transcode_state_t;
 
+/* Maximum subtitle tracks we track */
+#define MAX_SUBTITLE_TRACKS 32
+
+/* Subtitle track info from ffprobe */
+typedef struct {
+    int         stream_index;       /* FFmpeg stream index */
+    char        language[16];       /* ISO 639 code (en, es, fr) */
+    char        language_name[64];  /* Full name if available */
+    char        codec_name[32];     /* subrip, ass, webvtt, mov_text, etc. */
+    bool        is_text_based;      /* true for SRT/ASS/VTT, false for bitmap subs */
+    bool        is_forced;          /* Forced/SDH subtitle */
+} subtitle_track_info_t;
+
 /* Media info from ffprobe */
 typedef struct {
     double      duration;       /* Seconds */
@@ -34,6 +47,7 @@ typedef struct {
     bool        has_audio;
     bool        has_subtitles;
     int         subtitle_count;
+    subtitle_track_info_t subtitle_tracks[MAX_SUBTITLE_TRACKS];
 } media_info_t;
 
 /**

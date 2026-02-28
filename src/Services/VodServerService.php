@@ -298,6 +298,18 @@ class VodServerService
         return $this->request($server, 'DELETE', '/api/drm/keys/' . urlencode($contentId));
     }
 
+    /* =========== Subtitle Extraction =========== */
+
+    /**
+     * Trigger subtitle extraction for a transcode job on the VOD server.
+     * Returns extracted subtitle track info.
+     */
+    public function extractSubtitles(int $serverId, int $jobId): array
+    {
+        $server = $this->requireServer($serverId);
+        return $this->request($server, 'POST', '/api/jobs/' . $jobId . '/extract-subtitles');
+    }
+
     /**
      * Test connection to a VOD server
      * First checks /api/status (public), then verifies API key via /api/config (authenticated)
