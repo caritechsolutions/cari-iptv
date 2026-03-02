@@ -3880,7 +3880,6 @@ const CariApp = (function() {
             }
             shakaPlayer.setTextTrackVisibility(ccEnabled);
             // Offset is applied automatically at cue append time via OffsetTextDisplayer
-            }
         } catch (e) {
             console.warn('[CariApp] CC state error:', e);
         }
