@@ -489,6 +489,41 @@
                 </form>
             </div>
         </div>
+
+        <!-- Embedded Subtitle Extraction Info -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="lucide-file-text"></i>
+                    Embedded Subtitle Extraction
+                </h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">When transcoding via the VOD server, embedded subtitle tracks (SRT, ASS, WebVTT, etc.) can be automatically extracted and included in the HLS output.</p>
+
+                <div class="info-box">
+                    <i class="lucide-info"></i>
+                    <div>
+                        <strong>How It Works</strong>
+                        <p>The VOD server uses FFmpeg to detect and extract text-based subtitle tracks from source files during transcoding. Extracted subtitles are converted to WebVTT format and added to the HLS master playlist.</p>
+                        <p style="margin-top:0.5rem"><strong>Subtitle sources (in order):</strong></p>
+                        <ol style="margin:0.25rem 0 0 1.5rem">
+                            <li>OpenSubtitles API (configured above)</li>
+                            <li>Embedded subtitle extraction during VOD transcode</li>
+                            <li>Manual SRT/VTT upload on the movie edit page</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="info-box" style="margin-top:0.75rem">
+                    <i class="lucide-settings"></i>
+                    <div>
+                        <strong>Configuration</strong>
+                        <p>Subtitle extraction is enabled/disabled in the VOD Server settings. Go to <strong>VOD Server GUI &rarr; Settings &rarr; Subtitles</strong> to toggle auto-extraction during transcoding.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 

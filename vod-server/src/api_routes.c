@@ -648,6 +648,12 @@ int api_get_config(http_request_t *req)
     cJSON_AddNumberToObject(thumbs, "quality", s_config->thumb_quality);
     cJSON_AddItemToObject(root, "thumbnails", thumbs);
 
+    /* Subtitles */
+    cJSON *subs = cJSON_CreateObject();
+    cJSON_AddBoolToObject(subs, "enabled", s_config->subtitles_enabled);
+    cJSON_AddBoolToObject(subs, "auto_extract", s_config->subtitles_auto_extract);
+    cJSON_AddItemToObject(root, "subtitles", subs);
+
     /* Cluster */
     cJSON *cluster = cJSON_CreateObject();
     cJSON_AddStringToObject(cluster, "node_name", s_config->node_name);
@@ -769,6 +775,29 @@ int api_post_config(http_request_t *req)
                      cfg->acme_enabled ? "yes" : "no",
                      cfg->acme_http_port,
                      cfg->acme_domain[0] ? cfg->acme_domain : "(auto)");
+        }
+    }
+
+    /*
+     * Subtitle settings — flat keys from the GUI, apply to runtime config.
+     */
+    {
+        cJSON *sub_enabled = cJSON_GetObjectItemCaseSensitive(body, "subtitles_enabled");
+        cJSON *sub_auto = cJSON_GetObjectItemCaseSensitive(body, "subtitles_auto_extract");
+
+        if (sub_enabled || sub_auto) {
+            vod_config_t *cfg = get_mutable_config();
+            if (cfg) {
+                if (cJSON_IsBool(sub_enabled))
+                    cfg->subtitles_enabled = cJSON_IsTrue(sub_enabled);
+                if (cJSON_IsBool(sub_auto))
+                    cfg->subtitles_auto_extract = cJSON_IsTrue(sub_auto);
+
+                config_save_db_subtitles(cfg);
+                log_info("Subtitle settings updated via API (enabled=%s, auto_extract=%s)",
+                         cfg->subtitles_enabled ? "yes" : "no",
+                         cfg->subtitles_auto_extract ? "yes" : "no");
+            }
         }
     }
 

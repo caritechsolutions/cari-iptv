@@ -247,6 +247,9 @@ int main(int argc, char *argv[])
     /* Load ACME settings from DB (overrides INI if saved via GUI) */
     config_load_db_acme(&g_config);
 
+    /* Load subtitle settings from DB (overrides INI if saved via GUI) */
+    config_load_db_subtitles(&g_config);
+
     /* Initialize DRM module (creates drm_keys table) */
     if (drm_init() != 0) {
         log_warn("DRM module initialization failed (non-fatal)");

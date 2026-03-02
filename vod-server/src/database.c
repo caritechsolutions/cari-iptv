@@ -252,8 +252,37 @@ int db_migrate(void)
         log_info("Schema version 1 applied successfully");
     }
 
+    /* Version 2: Ensure subtitle_tracks column exists on content table.
+     * Existing installs created the content table before subtitle support
+     * was added, so CREATE TABLE IF NOT EXISTS would skip the new column. */
+    if (current_version < 2) {
+        log_info("Applying schema version 2 (subtitle_tracks column)...");
+
+        /* SQLite: ALTER TABLE ADD COLUMN is safe even if already exists */
+        char *errmsg = NULL;
+        int rc = sqlite3_exec(g_db,
+            "ALTER TABLE content ADD COLUMN subtitle_tracks TEXT",
+            NULL, NULL, &errmsg);
+        if (rc != SQLITE_OK) {
+            /* Column may already exist — that's fine (duplicate column name error) */
+            if (errmsg && strstr(errmsg, "duplicate") != NULL) {
+                log_info("subtitle_tracks column already exists, skipping");
+            } else {
+                log_warn("Schema v2 ALTER TABLE: %s (non-fatal)", errmsg ? errmsg : "unknown");
+            }
+            sqlite3_free(errmsg);
+        }
+
+        sqlite3_exec(g_db,
+            "INSERT OR IGNORE INTO schema_version (version, description) "
+            "VALUES (2, 'Add subtitle_tracks to content')",
+            NULL, NULL, NULL);
+
+        log_info("Schema version 2 applied");
+    }
+
     /* Future migrations go here:
-     * if (current_version < 2) { ... }
+     * if (current_version < 3) { ... }
      */
 
     return 0;

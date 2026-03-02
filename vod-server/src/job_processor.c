@@ -936,19 +936,56 @@ static void pick_up_new_jobs(void)
         media_info_t info;
         memset(&info, 0, sizeof(info));
 
+        /* Pre-probe diagnostic: check file exists and is readable */
+        {
+            struct stat probe_st;
+            if (stat(actual_source, &probe_st) != 0) {
+                log_error("Job %d: Source file does not exist: %s (errno=%d: %s)",
+                          job_id, actual_source, errno, strerror(errno));
+            } else {
+                log_info("Job %d: Source file found: %s (size=%lld bytes, mode=%o)",
+                         job_id, actual_source, (long long)probe_st.st_size,
+                         (unsigned)probe_st.st_mode & 0777);
+                if (probe_st.st_size == 0) {
+                    log_error("Job %d: Source file is EMPTY (0 bytes): %s",
+                              job_id, actual_source);
+                }
+            }
+        }
+
         if (transcoder_probe(actual_source, &info) != 0) {
             log_error("Job %d: Failed to probe source file: %s", job_id, actual_source);
+
+            /* Build a more descriptive error message */
+            char err_detail[512];
+            struct stat err_st;
+            if (stat(actual_source, &err_st) != 0) {
+                snprintf(err_detail, sizeof(err_detail),
+                         "Source file not found: %s (%s)", actual_source, strerror(errno));
+            } else if (err_st.st_size == 0) {
+                snprintf(err_detail, sizeof(err_detail),
+                         "Source file is empty (0 bytes): %s", actual_source);
+            } else if (access(actual_source, R_OK) != 0) {
+                snprintf(err_detail, sizeof(err_detail),
+                         "Source file not readable (permission denied): %s", actual_source);
+            } else {
+                snprintf(err_detail, sizeof(err_detail),
+                         "ffprobe failed on source file (%lld bytes). "
+                         "File may be corrupted or in an unsupported format: %s",
+                         (long long)err_st.st_size, actual_source);
+            }
 
             /* Mark job as failed in DB */
             sqlite3_stmt *fail_stmt = NULL;
             rc = sqlite3_prepare_v2(db,
                 "UPDATE jobs SET status = 'failed', "
-                "error_msg = 'Failed to probe source file - file may be missing or corrupted', "
+                "error_msg = ?, "
                 "current_step = 'Failed', completed_at = CURRENT_TIMESTAMP "
                 "WHERE id = ?",
                 -1, &fail_stmt, NULL);
             if (rc == SQLITE_OK) {
-                sqlite3_bind_int(fail_stmt, 1, job_id);
+                sqlite3_bind_text(fail_stmt, 1, err_detail, -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int(fail_stmt, 2, job_id);
                 sqlite3_step(fail_stmt);
                 sqlite3_finalize(fail_stmt);
             }

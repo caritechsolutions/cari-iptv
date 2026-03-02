@@ -175,4 +175,14 @@ int config_load_db_acme(vod_config_t *config);
  */
 int config_save_db_acme(const vod_config_t *config);
 
+/**
+ * Load subtitle settings from SQLite settings table.
+ */
+int config_load_db_subtitles(vod_config_t *config);
+
+/**
+ * Persist subtitle settings to SQLite settings table.
+ */
+int config_save_db_subtitles(const vod_config_t *config);
+
 #endif /* VOD_CONFIG_H */
