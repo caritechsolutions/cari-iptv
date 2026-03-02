@@ -24,6 +24,7 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <errno.h>
 
 /* Maximum concurrent jobs we can track */
@@ -702,29 +703,38 @@ static void fire_callback(const active_job_t *job, const char *status, const cha
         error_msg ? escaped_error : "",
         error_msg ? "\"" : "");
 
-    /* Fork a child to run curl so we don't block the processor thread */
+    /* Double-fork so the curl child is reparented to init/systemd and
+     * the intermediate child is reaped immediately by waitpid().
+     * This avoids zombies without needing signal(SIGCHLD, SIG_IGN),
+     * which would break pclose() throughout the codebase. */
     pid_t pid = fork();
     if (pid == 0) {
-        /* Child process — fire and forget */
-        /* Retry up to 3 times with 2s delay between */
-        execlp("curl", "curl",
-               "-s",                       /* silent */
-               "-X", "POST",
-               "-H", "Content-Type: application/json",
-               "-d", payload,
-               "--connect-timeout", "10",
-               "--max-time", "30",
-               "--retry", "3",
-               "--retry-delay", "2",
-               "-k",                       /* allow self-signed certs */
-               job->callback_url,
-               (char *)NULL);
-        /* If exec fails, just exit */
-        _exit(1);
-    } else if (pid < 0) {
+        /* Intermediate child — fork again and exit immediately */
+        pid_t grandchild = fork();
+        if (grandchild == 0) {
+            /* Grandchild — runs curl, reparented to init when intermediate exits */
+            execlp("curl", "curl",
+                   "-s",                       /* silent */
+                   "-X", "POST",
+                   "-H", "Content-Type: application/json",
+                   "-d", payload,
+                   "--connect-timeout", "10",
+                   "--max-time", "30",
+                   "--retry", "3",
+                   "--retry-delay", "2",
+                   "-k",                       /* allow self-signed certs */
+                   job->callback_url,
+                   (char *)NULL);
+            _exit(1);
+        }
+        /* Intermediate child exits immediately so parent's waitpid returns fast */
+        _exit(0);
+    } else if (pid > 0) {
+        /* Parent — reap the intermediate child (exits immediately, non-blocking) */
+        waitpid(pid, NULL, 0);
+    } else {
         log_error("Job %d: Failed to fork for callback: %s", job_id, strerror(errno));
     }
-    /* Parent continues immediately — don't waitpid, let child be reaped by init */
 }
 
 /* ------------------------------------------------------------------ */

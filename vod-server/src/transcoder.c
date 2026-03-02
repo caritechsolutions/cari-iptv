@@ -109,7 +109,18 @@ int transcoder_probe(const char *source_path, media_info_t *info)
     }
 
     int ret = pclose(fp);
-    int exit_code = WIFEXITED(ret) ? WEXITSTATUS(ret) : -1;
+    int exit_code;
+
+    if (ret == -1) {
+        /* pclose() itself failed — e.g. waitpid() got ECHILD because
+         * SIGCHLD was SIG_IGN, or interrupted by a signal.  If we got
+         * output that looks like JSON, continue anyway. */
+        log_warn("pclose() returned -1 (errno=%d: %s) for ffprobe on: %s",
+                 errno, strerror(errno), source_path);
+        exit_code = (json_buf && json_len > 0 && json_buf[0] == '{') ? 0 : -1;
+    } else {
+        exit_code = WIFEXITED(ret) ? WEXITSTATUS(ret) : -1;
+    }
 
     if (exit_code != 0) {
         /* Null-terminate whatever we captured (may include stderr error messages) */
@@ -185,6 +196,14 @@ int transcoder_probe(const char *source_path, media_info_t *info)
             if (!codec_type || !cJSON_IsString(codec_type)) continue;
 
             if (strcmp(codec_type->valuestring, "video") == 0 && !info->has_video) {
+                /* Skip attached pictures (e.g. cover art in MKV files) */
+                cJSON *disposition = cJSON_GetObjectItemCaseSensitive(stream, "disposition");
+                if (disposition) {
+                    cJSON *attached_pic = cJSON_GetObjectItemCaseSensitive(disposition, "attached_pic");
+                    if (attached_pic && cJSON_IsNumber(attached_pic) && attached_pic->valueint == 1) {
+                        continue;
+                    }
+                }
                 info->has_video = true;
 
                 cJSON *codec_name = cJSON_GetObjectItemCaseSensitive(stream, "codec_name");
