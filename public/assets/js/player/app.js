@@ -3768,16 +3768,12 @@ const CariApp = (function() {
         shakaPlayer = new shaka.Player();
         await shakaPlayer.attach(videoEl);
 
-        // Set video container so UITextDisplayer can render subtitles as DOM
-        // elements inside .shaka-text-container (proper positioning & CSS control).
+        // Set video container so Shaka uses UITextDisplayer (DOM-based subtitle
+        // rendering in .shaka-text-container) instead of NativeTextDisplayer.
         const playerContainer = videoEl.parentElement;
         if (playerContainer) {
             shakaPlayer.setVideoContainer(playerContainer);
         }
-
-        // Use our OffsetTextDisplayer wrapper for subtitle sync offset support.
-        // It wraps UITextDisplayer and shifts cue times by _subtitleOffset.
-        shakaPlayer.configure('textDisplayFactory', () => new OffsetTextDisplayer(shakaPlayer));
 
         const config = {
             streaming: {
@@ -3838,28 +3834,90 @@ const CariApp = (function() {
 
     /**
      * Load external VTT subtitle tracks into Shaka Player.
-     * Called after stream is loaded with subtitle data from the API.
+     * If a sync offset is set, fetches the VTT, adjusts timestamps, and
+     * loads from a blob URL. Otherwise loads directly from the server URL.
      */
     function loadExternalSubtitles(videoEl, subtitles) {
         if (!shakaPlayer || !subtitles || subtitles.length === 0) return;
+        // Store subtitle metadata on the video element for later reload (sync change)
+        videoEl._cariSubtitles = subtitles;
         try {
             for (const sub of subtitles) {
                 const vttUrl = sub.file_path;
                 if (!vttUrl) continue;
-                shakaPlayer.addTextTrackAsync(
-                    vttUrl,
-                    sub.language_code || 'und',
-                    'subtitle',
-                    '',  // mime type (auto-detect for VTT)
-                    undefined,  // codec
-                    sub.language_name || sub.language_code || 'Unknown'
-                ).catch(e => console.warn('[CariApp] Failed to add subtitle track:', sub.language_code, e));
+
+                if (_subtitleOffset !== 0) {
+                    // Fetch VTT, adjust timestamps, load from blob
+                    fetch(vttUrl).then(r => r.text()).then(vttText => {
+                        const adjusted = shiftVttTimestamps(vttText, _subtitleOffset);
+                        const blob = new Blob([adjusted], { type: 'text/vtt' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        shakaPlayer.addTextTrackAsync(
+                            blobUrl,
+                            sub.language_code || 'und',
+                            'subtitle',
+                            'text/vtt',
+                            undefined,
+                            sub.language_name || sub.language_code || 'Unknown'
+                        ).catch(e => console.warn('[CariApp] Failed to add subtitle track:', sub.language_code, e));
+                    }).catch(e => console.warn('[CariApp] Failed to fetch VTT for offset:', e));
+                } else {
+                    shakaPlayer.addTextTrackAsync(
+                        vttUrl,
+                        sub.language_code || 'und',
+                        'subtitle',
+                        '',
+                        undefined,
+                        sub.language_name || sub.language_code || 'Unknown'
+                    ).catch(e => console.warn('[CariApp] Failed to add subtitle track:', sub.language_code, e));
+                }
             }
             // Re-apply CC state after external tracks are added
-            setTimeout(() => applyCCState(), 200);
+            setTimeout(() => applyCCState(), 300);
         } catch (e) {
             console.warn('[CariApp] loadExternalSubtitles error:', e);
         }
+    }
+
+    /**
+     * Shift all timestamps in a VTT string by offsetSeconds.
+     * Positive = later, negative = earlier.
+     */
+    function shiftVttTimestamps(vttText, offsetSeconds) {
+        // Match VTT timestamp lines: 00:01:23.456 --> 00:01:26.789
+        return vttText.replace(
+            /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/g,
+            (match, start, end) => {
+                const newStart = shiftTimestamp(start, offsetSeconds);
+                const newEnd = shiftTimestamp(end, offsetSeconds);
+                return newStart + ' --> ' + newEnd;
+            }
+        );
+    }
+
+    function shiftTimestamp(ts, offsetSeconds) {
+        // Parse HH:MM:SS.mmm
+        const parts = ts.split(':');
+        const h = parseInt(parts[0]);
+        const m = parseInt(parts[1]);
+        const secMs = parts[2].split('.');
+        const s = parseInt(secMs[0]);
+        const ms = parseInt(secMs[1]);
+
+        let totalMs = (h * 3600 + m * 60 + s) * 1000 + ms + Math.round(offsetSeconds * 1000);
+        totalMs = Math.max(0, totalMs); // Don't go negative
+
+        const nh = Math.floor(totalMs / 3600000);
+        totalMs %= 3600000;
+        const nm = Math.floor(totalMs / 60000);
+        totalMs %= 60000;
+        const ns = Math.floor(totalMs / 1000);
+        const nms = totalMs % 1000;
+
+        return String(nh).padStart(2, '0') + ':' +
+               String(nm).padStart(2, '0') + ':' +
+               String(ns).padStart(2, '0') + '.' +
+               String(nms).padStart(3, '0');
     }
 
     /**
@@ -3913,73 +3971,37 @@ const CariApp = (function() {
     let _subtitleOffset = parseFloat(localStorage.getItem('cari_cc_offset') || '0');
 
     /**
-     * Custom TextDisplayer that wraps UITextDisplayer to apply a subtitle
-     * sync offset. Intercepts append() to shift cue startTime/endTime
-     * by _subtitleOffset before passing to the real displayer.
-     *
-     * Cue objects are cloned so the originals in Shaka's buffer stay clean,
-     * allowing re-append with a different offset when the user changes it.
-     */
-    class OffsetTextDisplayer {
-        constructor(player) {
-            this._inner = new shaka.text.UITextDisplayer(player);
-        }
-
-        append(cues) {
-            if (_subtitleOffset !== 0 && cues.length > 0) {
-                // Clone cues with adjusted times so Shaka's internal copies stay clean
-                const shifted = cues.map(cue => {
-                    const c = Object.create(Object.getPrototypeOf(cue));
-                    Object.assign(c, cue);
-                    c.startTime = cue.startTime + _subtitleOffset;
-                    c.endTime = cue.endTime + _subtitleOffset;
-                    if (cue.nestedCues && cue.nestedCues.length) {
-                        c.nestedCues = cue.nestedCues.map(nc => {
-                            const n = Object.create(Object.getPrototypeOf(nc));
-                            Object.assign(n, nc);
-                            n.startTime = nc.startTime + _subtitleOffset;
-                            n.endTime = nc.endTime + _subtitleOffset;
-                            return n;
-                        });
-                    }
-                    return c;
-                });
-                this._inner.append(shifted);
-            } else {
-                this._inner.append(cues);
-            }
-        }
-
-        remove(start, end) { return this._inner.remove(start, end); }
-        isTextVisible() { return this._inner.isTextVisible(); }
-        setTextVisibility(on) { this._inner.setTextVisibility(on); }
-        destroy() { return this._inner.destroy(); }
-        configure(config) { if (this._inner.configure) this._inner.configure(config); }
-        setTextLanguage(lang) { if (this._inner.setTextLanguage) this._inner.setTextLanguage(lang); }
-        enableTextDisplayer() { if (this._inner.enableTextDisplayer) this._inner.enableTextDisplayer(); }
-    }
-
-    /**
-     * Apply subtitle sync offset — force text track reload so cues are
-     * re-appended through OffsetTextDisplayer with the current offset.
+     * Apply subtitle sync offset by reloading external VTT tracks with
+     * adjusted timestamps. Modifies the VTT content in-memory and creates
+     * a blob URL to replace the original track.
      */
     function applySubtitleOffset() {
+        // Sync offset is applied when external subtitles are loaded via
+        // loadExternalSubtitles(). Changing offset requires reloading tracks.
         if (!shakaPlayer) return;
-        try {
-            const tracks = shakaPlayer.getTextTracks();
-            const active = tracks.find(t => t.active);
-            if (active && shakaPlayer.isTextTrackVisible()) {
-                shakaPlayer.setTextTrackVisibility(false);
-                shakaPlayer.selectTextTrack(active);
-                shakaPlayer.setTextTrackVisibility(true);
-            }
-        } catch (e) {
-            console.warn('[CariApp] Subtitle offset apply error:', e);
+        // Re-add external subtitles with the current offset by reloading
+        const video = document.getElementById('mainVideo');
+        if (!video || !video._cariSubtitles) return;
+        // Remove all text tracks and re-add with offset
+        const currentTracks = shakaPlayer.getTextTracks();
+        const activeLang = (currentTracks.find(t => t.active) || {}).language;
+        // Shaka doesn't have a removeTextTrack API, so reload the whole set
+        loadExternalSubtitles(video, video._cariSubtitles);
+        // Re-select the previously active language
+        if (activeLang) {
+            setTimeout(() => {
+                const tracks = shakaPlayer.getTextTracks();
+                const match = tracks.find(t => t.language === activeLang);
+                if (match) {
+                    shakaPlayer.selectTextTrack(match);
+                    shakaPlayer.setTextTrackVisibility(ccEnabled);
+                }
+            }, 300);
         }
     }
 
     function resetSubtitleOffset() {
-        // No state to reset — offset is read from _subtitleOffset at append time
+        // No state to reset — offset is read at load time
     }
 
     /**
