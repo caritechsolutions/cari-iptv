@@ -71,10 +71,10 @@ int transcoder_probe(const char *source_path, media_info_t *info)
         }
     }
 
-    /* Build ffprobe command */
+    /* Build ffprobe command — capture stderr alongside JSON stdout */
     char cmd[MAX_PATH_LEN * 2 + 256];
     snprintf(cmd, sizeof(cmd),
-             "%s -v quiet -print_format json -show_format -show_streams \"%s\"",
+             "%s -v error -print_format json -show_format -show_streams \"%s\" 2>&1",
              g_config->ffprobe_path, source_path);
 
     log_debug("Running: %s", cmd);
@@ -109,8 +109,21 @@ int transcoder_probe(const char *source_path, media_info_t *info)
     }
 
     int ret = pclose(fp);
-    if (ret != 0) {
-        log_error("ffprobe exited with code %d for: %s", WEXITSTATUS(ret), source_path);
+    int exit_code = WIFEXITED(ret) ? WEXITSTATUS(ret) : -1;
+
+    if (exit_code != 0) {
+        /* Null-terminate whatever we captured (may include stderr error messages) */
+        if (json_buf && json_len > 0) {
+            char *t = realloc(json_buf, json_len + 1);
+            if (t) { json_buf = t; json_buf[json_len] = '\0'; }
+            /* Truncate to first 500 chars for log readability */
+            if (json_len > 500) json_buf[500] = '\0';
+            log_error("ffprobe exited with code %d for: %s\n  Output: %s",
+                      exit_code, source_path, json_buf);
+        } else {
+            log_error("ffprobe exited with code %d (no output) for: %s",
+                      exit_code, source_path);
+        }
         free(json_buf);
         return -1;
     }

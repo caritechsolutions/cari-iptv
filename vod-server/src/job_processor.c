@@ -980,7 +980,9 @@ static void pick_up_new_jobs(void)
             } else {
                 snprintf(err_detail, sizeof(err_detail),
                          "ffprobe failed on source file (%lld bytes). "
-                         "File may be corrupted or in an unsupported format: %s",
+                         "Check server log (journalctl -u vod-server) for ffprobe error. "
+                         "Common causes: wrong ffprobe version, unsupported codec, "
+                         "or truncated upload. Path: %s",
                          (long long)err_st.st_size, actual_source);
             }
 
