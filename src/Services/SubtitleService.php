@@ -13,6 +13,7 @@ class SubtitleService
     private Database $db;
     private SettingsService $settings;
     private array $config;
+    private string $lastError = '';
 
     // OpenSubtitles REST API v1
     private const OS_API_BASE = 'https://api.opensubtitles.com/api/v1';
@@ -113,6 +114,14 @@ class SubtitleService
         // Try to get info about our API consumer
         $response = $this->apiRequest('GET', '/infos/user');
         return $response !== null && isset($response['data']);
+    }
+
+    /**
+     * Get the last error message from API requests
+     */
+    public function getLastError(): string
+    {
+        return $this->lastError;
     }
 
     /**
@@ -670,7 +679,8 @@ class SubtitleService
         $response = $this->apiRequest('GET', '/subtitles', $params);
 
         if ($response === null) {
-            return ['success' => false, 'error' => 'Failed to connect to OpenSubtitles API.'];
+            $detail = !empty($this->lastError) ? ' (' . $this->lastError . ')' : '';
+            return ['success' => false, 'error' => 'Failed to connect to OpenSubtitles API.' . $detail];
         }
 
         if (empty($response['data'])) {
@@ -711,7 +721,8 @@ class SubtitleService
         $response = $this->apiRequest('POST', '/download', ['file_id' => $fileId]);
 
         if ($response === null || empty($response['link'])) {
-            return ['success' => false, 'error' => 'Failed to get download link from OpenSubtitles.'];
+            $detail = !empty($this->lastError) ? ' (' . $this->lastError . ')' : '';
+            return ['success' => false, 'error' => 'Failed to get download link from OpenSubtitles.' . $detail];
         }
 
         $downloadUrl = $response['link'];
@@ -904,7 +915,10 @@ class SubtitleService
      */
     private function apiRequest(string $method, string $endpoint, ?array $params = null): ?array
     {
+        $this->lastError = '';
+
         if (!$this->isConfigured()) {
+            $this->lastError = 'API key not configured';
             return null;
         }
 
@@ -924,6 +938,7 @@ class SubtitleService
 
         $headers = [
             'Content-Type: application/json',
+            'Accept: application/json',
             'Api-Key: ' . $this->config['api_key'],
             'User-Agent: ' . self::OS_USER_AGENT,
         ];
@@ -948,6 +963,12 @@ class SubtitleService
         }
 
         $response = curl_exec($ch);
+        if ($response === false) {
+            $this->lastError = 'Connection error: ' . curl_error($ch);
+            curl_close($ch);
+            return null;
+        }
+
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
@@ -958,10 +979,16 @@ class SubtitleService
                 $this->ensureToken();
                 return $this->apiRequestOnce($method, $url, $params);
             }
+            $this->lastError = 'Authentication failed (HTTP 401)';
             return null;
         }
 
         if ($httpCode >= 400) {
+            $this->lastError = "HTTP {$httpCode}";
+            $decoded = json_decode($response, true);
+            if (isset($decoded['message'])) {
+                $this->lastError .= ': ' . $decoded['message'];
+            }
             return null;
         }
 
@@ -977,10 +1004,16 @@ class SubtitleService
 
         $headers = [
             'Content-Type: application/json',
+            'Accept: application/json',
             'Api-Key: ' . $this->config['api_key'],
             'User-Agent: ' . self::OS_USER_AGENT,
-            'Authorization: Bearer ' . ($this->config['token'] ?? ''),
         ];
+
+        // Only add Authorization header if we have a valid token
+        $token = $this->config['token'] ?? '';
+        if (!empty($token)) {
+            $headers[] = 'Authorization: Bearer ' . $token;
+        }
 
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -996,10 +1029,21 @@ class SubtitleService
         }
 
         $response = curl_exec($ch);
+        if ($response === false) {
+            $this->lastError = curl_error($ch);
+            curl_close($ch);
+            return null;
+        }
+
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
         if ($httpCode >= 400) {
+            $this->lastError = "HTTP {$httpCode}";
+            $decoded = json_decode($response, true);
+            if (isset($decoded['message'])) {
+                $this->lastError .= ': ' . $decoded['message'];
+            }
             return null;
         }
 

@@ -620,9 +620,15 @@ class SettingsController
 
         $connected = $subtitleService->testConnection();
 
+        $message = 'OpenSubtitles connection successful!';
+        if (!$connected) {
+            $detail = $subtitleService->getLastError();
+            $message = 'Connection failed. Check your API key.' . (!empty($detail) ? ' (' . $detail . ')' : '');
+        }
+
         Response::json([
             'success' => $connected,
-            'message' => $connected ? 'OpenSubtitles connection successful!' : 'Connection failed. Check your API key.',
+            'message' => $message,
         ]);
     }
 }
