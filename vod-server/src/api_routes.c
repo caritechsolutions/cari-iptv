@@ -1700,6 +1700,20 @@ int api_post_job(http_request_t *req)
         profile = s_config->default_profile;
     }
 
+    /* If source_path is a bare filename (no /), resolve against the uploads dir.
+     * This handles cases where the client only sends the filename. */
+    char resolved_source[MAX_PATH_LEN];
+    const char *final_source = source_path;
+    if (source_path[0] != '/' &&
+        strncmp(source_path, "http://", 7) != 0 &&
+        strncmp(source_path, "https://", 8) != 0) {
+        snprintf(resolved_source, sizeof(resolved_source), "%s/uploads/%s",
+                 s_config ? s_config->temp_path : "/var/lib/vod-server/tmp",
+                 source_path);
+        log_info("Resolved relative source_path '%s' -> '%s'", source_path, resolved_source);
+        final_source = resolved_source;
+    }
+
     /* Check disk space */
     if (!storage_has_space()) {
         cJSON_Delete(body);
@@ -1732,7 +1746,7 @@ int api_post_job(http_request_t *req)
 
     sqlite3_bind_text(stmt, 1, content_id,    -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, title,         -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 3, source_path,   -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, final_source,   -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, source_type,   -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 5, profile,       -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt,  6, priority);
@@ -1764,7 +1778,7 @@ int api_post_job(http_request_t *req)
     cJSON_AddNumberToObject(job, "id", (double)job_id);
     cJSON_AddStringToObject(job, "content_id", content_id);
     cJSON_AddStringToObject(job, "title", title);
-    cJSON_AddStringToObject(job, "source_path", source_path);
+    cJSON_AddStringToObject(job, "source_path", final_source);
     cJSON_AddStringToObject(job, "source_type", source_type);
     cJSON_AddStringToObject(job, "profile", profile);
     cJSON_AddNumberToObject(job, "priority", priority);

@@ -901,6 +901,15 @@ static void pick_up_new_jobs(void)
         char local_source[MAX_PATH_LEN + 256];
         const char *actual_source = source;
 
+        /* If source_path is a bare filename (no /), resolve against uploads dir.
+         * This can happen if the path was stored without the directory prefix. */
+        if (source[0] != '/' && !is_http_url(source)) {
+            snprintf(local_source, sizeof(local_source), "%s/uploads/%s",
+                     g_config->temp_path, source);
+            actual_source = local_source;
+            log_info("Job %d: Resolved relative source to: %s", job_id, actual_source);
+        }
+
         if ((source_type && strcmp(source_type, "http") == 0) || is_http_url(source)) {
             log_info("Job %d: Source is HTTP, downloading first", job_id);
 
