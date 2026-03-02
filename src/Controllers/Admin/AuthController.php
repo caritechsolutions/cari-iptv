@@ -101,6 +101,17 @@ class AuthController
     }
 
     /**
+     * Return a fresh CSRF token (JSON).
+     * Used by long-running uploads where the original token may have expired.
+     */
+    public function csrfToken(): void
+    {
+        header('Content-Type: application/json');
+        echo json_encode(['token' => Session::csrf()]);
+        exit;
+    }
+
+    /**
      * Show forgot password form
      */
     public function showForgotPassword(): void

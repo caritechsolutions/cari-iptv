@@ -470,19 +470,37 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
 
                             document.getElementById('vod-upload-label').textContent = 'Submitting transcode job...';
 
-                            // Step 2: Submit job via IPTV backend (small JSON request, no file)
-                            var jobForm = new FormData();
-                            jobForm.append('csrf_token', CSRF);
-                            jobForm.append('server_id', serverId);
-                            jobForm.append('content_id', contentId);
-                            jobForm.append('upload_path', uploadPath);
-                            jobForm.append('title', MOVIE_TITLE);
-                            jobForm.append('profile', profile);
-                            jobForm.append('entity_type', 'movie');
-                            jobForm.append('entity_id', MOVIE_ID);
-                            if (overwrite) jobForm.append('overwrite', '1');
+                            // Refresh CSRF token — may have expired during the long upload
+                            fetch('/admin/csrf-token').then(function(r) { return r.json(); }).then(function(tokenData) {
+                                var freshToken = (tokenData && tokenData.token) ? tokenData.token : CSRF;
 
-                            fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm })
+                                var jobForm = new FormData();
+                                jobForm.append('csrf_token', freshToken);
+                                jobForm.append('server_id', serverId);
+                                jobForm.append('content_id', contentId);
+                                jobForm.append('upload_path', uploadPath);
+                                jobForm.append('title', MOVIE_TITLE);
+                                jobForm.append('profile', profile);
+                                jobForm.append('entity_type', 'movie');
+                                jobForm.append('entity_id', MOVIE_ID);
+                                if (overwrite) jobForm.append('overwrite', '1');
+
+                                return fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm });
+                            }).catch(function() {
+                                // Token refresh failed — try with original
+                                var jobForm = new FormData();
+                                jobForm.append('csrf_token', CSRF);
+                                jobForm.append('server_id', serverId);
+                                jobForm.append('content_id', contentId);
+                                jobForm.append('upload_path', uploadPath);
+                                jobForm.append('title', MOVIE_TITLE);
+                                jobForm.append('profile', profile);
+                                jobForm.append('entity_type', 'movie');
+                                jobForm.append('entity_id', MOVIE_ID);
+                                if (overwrite) jobForm.append('overwrite', '1');
+
+                                return fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm });
+                            })
                                 .then(function(r) { return r.json(); })
                                 .then(function(data) {
                                     if (data.success) {

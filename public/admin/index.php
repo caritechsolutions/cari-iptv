@@ -98,6 +98,9 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
 
+    // CSRF token refresh (for long-running uploads where the token may expire)
+    $router->get('/csrf-token', [AuthController::class, 'csrfToken']);
+
     // Profile
     $router->get('/profile', [ProfileController::class, 'index']);
     $router->post('/profile/update', [ProfileController::class, 'update']);
