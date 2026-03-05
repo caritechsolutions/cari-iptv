@@ -4942,23 +4942,6 @@ img { max-width: 100%; display: block; }
     50% { opacity: 1; }
 }
 
-.pause-poster {
-    width: 180px;
-    height: 270px;
-    object-fit: cover;
-    border-radius: 10px;
-    box-shadow:
-        0 8px 32px rgba(0,0,0,0.5),
-        0 0 0 1px rgba(255,255,255,0.08);
-    flex-shrink: 0;
-    animation: pausePosterIn 0.6s ease-out 0.25s both;
-}
-
-@keyframes pausePosterIn {
-    from { opacity: 0; transform: translateY(20px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
 /* Fullscreen overrides */
 .player-container:fullscreen .pause-info-overlay,
 .player-container:-webkit-full-screen .pause-info-overlay {
@@ -4970,9 +4953,6 @@ img { max-width: 100%; display: block; }
 @media (max-width: 768px) {
     .pause-content {
         padding: 2rem 1.5rem;
-        flex-direction: column;
-        justify-content: flex-end;
-        gap: 1.5rem;
     }
     .pause-content-inner {
         max-width: 100%;
@@ -4980,12 +4960,62 @@ img { max-width: 100%; display: block; }
     .pause-title {
         font-size: 1.4rem;
     }
-    .pause-poster {
-        display: none;
-    }
     .pause-desc {
         display: none;
     }
+}
+
+/* ---- Top Title Bar (shows on mouse move alongside controls) ---- */
+
+.vod-top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+    padding: 1rem 1.25rem 2rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.vod-top-bar.visible {
+    opacity: 1;
+}
+
+.vod-top-bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.vod-top-title {
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.vod-top-meta {
+    color: rgba(255,255,255,0.6);
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Fullscreen overrides for top bar */
+.player-container:fullscreen .vod-top-bar,
+.player-container:-webkit-full-screen .vod-top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2147483647;
 }
 
 /* =========================================================================

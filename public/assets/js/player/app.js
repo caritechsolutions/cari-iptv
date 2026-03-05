@@ -3073,6 +3073,9 @@ const CariApp = (function() {
             _currentWatchType = 'episode';
             _currentWatchMeta = { title: displayTitle, meta: displayMeta };
 
+            // Update top bar with new episode title
+            _updateTopBar();
+
             // Set up progress tracking for new episode
             if (_progressTrackingCleanup) { _progressTrackingCleanup(); }
             _progressTrackingCleanup = setupProgressTrackingWithCleanup(video, 'episode', item.id);
@@ -3151,6 +3154,20 @@ const CariApp = (function() {
         }
     }
 
+    /** Update the top bar with current content title */
+    function _updateTopBar() {
+        const topBar = document.getElementById('vodTopBar');
+        if (!topBar) return;
+        const title = _currentWatchMeta.title || '';
+        const meta = _currentWatchMeta.meta || '';
+        topBar.innerHTML = `
+            <div class="vod-top-bar-inner">
+                <span class="vod-top-title">${CariUI.esc(title)}</span>
+                ${meta ? '<span class="vod-top-meta">' + CariUI.esc(meta) + '</span>' : ''}
+            </div>
+        `;
+    }
+
     async function pageWatch(params) {
         const el = content();
         const type = params.type;
@@ -3164,6 +3181,7 @@ const CariApp = (function() {
             <div class="player-page">
                 <div class="player-container" id="playerContainer">
                     <video id="mainVideo" autoplay playsinline></video>
+                    <div class="vod-top-bar" id="vodTopBar"></div>
                     <div class="vod-controls visible" id="vodControls">
                         <div class="vod-progress-wrap" id="vodProgressWrap">
                             <div class="vod-progress-bar">
@@ -3282,6 +3300,9 @@ const CariApp = (function() {
             _currentWatchType = type;
             _currentWatchMeta = { title: displayTitle || item.title || item.name || '', meta: displayMeta || '' };
 
+            // Populate top bar with title
+            _updateTopBar();
+
             // Set up pause info overlay (shows content details when paused in fullscreen)
             setupPauseOverlay(video, document.getElementById('playerContainer'));
 
@@ -3385,7 +3406,6 @@ const CariApp = (function() {
                             <span>Paused</span>
                         </div>
                     </div>
-                    ${poster ? '<img class="pause-poster" src="' + CariUI.esc(poster) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
                 </div>
             `;
             return el;
@@ -3446,6 +3466,7 @@ const CariApp = (function() {
         const bufferedBar = document.getElementById('vodBuffered');
         const vodCCBtn = document.getElementById('vodCCBtn');
         const fsBtn = document.getElementById('vodFsBtn');
+        const topBar = document.getElementById('vodTopBar');
 
         // ---- Auto-hide timer ----
         let hideTimer = null;
@@ -3454,12 +3475,14 @@ const CariApp = (function() {
         function showControls() {
             container.classList.add('controls-visible');
             if (controls) controls.classList.add('visible');
+            if (topBar) topBar.classList.add('visible');
         }
 
         function hideControls() {
             if (video.paused) return;
             container.classList.remove('controls-visible');
             if (controls) controls.classList.remove('visible');
+            if (topBar) topBar.classList.remove('visible');
         }
 
         function resetHideTimer() {
