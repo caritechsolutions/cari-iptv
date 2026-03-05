@@ -4992,7 +4992,7 @@ img { max-width: 100%; display: block; }
 
 .vod-top-title {
     color: #fff;
-    font-size: 0.95rem;
+    font-size: 1.25rem;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -5002,7 +5002,7 @@ img { max-width: 100%; display: block; }
 
 .vod-top-meta {
     color: rgba(255,255,255,0.6);
-    font-size: 0.8rem;
+    font-size: 1rem;
     font-weight: 500;
     white-space: nowrap;
     flex-shrink: 0;
