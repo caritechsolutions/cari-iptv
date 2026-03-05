@@ -293,7 +293,12 @@ class AuthController extends BaseApiController
             return;
         }
 
-        $items = $this->auth->getContinueWatching($subscriberId);
+        $filterType = $_GET['type'] ?? null;
+        if ($filterType && !in_array($filterType, ['movie', 'series'], true)) {
+            $filterType = null;
+        }
+
+        $items = $this->auth->getContinueWatching($subscriberId, 20, $filterType);
         $this->json(['data' => $items], 200);
     }
 

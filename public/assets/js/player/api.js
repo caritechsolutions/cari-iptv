@@ -204,7 +204,7 @@ const CariAPI = (function() {
         return get('/auth/watch-progress/batch?content_type=' + encodeURIComponent(contentType) + '&ids=' + encodeURIComponent(ids.join(',')));
     }
 
-    function getContinueWatching() { return get('/auth/continue-watching'); }
+    function getContinueWatching(type) { return get('/auth/continue-watching' + (type ? '?type=' + encodeURIComponent(type) : '')); }
     function toggleWatchlist(contentType, contentId) { return post('/auth/watchlist/toggle', { content_type: contentType, content_id: contentId }); }
     function getWatchlist() { return get('/auth/watchlist'); }
     function getEntitlements() { return request('GET', '/auth/entitlements?_t=' + Date.now()); }

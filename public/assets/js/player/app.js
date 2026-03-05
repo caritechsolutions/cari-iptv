@@ -381,7 +381,7 @@ const CariApp = (function() {
             }
 
             el.innerHTML = '';
-            renderLayoutSections(el, layout.sections);
+            renderLayoutSections(el, layout.sections, 'home');
         } catch (err) {
             console.error('[CariApp] Home layout failed:', err);
             el.innerHTML = '';
@@ -436,7 +436,7 @@ const CariApp = (function() {
         });
     }
 
-    function renderLayoutSections(el, sections) {
+    function renderLayoutSections(el, sections, pageType) {
         sections.forEach(section => {
             const type = section.section_type;
             const items = flattenLayoutItems(section.items || []);
@@ -467,7 +467,9 @@ const CariApp = (function() {
             } else if (type === 'continue_watching') {
                 const cwPlaceholder = document.createElement('div');
                 el.appendChild(cwPlaceholder);
-                renderContinueWatchingRow(cwPlaceholder);
+                // Filter by page context: movies page → movie only, series page → series only, home → all
+                const cwFilter = pageType === 'movies' ? 'movie' : pageType === 'series' ? 'series' : null;
+                renderContinueWatchingRow(cwPlaceholder, cwFilter);
             } else if (type === 'category_grid') {
                 const catPlaceholder = document.createElement('div');
                 el.appendChild(catPlaceholder);
@@ -511,10 +513,10 @@ const CariApp = (function() {
         el.appendChild(section);
     }
 
-    async function renderContinueWatchingRow(el) {
+    async function renderContinueWatchingRow(el, filterType) {
         if (!CariAPI.isAuthenticated()) return;
         try {
-            const res = await CariAPI.getContinueWatching();
+            const res = await CariAPI.getContinueWatching(filterType || null);
             const items = res?.data || [];
             if (!items.length) return;
 
@@ -676,7 +678,7 @@ const CariApp = (function() {
                 const layout = res?.data;
                 if (layout && layout.sections && layout.sections.length) {
                     el.innerHTML = '';
-                    renderLayoutSections(el, layout.sections);
+                    renderLayoutSections(el, layout.sections, 'movies');
                     return;
                 }
             } catch (err) {
@@ -752,7 +754,7 @@ const CariApp = (function() {
                 const layout = res?.data;
                 if (layout && layout.sections && layout.sections.length) {
                     el.innerHTML = '';
-                    renderLayoutSections(el, layout.sections);
+                    renderLayoutSections(el, layout.sections, 'series');
                     return;
                 }
             } catch (err) {

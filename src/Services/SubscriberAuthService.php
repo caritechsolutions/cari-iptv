@@ -423,7 +423,7 @@ class SubscriberAuthService
      * Episodes are grouped by series — only the most recently watched episode per series is shown,
      * presented as the TV show with resume info for the last episode watched.
      */
-    public function getContinueWatching(int $subscriberId, int $limit = 20): array
+    public function getContinueWatching(int $subscriberId, int $limit = 20, ?string $filterType = null): array
     {
         $items = $this->db->fetchAll(
             "SELECT wh.content_type, wh.content_id, wh.progress_seconds, wh.duration_seconds,
@@ -439,6 +439,10 @@ class SubscriberAuthService
 
         foreach ($items as $item) {
             if ($item['content_type'] === 'movie') {
+                // Skip movies if filtering for series only
+                if ($filterType === 'series') {
+                    continue;
+                }
                 $movie = $this->db->fetch(
                     "SELECT id, title, slug, year, poster_url, backdrop_url, runtime, vote_average, stream_url
                      FROM movies WHERE id = ? AND status = 'published'",
@@ -451,6 +455,10 @@ class SubscriberAuthService
                 }
                 $result[] = $item;
             } elseif ($item['content_type'] === 'episode') {
+                // Skip episodes if filtering for movies only
+                if ($filterType === 'movie') {
+                    continue;
+                }
                 $episode = $this->db->fetch(
                     "SELECT e.id as episode_id, e.name as episode_title, e.episode_number, e.still_url,
                             e.stream_url, e.runtime, e.vote_average,
