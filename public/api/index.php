@@ -107,6 +107,8 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/auth/subscribe', [AuthController::class, 'subscribe'], ['api_auth']);
     $router->post('/auth/unsubscribe', [AuthController::class, 'unsubscribe'], ['api_auth']);
     $router->post('/auth/update-profile', [AuthController::class, 'updateProfile'], ['api_auth']);
+    $router->post('/auth/rate', [AuthController::class, 'rateContent'], ['api_auth']);
+    $router->get('/auth/rating', [AuthController::class, 'getRating'], ['api_auth']);
 
     // ----- Content (protected — requires Bearer token) -----
 

@@ -474,6 +474,12 @@ class ContentApiService
         foreach ($movies as &$movie) {
             $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
             $movie['content_type'] = 'movie';
+            // Use community rating if available, fall back to TMDB
+            if (!empty($movie['community_rating'])) {
+                $movie['vote_average'] = (float) $movie['community_rating'];
+                $movie['rating_source'] = 'community';
+                $movie['rating_count'] = (int) ($movie['community_rating_count'] ?? 0);
+            }
         }
 
         $total = $this->db->fetch(
@@ -519,6 +525,11 @@ class ContentApiService
 
         $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
         $movie['content_type'] = 'movie';
+        if (!empty($movie['community_rating'])) {
+            $movie['vote_average'] = (float) $movie['community_rating'];
+            $movie['rating_source'] = 'community';
+            $movie['rating_count'] = (int) ($movie['community_rating_count'] ?? 0);
+        }
 
         // DRM info — if movie has a VOD server, check for DRM key
         $movie['drm'] = $this->getDrmInfo($movie);
@@ -681,6 +692,11 @@ class ContentApiService
         foreach ($series as &$show) {
             $show['is_restricted'] = (bool) ($show['is_restricted'] ?? false);
             $show['content_type'] = 'series';
+            if (!empty($show['community_rating'])) {
+                $show['vote_average'] = (float) $show['community_rating'];
+                $show['rating_source'] = 'community';
+                $show['rating_count'] = (int) ($show['community_rating_count'] ?? 0);
+            }
         }
 
         $total = $this->db->fetch(
@@ -726,6 +742,13 @@ class ContentApiService
 
         $show['is_restricted'] = (bool) ($show['is_restricted'] ?? false);
         $show['content_type'] = 'series';
+
+        // Community rating override (use viewer ratings if available, else TMDB)
+        if (!empty($show['community_rating'])) {
+            $show['vote_average'] = (float) $show['community_rating'];
+            $show['rating_source'] = 'community';
+            $show['rating_count'] = (int) ($show['community_rating_count'] ?? 0);
+        }
 
         // Seasons (table is series_seasons)
         $show['seasons'] = $this->safeQuery(fn() => $this->db->fetchAll(
@@ -829,6 +852,36 @@ class ContentApiService
                      WHERE e.season_id = ?
                      ORDER BY e.episode_number ASC LIMIT 1",
                     [$nextSeason['id']]
+                ));
+            }
+        }
+
+        // Previous episode in the same season
+        $episode['prev_episode'] = $this->safeQuery(fn() => $this->db->fetch(
+            "SELECT e.id, e.episode_number, e.name as title, e.stream_url, e.still_url, e.runtime
+             FROM series_episodes e
+             WHERE e.season_id = ? AND e.episode_number < ?
+             ORDER BY e.episode_number DESC LIMIT 1",
+            [$episode['season_id'], $episode['episode_number']]
+        ));
+
+        // If no prev in season, check previous season's last episode
+        if (!$episode['prev_episode']) {
+            $prevSeason = $this->safeQuery(fn() => $this->db->fetch(
+                "SELECT sn.id FROM series_seasons sn
+                 WHERE sn.series_id = ? AND sn.season_number < (SELECT season_number FROM series_seasons WHERE id = ?)
+                 ORDER BY sn.season_number DESC LIMIT 1",
+                [$episode['series_id'], $episode['season_id']]
+            ));
+            if ($prevSeason) {
+                $episode['prev_episode'] = $this->safeQuery(fn() => $this->db->fetch(
+                    "SELECT e.id, e.episode_number, e.name as title, e.stream_url, e.still_url, e.runtime,
+                            sn.season_number, sn.name as season_name
+                     FROM series_episodes e
+                     JOIN series_seasons sn ON e.season_id = sn.id
+                     WHERE e.season_id = ?
+                     ORDER BY e.episode_number DESC LIMIT 1",
+                    [$prevSeason['id']]
                 ));
             }
         }

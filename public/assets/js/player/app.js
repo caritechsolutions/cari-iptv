@@ -838,6 +838,7 @@ const CariApp = (function() {
                                     ${trailers.length ? '<button class="btn btn-secondary" id="seriesTrailerBtn"><i class="lucide-clapperboard"></i> Watch Trailer</button>' : ''}
                                     <button class="btn btn-icon" id="seriesWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
                                 </div>
+                                <div class="series-rating" id="seriesRating"></div>
                                 <div class="trailer-embed" id="seriesTrailerEmbed" style="display:none"></div>
                             </div>
                         </div>
@@ -894,6 +895,9 @@ const CariApp = (function() {
                     } catch {}
                 });
             }
+
+            // Star rating widget
+            CariUI.renderStarRating(document.getElementById('seriesRating'), 'series', show.id);
 
             // Render cast
             if (show.cast && show.cast.length) {
@@ -3078,6 +3082,9 @@ const CariApp = (function() {
             // Update top bar with new episode title
             _updateTopBar();
 
+            // Update next/prev episode buttons
+            _setupEpisodeNavButtons(item, 'episode');
+
             // Set up progress tracking for new episode
             if (_progressTrackingCleanup) { _progressTrackingCleanup(); }
             _progressTrackingCleanup = setupProgressTrackingWithCleanup(video, 'episode', item.id);
@@ -3156,6 +3163,30 @@ const CariApp = (function() {
         }
     }
 
+    /** Show/hide and wire up next/previous episode navigation buttons */
+    function _setupEpisodeNavButtons(item, type) {
+        const prevBtn = document.getElementById('vodPrevEp');
+        const nextBtn = document.getElementById('vodNextEp');
+        if (!prevBtn || !nextBtn) return;
+
+        const prevEp = (type === 'episode' && item.prev_episode) ? item.prev_episode : null;
+        const nextEp = (type === 'episode' && item.next_episode) ? item.next_episode : null;
+
+        prevBtn.style.display = prevEp ? '' : 'none';
+        nextBtn.style.display = nextEp ? '' : 'none';
+
+        if (prevEp) {
+            const newPrevBtn = prevBtn.cloneNode(true);
+            prevBtn.parentNode.replaceChild(newPrevBtn, prevBtn);
+            newPrevBtn.addEventListener('click', () => _navigateToNextEpisode(prevEp.id));
+        }
+        if (nextEp) {
+            const newNextBtn = nextBtn.cloneNode(true);
+            nextBtn.parentNode.replaceChild(newNextBtn, nextBtn);
+            newNextBtn.addEventListener('click', () => _navigateToNextEpisode(nextEp.id));
+        }
+    }
+
     /** Update the top bar with current content title */
     function _updateTopBar() {
         const topBar = document.getElementById('vodTopBar');
@@ -3195,8 +3226,10 @@ const CariApp = (function() {
                         </div>
                         <div class="vod-controls-bar">
                             <button class="vod-ctrl-btn" id="vodPlayPause" title="Play"><i class="lucide-play"></i></button>
+                            <button class="vod-ctrl-btn vod-ep-nav" id="vodPrevEp" title="Previous Episode" style="display:none"><i class="lucide-skip-back"></i></button>
                             <button class="vod-ctrl-btn" id="vodRewind" title="Rewind 10s"><i class="lucide-rotate-ccw"></i></button>
                             <button class="vod-ctrl-btn" id="vodForward" title="Forward 10s"><i class="lucide-rotate-cw"></i></button>
+                            <button class="vod-ctrl-btn vod-ep-nav" id="vodNextEp" title="Next Episode" style="display:none"><i class="lucide-skip-forward"></i></button>
                             <div class="vod-volume-wrap">
                                 <button class="vod-ctrl-btn" id="vodMuteBtn" title="Mute"><i class="lucide-volume-2"></i></button>
                                 <input type="range" class="vod-volume-slider" id="vodVolumeSlider" min="0" max="1" step="0.05" value="1">
@@ -3301,6 +3334,9 @@ const CariApp = (function() {
             _currentWatchItem = item;
             _currentWatchType = type;
             _currentWatchMeta = { title: displayTitle || item.title || item.name || '', meta: displayMeta || '' };
+
+            // Show next/prev episode buttons for series episodes
+            _setupEpisodeNavButtons(item, type);
 
             // Populate top bar with title
             _updateTopBar();
@@ -3748,6 +3784,16 @@ const CariApp = (function() {
                     e.preventDefault();
                     toggleCC();
                     resetHideTimer();
+                    break;
+                case 'n':
+                case 'N':
+                    e.preventDefault();
+                    document.getElementById('vodNextEp')?.click();
+                    break;
+                case 'p':
+                case 'P':
+                    e.preventDefault();
+                    document.getElementById('vodPrevEp')?.click();
                     break;
             }
         }

@@ -727,6 +727,84 @@ class SubscriberAuthService
         }
     }
 
+    // =========================================================================
+    // CONTENT RATINGS
+    // =========================================================================
+
+    /**
+     * Rate a movie or series (1-5 stars). Upserts the rating.
+     */
+    public function rateContent(int $subscriberId, string $contentType, int $contentId, int $rating): array
+    {
+        if (!in_array($contentType, ['movie', 'series'], true)) {
+            return ['success' => false, 'error' => 'Invalid content type'];
+        }
+        if ($rating < 1 || $rating > 5) {
+            return ['success' => false, 'error' => 'Rating must be between 1 and 5'];
+        }
+
+        // Upsert the subscriber's rating
+        $this->db->execute(
+            "INSERT INTO subscriber_ratings (subscriber_id, content_type, content_id, rating)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE rating = VALUES(rating), updated_at = NOW()",
+            [$subscriberId, $contentType, $contentId, $rating]
+        );
+
+        // Recalculate community rating for this content
+        $this->recalculateCommunityRating($contentType, $contentId);
+
+        // Return updated stats
+        $stats = $this->getContentRating($contentType, $contentId);
+        $stats['user_rating'] = $rating;
+
+        return ['success' => true, 'data' => $stats];
+    }
+
+    /**
+     * Get a subscriber's rating for a specific content item
+     */
+    public function getSubscriberRating(int $subscriberId, string $contentType, int $contentId): ?int
+    {
+        $row = $this->db->fetch(
+            "SELECT rating FROM subscriber_ratings WHERE subscriber_id = ? AND content_type = ? AND content_id = ?",
+            [$subscriberId, $contentType, $contentId]
+        );
+        return $row ? (int) $row['rating'] : null;
+    }
+
+    /**
+     * Get community rating stats for a content item
+     */
+    public function getContentRating(string $contentType, int $contentId): array
+    {
+        $row = $this->db->fetch(
+            "SELECT AVG(rating) as avg_rating, COUNT(*) as rating_count
+             FROM subscriber_ratings
+             WHERE content_type = ? AND content_id = ?",
+            [$contentType, $contentId]
+        );
+
+        return [
+            'community_rating' => $row && $row['avg_rating'] ? round((float) $row['avg_rating'], 1) : null,
+            'rating_count' => $row ? (int) $row['rating_count'] : 0,
+        ];
+    }
+
+    /**
+     * Recalculate and store community rating on the content table
+     */
+    private function recalculateCommunityRating(string $contentType, int $contentId): void
+    {
+        $stats = $this->getContentRating($contentType, $contentId);
+        $table = $contentType === 'movie' ? 'movies' : 'series';
+
+        $this->db->execute(
+            "UPDATE `{$table}` SET community_rating = ?, community_rating_count = ? WHERE id = ?",
+            [$stats['community_rating'], $stats['rating_count'], $contentId]
+        );
+    }
+
     private function detectDeviceName(): string
     {
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';

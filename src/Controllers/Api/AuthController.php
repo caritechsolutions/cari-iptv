@@ -466,6 +466,68 @@ class AuthController extends BaseApiController
     }
 
     // =========================================================================
+    // CONTENT RATINGS
+    // =========================================================================
+
+    /**
+     * POST /api/v1/auth/rate
+     * Body: { content_type, content_id, rating }
+     */
+    public function rateContent(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $contentType = $input['content_type'] ?? '';
+        $contentId = (int) ($input['content_id'] ?? 0);
+        $rating = (int) ($input['rating'] ?? 0);
+
+        if ($contentId <= 0) {
+            $this->error('content_id is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->rateContent($subscriberId, $contentType, $contentId, $rating);
+
+        if (!$result['success']) {
+            $this->error($result['error'], 422, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $this->json(['data' => $result['data']], 200);
+    }
+
+    /**
+     * GET /api/v1/auth/rating?content_type=movie&content_id=123
+     * Returns the user's rating and community stats for a content item
+     */
+    public function getRating(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $contentType = $_GET['content_type'] ?? 'movie';
+        $contentId = (int) ($_GET['content_id'] ?? 0);
+
+        if ($contentId <= 0) {
+            $this->error('content_id is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $stats = $this->auth->getContentRating($contentType, $contentId);
+        $stats['user_rating'] = $this->auth->getSubscriberRating($subscriberId, $contentType, $contentId);
+
+        $this->json(['data' => $stats], 200);
+    }
+
+    // =========================================================================
     // HELPERS
     // =========================================================================
 

@@ -5272,3 +5272,55 @@ img { max-width: 100%; display: block; }
         display: none;
     }
 }
+
+/* ============================================
+   Star Rating Widget
+   ============================================ */
+
+.star-rating-widget {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.star-rating-stars {
+    display: flex;
+    gap: 0.125rem;
+}
+
+.star-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.125rem;
+    font-size: 1.25rem;
+    color: rgba(255,255,255,0.25);
+    transition: color 0.15s, transform 0.15s;
+}
+
+.star-btn:hover {
+    transform: scale(1.15);
+}
+
+.star-btn.hovered {
+    color: #fbbf24;
+}
+
+.star-btn.rated {
+    color: #fbbf24;
+}
+
+.star-rating-label {
+    font-size: 0.8125rem;
+    color: rgba(255,255,255,0.5);
+}
+
+/* Episode nav buttons in player controls */
+.vod-ep-nav {
+    opacity: 0.85;
+}
+
+.vod-ep-nav:hover {
+    opacity: 1;
+}

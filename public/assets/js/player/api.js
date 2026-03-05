@@ -212,6 +212,14 @@ const CariAPI = (function() {
     function unsubscribeFrom(packageId) { return post('/auth/unsubscribe', { package_id: packageId }); }
     function updateProfile(data) { return post('/auth/update-profile', data); }
 
+    // Ratings
+    function rateContent(contentType, contentId, rating) {
+        return post('/auth/rate', { content_type: contentType, content_id: contentId, rating: rating });
+    }
+    function getRating(contentType, contentId) {
+        return get('/auth/rating?content_type=' + encodeURIComponent(contentType) + '&content_id=' + encodeURIComponent(contentId));
+    }
+
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
@@ -219,6 +227,7 @@ const CariAPI = (function() {
         getCategories, getPerson, search, getEpg, getProgrammeInfo,
         updateWatchProgress, getWatchProgress, getBatchWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
+        rateContent, getRating,
         bustAllCaches, clearCacheBust,
     };
 })();
