@@ -4783,6 +4783,211 @@ img { max-width: 100%; display: block; }
 }
 
 /* =========================================================================
+   Pause Info Overlay — Cinematic fullscreen info when paused
+   ========================================================================= */
+
+.pause-info-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.pause-info-overlay.visible {
+    opacity: 1;
+}
+
+.pause-backdrop {
+    position: absolute;
+    inset: -20px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(30px) brightness(0.3) saturate(1.4);
+    transform: scale(1.1);
+}
+
+.pause-gradient {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.2) 100%),
+        linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 40%);
+}
+
+.pause-content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4rem 5%;
+    gap: 3rem;
+}
+
+.pause-content-inner {
+    flex: 1;
+    max-width: 55%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    animation: pauseSlideIn 0.5s ease-out 0.15s both;
+}
+
+@keyframes pauseSlideIn {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.pause-logo {
+    max-width: 340px;
+    max-height: 100px;
+    object-fit: contain;
+    object-position: left center;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+    margin-bottom: 0.25rem;
+}
+
+.pause-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    line-height: 1.15;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+    letter-spacing: -0.02em;
+}
+
+.pause-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.7);
+}
+
+.pause-meta-tag {
+    background: var(--p-primary, #6366f1);
+    color: #fff;
+    padding: 0.15rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.pause-meta-item {
+    position: relative;
+    padding-left: 0.75rem;
+}
+
+.pause-meta-item::before {
+    content: '\00B7';
+    position: absolute;
+    left: 0;
+    color: rgba(255,255,255,0.35);
+    font-weight: bold;
+}
+
+.pause-meta-item:first-child::before,
+.pause-meta-tag + .pause-meta-item::before {
+    content: none;
+    padding-left: 0;
+}
+
+.pause-meta-rating {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #fbbf24;
+    font-weight: 600;
+}
+
+.pause-meta-rating i {
+    font-size: 0.75rem;
+}
+
+.pause-desc {
+    color: rgba(255,255,255,0.6);
+    font-size: 0.88rem;
+    line-height: 1.55;
+    margin: 0.25rem 0 0;
+    max-width: 500px;
+}
+
+.pause-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    animation: pauseStatusPulse 2.5s ease-in-out infinite;
+}
+
+.pause-status i {
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+@keyframes pauseStatusPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+.pause-poster {
+    width: 180px;
+    height: 270px;
+    object-fit: cover;
+    border-radius: 10px;
+    box-shadow:
+        0 8px 32px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(255,255,255,0.08);
+    flex-shrink: 0;
+    animation: pausePosterIn 0.6s ease-out 0.25s both;
+}
+
+@keyframes pausePosterIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Fullscreen overrides */
+.player-container:fullscreen .pause-info-overlay,
+.player-container:-webkit-full-screen .pause-info-overlay {
+    position: fixed;
+    z-index: 2147483646;
+}
+
+/* Mobile / small screens */
+@media (max-width: 768px) {
+    .pause-content {
+        padding: 2rem 1.5rem;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 1.5rem;
+    }
+    .pause-content-inner {
+        max-width: 100%;
+    }
+    .pause-title {
+        font-size: 1.4rem;
+    }
+    .pause-poster {
+        display: none;
+    }
+    .pause-desc {
+        display: none;
+    }
+}
+
+/* =========================================================================
    Skip Intro Button
    ========================================================================= */
 

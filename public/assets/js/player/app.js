@@ -3009,6 +3009,147 @@ const CariApp = (function() {
 
     // Active marker overlay state (cleaned up on navigation)
     let _markerCleanup = null;
+    // Current watch item data (for pause overlay and in-place episode swap)
+    let _currentWatchItem = null;
+    let _currentWatchType = null;
+    let _currentWatchMeta = { title: '', meta: '' };
+    // Progress tracking cleanup
+    let _progressTrackingCleanup = null;
+
+    /**
+     * Swap to a new episode in-place without leaving fullscreen.
+     * This avoids the browser blocking requestFullscreen() on non-user-gesture contexts
+     * (e.g. when the auto-play countdown timer fires).
+     */
+    async function _swapEpisodeInPlace(episodeId) {
+        const video = document.getElementById('mainVideo');
+        const container = document.getElementById('playerContainer');
+        if (!video || !container) {
+            // Fallback to normal navigation
+            CariRouter.navigate('/watch/episode/' + episodeId);
+            return;
+        }
+
+        try {
+            // Fetch new episode data
+            const res = await CariAPI.getEpisode(episodeId);
+            const item = res?.data;
+            if (!item || !item.stream_url) {
+                CariRouter.navigate('/watch/episode/' + episodeId);
+                return;
+            }
+
+            // Clean up old marker overlays
+            if (_markerCleanup) { _markerCleanup(); _markerCleanup = null; }
+            resetSubtitleOffset();
+
+            // Remove any existing pause overlay
+            const existingPauseOverlay = container.querySelector('.pause-info-overlay');
+            if (existingPauseOverlay) existingPauseOverlay.remove();
+
+            // Update URL bar without triggering route handler
+            history.pushState(null, '', '/watch/episode/' + episodeId);
+
+            // Load new stream
+            const streamUrl = item.stream_url || item.video_url || '';
+            const drmConfig = item.drm || null;
+            if (streamUrl && window.shaka) {
+                await initShakaPlayer(video, streamUrl, drmConfig);
+            } else if (streamUrl) {
+                video.src = streamUrl;
+                video.play().catch(() => {});
+            }
+
+            // Load subtitles
+            const subtitles = item.subtitles || [];
+            if (subtitles.length > 0) {
+                loadExternalSubtitles(video, subtitles);
+            }
+
+            // Update stored content info for pause overlay
+            const displayTitle = item.series_title + ' \u2014 ' + (item.title || 'Episode ' + item.episode_number);
+            const displayMeta = 'S' + (item.season_number || '') + ' E' + (item.episode_number || '');
+            _currentWatchItem = item;
+            _currentWatchType = 'episode';
+            _currentWatchMeta = { title: displayTitle, meta: displayMeta };
+
+            // Set up progress tracking for new episode
+            if (_progressTrackingCleanup) { _progressTrackingCleanup(); }
+            _progressTrackingCleanup = setupProgressTrackingWithCleanup(video, 'episode', item.id);
+
+            // Set up new markers/auto-play
+            const markers = item.markers || [];
+            const nextEpisode = item.next_episode || null;
+            if (markers.length || nextEpisode) {
+                _markerCleanup = setupMarkerOverlays(video, markers, nextEpisode, 'episode', item);
+            }
+
+            // Update the details section below
+            const nextEpHtml = _buildNextEpisodeHtml(nextEpisode);
+            const details = document.getElementById('playerDetails');
+            if (details) {
+                details.innerHTML = `
+                    <h2 class="player-details-title">${CariUI.esc(displayTitle)}</h2>
+                    <div class="player-details-meta">
+                        <span>${CariUI.esc(displayMeta)}</span>
+                        ${item.year ? '<span>' + CariUI.esc(item.year) + '</span>' : ''}
+                        ${item.runtime ? '<span>' + CariUI.esc(item.runtime) + ' min</span>' : ''}
+                        ${item.vote_average ? '<span class="rating"><i class="lucide-star" style="font-size:.75rem"></i> ' + CariUI.esc(String(item.vote_average)) + '</span>' : ''}
+                    </div>
+                    <p class="player-details-desc">${CariUI.esc(item.description || item.synopsis || item.overview || '')}</p>
+                    ${item.series_id ? '<button class="btn btn-secondary" id="backToSeries" style="margin-top:1rem"><i class="lucide-arrow-left"></i> Back to Series</button>' : ''}
+                    ${nextEpHtml}
+                `;
+
+                if (item.series_id) {
+                    document.getElementById('backToSeries')?.addEventListener('click', () => {
+                        CariRouter.navigate('/series/' + item.series_id);
+                    });
+                }
+                if (nextEpisode) {
+                    document.getElementById('nextEpCard')?.addEventListener('click', () => {
+                        CariRouter.navigate('/watch/episode/' + nextEpisode.id);
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[CariApp] In-place episode swap failed, falling back to navigation:', err);
+            CariRouter.navigate('/watch/episode/' + episodeId);
+        }
+    }
+
+    function _buildNextEpisodeHtml(nextEpisode) {
+        if (!nextEpisode) return '';
+        const nextTitle = nextEpisode.title || 'Episode ' + nextEpisode.episode_number;
+        const nextThumb = nextEpisode.still_url || '';
+        return `
+            <div class="next-episode-preview" id="nextEpPreview">
+                <div class="next-ep-label">Next Episode</div>
+                <div class="next-ep-card" id="nextEpCard">
+                    ${nextThumb ? '<img class="next-ep-thumb" src="' + CariUI.esc(nextThumb) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
+                    <div class="next-ep-info">
+                        <div class="next-ep-title">${CariUI.esc(nextTitle)}</div>
+                        <div class="next-ep-meta">
+                            ${nextEpisode.season_number ? 'S' + CariUI.esc(String(nextEpisode.season_number)) + ' ' : ''}E${CariUI.esc(String(nextEpisode.episode_number))}
+                            ${nextEpisode.runtime ? ' &middot; ' + CariUI.esc(String(nextEpisode.runtime)) + ' min' : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Navigate to next episode: if in fullscreen, swap in-place; otherwise use normal route.
+     */
+    function _navigateToNextEpisode(episodeId) {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (isFs) {
+            _swapEpisodeInPlace(episodeId);
+        } else {
+            CariRouter.navigate('/watch/episode/' + episodeId);
+        }
+    }
 
     async function pageWatch(params) {
         const el = content();
@@ -3136,6 +3277,14 @@ const CariApp = (function() {
             // Set up custom VOD controls (play/pause, seek, volume, CC, fullscreen, auto-hide)
             setupVodControls(video, document.getElementById('playerContainer'));
 
+            // Store current content info for pause overlay
+            _currentWatchItem = item;
+            _currentWatchType = type;
+            _currentWatchMeta = { title: displayTitle || item.title || item.name || '', meta: displayMeta || '' };
+
+            // Set up pause info overlay (shows content details when paused in fullscreen)
+            setupPauseOverlay(video, document.getElementById('playerContainer'));
+
             // Track progress for VOD
             if (type === 'movie' || type === 'episode') {
                 setupProgressTracking(video, type === 'episode' ? 'episode' : 'movie', item.id);
@@ -3156,26 +3305,7 @@ const CariApp = (function() {
             const details = document.getElementById('playerDetails');
 
             // Next episode info
-            let nextEpHtml = '';
-            if (type === 'episode' && nextEpisode) {
-                const nextTitle = nextEpisode.title || 'Episode ' + nextEpisode.episode_number;
-                const nextThumb = nextEpisode.still_url || '';
-                nextEpHtml = `
-                    <div class="next-episode-preview" id="nextEpPreview">
-                        <div class="next-ep-label">Next Episode</div>
-                        <div class="next-ep-card" id="nextEpCard">
-                            ${nextThumb ? '<img class="next-ep-thumb" src="' + CariUI.esc(nextThumb) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
-                            <div class="next-ep-info">
-                                <div class="next-ep-title">${CariUI.esc(nextTitle)}</div>
-                                <div class="next-ep-meta">
-                                    ${nextEpisode.season_number ? 'S' + CariUI.esc(String(nextEpisode.season_number)) + ' ' : ''}E${CariUI.esc(String(nextEpisode.episode_number))}
-                                    ${nextEpisode.runtime ? ' &middot; ' + CariUI.esc(String(nextEpisode.runtime)) + ' min' : ''}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
+            const nextEpHtml = _buildNextEpisodeHtml(type === 'episode' ? nextEpisode : null);
 
             details.innerHTML = `
                 <h2 class="player-details-title">${CariUI.esc(title)}</h2>
@@ -3206,6 +3336,94 @@ const CariApp = (function() {
         } catch (err) {
             document.getElementById('playerDetails').innerHTML = CariUI.emptyState('lucide-alert-circle', 'Error', 'Failed to load content.');
         }
+    }
+
+    /**
+     * Set up pause info overlay — when paused in fullscreen, shows a cinematic overlay
+     * with content artwork, title and metadata so the viewer knows what they're watching.
+     */
+    function setupPauseOverlay(video, container) {
+        if (!video || !container) return;
+
+        let overlay = null;
+        let showTimer = null;
+
+        function buildOverlay() {
+            const item = _currentWatchItem;
+            if (!item) return null;
+
+            const backdrop = item.backdrop_url || item.still_url || item.poster_url || '';
+            const poster = item.poster_url || item.still_url || '';
+            const logo = item.logo_url || '';
+            const title = _currentWatchMeta.title || item.title || item.name || '';
+            const meta = _currentWatchMeta.meta || '';
+            const year = item.year || '';
+            const runtime = item.runtime ? item.runtime + ' min' : '';
+            const rating = item.vote_average ? item.vote_average : '';
+            const genres = item.genres || item.genre || '';
+            const desc = item.description || item.synopsis || item.overview || '';
+
+            const el = document.createElement('div');
+            el.className = 'pause-info-overlay';
+            el.innerHTML = `
+                ${backdrop ? '<div class="pause-backdrop" style="background-image:url(' + CariUI.esc(backdrop) + ')"></div>' : ''}
+                <div class="pause-gradient"></div>
+                <div class="pause-content">
+                    <div class="pause-content-inner">
+                        ${logo ? '<img class="pause-logo" src="' + CariUI.esc(logo) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
+                        ${!logo ? '<h2 class="pause-title">' + CariUI.esc(title) + '</h2>' : ''}
+                        <div class="pause-meta">
+                            ${meta ? '<span class="pause-meta-tag">' + CariUI.esc(meta) + '</span>' : ''}
+                            ${year ? '<span class="pause-meta-item">' + CariUI.esc(year) + '</span>' : ''}
+                            ${runtime ? '<span class="pause-meta-item">' + CariUI.esc(runtime) + '</span>' : ''}
+                            ${rating ? '<span class="pause-meta-rating"><i class="lucide-star"></i> ' + CariUI.esc(String(rating)) + '</span>' : ''}
+                            ${genres ? '<span class="pause-meta-item">' + CariUI.esc(typeof genres === 'string' ? genres : '') + '</span>' : ''}
+                        </div>
+                        ${desc ? '<p class="pause-desc">' + CariUI.esc(desc.length > 200 ? desc.substring(0, 200) + '...' : desc) + '</p>' : ''}
+                        <div class="pause-status">
+                            <i class="lucide-pause"></i>
+                            <span>Paused</span>
+                        </div>
+                    </div>
+                    ${poster ? '<img class="pause-poster" src="' + CariUI.esc(poster) + '" alt="" onerror="this.style.display=\'none\'">' : ''}
+                </div>
+            `;
+            return el;
+        }
+
+        function showPauseOverlay() {
+            // Only show in fullscreen
+            const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            if (!isFs) return;
+            if (overlay) return; // Already showing
+
+            overlay = buildOverlay();
+            if (!overlay) return;
+            container.appendChild(overlay);
+            // Trigger animation on next frame
+            requestAnimationFrame(() => {
+                if (overlay) overlay.classList.add('visible');
+            });
+        }
+
+        function hidePauseOverlay() {
+            if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+            if (!overlay) return;
+            overlay.classList.remove('visible');
+            const el = overlay;
+            overlay = null;
+            // Remove after fade-out transition
+            setTimeout(() => { if (el.parentNode) el.remove(); }, 400);
+        }
+
+        video.addEventListener('pause', () => {
+            // Delay slightly so quick pause/play doesn't flash the overlay
+            if (showTimer) clearTimeout(showTimer);
+            showTimer = setTimeout(showPauseOverlay, 600);
+        });
+
+        video.addEventListener('play', hidePauseOverlay);
+        video.addEventListener('seeking', hidePauseOverlay);
     }
 
     /**
@@ -3659,16 +3877,16 @@ const CariApp = (function() {
                 }
                 if (remaining <= 0) {
                     clearInterval(countdownTimer);
-                    _saveFullscreenState();
-                    CariRouter.navigate('/watch/episode/' + nextEp.id);
+                    if (countdownOverlay) { countdownOverlay.remove(); countdownOverlay = null; }
+                    _navigateToNextEpisode(nextEp.id);
                 }
             }, 1000);
 
             // Play now button
             countdownOverlay.querySelector('#autoplayNow')?.addEventListener('click', () => {
                 clearInterval(countdownTimer);
-                _saveFullscreenState();
-                CariRouter.navigate('/watch/episode/' + nextEp.id);
+                if (countdownOverlay) { countdownOverlay.remove(); countdownOverlay = null; }
+                _navigateToNextEpisode(nextEp.id);
             });
 
             // Cancel button
@@ -3685,7 +3903,6 @@ const CariApp = (function() {
         function onEnded() {
             if (!creditsTriggered && nextEpisode && nextEpisode.stream_url) {
                 creditsTriggered = true;
-                _saveFullscreenState();
                 showAutoPlayCountdown(nextEpisode);
             }
         }
@@ -4200,6 +4417,20 @@ const CariApp = (function() {
                 CariAPI.updateWatchProgress(contentType, contentId, now, Math.floor(video.duration || 0)).catch(() => {});
             }
         });
+    }
+
+    /** Like setupProgressTracking but returns a cleanup function for in-place swaps */
+    function setupProgressTrackingWithCleanup(video, contentType, contentId) {
+        let lastSaved = 0;
+        const handler = () => {
+            const now = Math.floor(video.currentTime);
+            if (now > 0 && now - lastSaved >= 10) {
+                lastSaved = now;
+                CariAPI.updateWatchProgress(contentType, contentId, now, Math.floor(video.duration || 0)).catch(() => {});
+            }
+        };
+        video.addEventListener('timeupdate', handler);
+        return () => video.removeEventListener('timeupdate', handler);
     }
 
     // ---- Helpers ----
