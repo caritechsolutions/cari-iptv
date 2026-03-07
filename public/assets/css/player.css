@@ -861,6 +861,7 @@ img { max-width: 100%; display: block; }
     width: 170px;
     cursor: pointer;
     transition: transform var(--p-transition);
+    position: relative;
 }
 
 .card-poster:hover { transform: translateY(-4px); }
@@ -892,6 +893,7 @@ img { max-width: 100%; display: block; }
     width: 300px;
     cursor: pointer;
     transition: transform var(--p-transition);
+    position: relative;
 }
 
 .card-backdrop:hover { transform: translateY(-4px); }

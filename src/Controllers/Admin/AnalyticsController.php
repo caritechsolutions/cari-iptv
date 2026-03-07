@@ -170,6 +170,19 @@ class AnalyticsController
     }
 
     /**
+     * Safe query wrapper — returns fallback on failure instead of killing the request
+     */
+    private function safeQuery(callable $fn, mixed $fallback = null): mixed
+    {
+        try {
+            return $fn() ?? $fallback;
+        } catch (\Throwable $e) {
+            error_log('[Analytics] Query failed: ' . $e->getMessage());
+            return $fallback;
+        }
+    }
+
+    /**
      * Gather comprehensive platform data for analysis
      */
     private function gatherPlatformData(): array
@@ -177,172 +190,219 @@ class AnalyticsController
         $data = [];
 
         // --- Subscriber metrics ---
-        $data['subscribers'] = $this->db->fetch(
-            "SELECT
-                COUNT(*) as total,
-                SUM(status = 'active') as active,
-                SUM(status = 'suspended') as suspended,
-                SUM(status = 'expired') as expired,
-                SUM(created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as new_7d,
-                SUM(created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as new_30d
-             FROM subscribers"
-        ) ?: ['total' => 0, 'active' => 0, 'suspended' => 0, 'expired' => 0, 'new_7d' => 0, 'new_30d' => 0];
+        $data['subscribers'] = $this->safeQuery(
+            fn() => $this->db->fetch(
+                "SELECT
+                    COUNT(*) as total,
+                    SUM(status = 'active') as active,
+                    SUM(status = 'suspended') as suspended,
+                    SUM(status = 'expired') as expired,
+                    SUM(created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as new_7d,
+                    SUM(created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as new_30d
+                 FROM subscribers"
+            ),
+            ['total' => 0, 'active' => 0, 'suspended' => 0, 'expired' => 0, 'new_7d' => 0, 'new_30d' => 0]
+        );
 
         // Subscriber growth last 12 months
-        $data['subscriber_growth'] = $this->db->fetchAll(
-            "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count
-             FROM subscribers
-             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-             GROUP BY month ORDER BY month"
-        ) ?: [];
+        $data['subscriber_growth'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count
+                 FROM subscribers
+                 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+                 GROUP BY month ORDER BY month"
+            ),
+            []
+        );
 
         // --- Content library ---
         $data['content'] = [
-            'movies' => (int) ($this->db->fetch("SELECT COUNT(*) as c FROM movies")['c'] ?? 0),
-            'movies_published' => (int) ($this->db->fetch("SELECT COUNT(*) as c FROM movies WHERE status = 'published'")['c'] ?? 0),
-            'series' => (int) ($this->db->fetch("SELECT COUNT(*) as c FROM series")['c'] ?? 0),
-            'channels' => (int) ($this->db->fetch("SELECT COUNT(*) as c FROM channels")['c'] ?? 0),
-            'channels_active' => (int) ($this->db->fetch("SELECT COUNT(*) as c FROM channels WHERE status = 'active'")['c'] ?? 0),
-            'categories' => (int) ($this->db->fetch("SELECT COUNT(*) as c FROM categories")['c'] ?? 0),
+            'movies' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM movies"), ['c' => 0])['c'] ?? 0),
+            'movies_published' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM movies WHERE status = 'published'"), ['c' => 0])['c'] ?? 0),
+            'series' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM series"), ['c' => 0])['c'] ?? 0),
+            'channels' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM channels"), ['c' => 0])['c'] ?? 0),
+            'channels_active' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM channels WHERE status = 'active'"), ['c' => 0])['c'] ?? 0),
+            'categories' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM categories"), ['c' => 0])['c'] ?? 0),
         ];
 
         // --- Watch activity (last 30 days) ---
-        $data['watch_activity'] = $this->db->fetch(
-            "SELECT
-                COUNT(*) as total_events,
-                COUNT(DISTINCT subscriber_id) as unique_viewers,
-                SUM(event_type = 'watch_start') as starts,
-                SUM(event_type = 'watch_complete') as completions,
-                SUM(event_type = 'watch_abandon') as abandonments,
-                SUM(event_type = 'search') as searches,
-                SUM(event_type = 'search_no_results') as failed_searches
-             FROM subscriber_events
-             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
-        ) ?: [];
+        $data['watch_activity'] = $this->safeQuery(
+            fn() => $this->db->fetch(
+                "SELECT
+                    COUNT(*) as total_events,
+                    COUNT(DISTINCT subscriber_id) as unique_viewers,
+                    SUM(event_type = 'watch_start') as starts,
+                    SUM(event_type = 'watch_complete') as completions,
+                    SUM(event_type = 'watch_abandon') as abandonments,
+                    SUM(event_type = 'search') as searches,
+                    SUM(event_type = 'search_no_results') as failed_searches
+                 FROM subscriber_events
+                 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+            ),
+            ['total_events' => 0, 'unique_viewers' => 0, 'starts' => 0, 'completions' => 0, 'abandonments' => 0, 'searches' => 0, 'failed_searches' => 0]
+        );
 
         // Daily watch events (last 30 days for trend chart)
-        $data['daily_watches'] = $this->db->fetchAll(
-            "SELECT DATE(created_at) as day, COUNT(*) as events,
-                    SUM(event_type = 'watch_start') as starts,
-                    SUM(event_type = 'watch_complete') as completions
-             FROM subscriber_events
-             WHERE event_type IN ('watch_start', 'watch_complete', 'watch_abandon')
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY day ORDER BY day"
-        ) ?: [];
+        $data['daily_watches'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT DATE(created_at) as day, COUNT(*) as events,
+                        SUM(event_type = 'watch_start') as starts,
+                        SUM(event_type = 'watch_complete') as completions
+                 FROM subscriber_events
+                 WHERE event_type IN ('watch_start', 'watch_complete', 'watch_abandon')
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY day ORDER BY day"
+            ),
+            []
+        );
 
         // --- Peak hours ---
-        $data['peak_hours'] = $this->db->fetchAll(
-            "SELECT HOUR(created_at) as hour, COUNT(*) as events
-             FROM subscriber_events
-             WHERE event_type = 'watch_start'
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY hour ORDER BY hour"
-        ) ?: [];
+        $data['peak_hours'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT HOUR(created_at) as hour, COUNT(*) as events
+                 FROM subscriber_events
+                 WHERE event_type = 'watch_start'
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY hour ORDER BY hour"
+            ),
+            []
+        );
 
         // --- Day of week patterns ---
-        $data['day_patterns'] = $this->db->fetchAll(
-            "SELECT DAYOFWEEK(created_at) as dow, COUNT(*) as events
-             FROM subscriber_events
-             WHERE event_type = 'watch_start'
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY dow ORDER BY dow"
-        ) ?: [];
+        $data['day_patterns'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT DAYOFWEEK(created_at) as dow, COUNT(*) as events
+                 FROM subscriber_events
+                 WHERE event_type = 'watch_start'
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY dow ORDER BY dow"
+            ),
+            []
+        );
 
-        // --- Top genres ---
-        $data['top_genres'] = $this->db->fetchAll(
-            "SELECT c.name as genre, COUNT(*) as views
-             FROM subscriber_events e
-             JOIN movies m ON e.content_type = 'movie' AND e.content_id = m.id
-             JOIN categories c ON m.category_id = c.id
-             WHERE e.event_type IN ('watch_start', 'watch_complete')
-               AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY c.id, c.name
-             ORDER BY views DESC
-             LIMIT 10"
-        ) ?: [];
+        // --- Top genres (via movie_categories many-to-many or direct category_id) ---
+        $data['top_genres'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT c.name as genre, COUNT(*) as views
+                 FROM subscriber_events e
+                 JOIN movies m ON e.content_id = m.id
+                 JOIN categories c ON m.category_id = c.id
+                 WHERE e.content_type = 'movie'
+                   AND e.event_type IN ('watch_start', 'watch_complete')
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY c.id, c.name
+                 ORDER BY views DESC
+                 LIMIT 10"
+            ),
+            []
+        );
 
         // --- Top content ---
-        $data['top_movies'] = $this->db->fetchAll(
-            "SELECT m.title, COUNT(*) as views,
-                    SUM(e.event_type = 'watch_complete') as completions
-             FROM subscriber_events e
-             JOIN movies m ON e.content_id = m.id
-             WHERE e.content_type = 'movie'
-               AND e.event_type IN ('watch_start', 'watch_complete')
-               AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY m.id, m.title
-             ORDER BY views DESC
-             LIMIT 10"
-        ) ?: [];
+        $data['top_movies'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT m.title, COUNT(*) as views,
+                        SUM(e.event_type = 'watch_complete') as completions
+                 FROM subscriber_events e
+                 JOIN movies m ON e.content_id = m.id
+                 WHERE e.content_type = 'movie'
+                   AND e.event_type IN ('watch_start', 'watch_complete')
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY m.id, m.title
+                 ORDER BY views DESC
+                 LIMIT 10"
+            ),
+            []
+        );
 
-        $data['top_channels'] = $this->db->fetchAll(
-            "SELECT ch.name as title, COUNT(*) as views
-             FROM subscriber_events e
-             JOIN channels ch ON e.content_id = ch.id
-             WHERE e.content_type = 'channel'
-               AND e.event_type = 'watch_start'
-               AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY ch.id, ch.name
-             ORDER BY views DESC
-             LIMIT 10"
-        ) ?: [];
+        $data['top_channels'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT ch.name as title, COUNT(*) as views
+                 FROM subscriber_events e
+                 JOIN channels ch ON e.content_id = ch.id
+                 WHERE e.content_type = 'channel'
+                   AND e.event_type = 'watch_start'
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY ch.id, ch.name
+                 ORDER BY views DESC
+                 LIMIT 10"
+            ),
+            []
+        );
 
         // --- Platform breakdown ---
-        $data['platforms'] = $this->db->fetchAll(
-            "SELECT COALESCE(platform, 'unknown') as platform, COUNT(*) as events
-             FROM subscriber_events
-             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-             GROUP BY platform
-             ORDER BY events DESC"
-        ) ?: [];
+        $data['platforms'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT COALESCE(platform, 'unknown') as platform, COUNT(*) as events
+                 FROM subscriber_events
+                 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY platform
+                 ORDER BY events DESC"
+            ),
+            []
+        );
 
         // --- Search terms (popular + failed) ---
-        $data['top_searches'] = $this->db->fetchAll(
-            "SELECT JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.query')) as term,
-                    COUNT(*) as count,
-                    SUM(event_type = 'search_no_results') as no_results
-             FROM subscriber_events
-             WHERE event_type IN ('search', 'search_no_results')
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-               AND JSON_EXTRACT(metadata, '$.query') IS NOT NULL
-             GROUP BY term
-             ORDER BY count DESC
-             LIMIT 15"
-        ) ?: [];
+        $data['top_searches'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.query')) as term,
+                        COUNT(*) as count,
+                        SUM(event_type = 'search_no_results') as no_results
+                 FROM subscriber_events
+                 WHERE event_type IN ('search', 'search_no_results')
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                   AND JSON_EXTRACT(metadata, '$.query') IS NOT NULL
+                 GROUP BY term
+                 ORDER BY count DESC
+                 LIMIT 15"
+            ),
+            []
+        );
 
         // --- Ad performance ---
-        $data['ad_performance'] = $this->db->fetch(
-            "SELECT
-                COUNT(*) as total_impressions,
-                SUM(revenue) as total_revenue
-             FROM ad_impressions
-             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
-        ) ?: ['total_impressions' => 0, 'total_revenue' => 0];
+        $data['ad_performance'] = $this->safeQuery(
+            fn() => $this->db->fetch(
+                "SELECT
+                    COUNT(*) as total_impressions,
+                    SUM(revenue) as total_revenue
+                 FROM ad_impressions
+                 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+            ),
+            ['total_impressions' => 0, 'total_revenue' => 0]
+        );
 
-        $data['ad_clicks'] = (int) ($this->db->fetch(
-            "SELECT COUNT(*) as c FROM ad_events
-             WHERE event_type = 'click'
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+        $data['ad_clicks'] = (int) ($this->safeQuery(
+            fn() => $this->db->fetch(
+                "SELECT COUNT(*) as c FROM ad_events
+                 WHERE event_type = 'click'
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+            ),
+            ['c' => 0]
         )['c'] ?? 0);
 
         // --- Subscriber country distribution ---
-        $data['countries'] = $this->db->fetchAll(
-            "SELECT COALESCE(country, 'Unknown') as country, COUNT(*) as count
-             FROM subscribers
-             GROUP BY country
-             ORDER BY count DESC
-             LIMIT 10"
-        ) ?: [];
+        $data['countries'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT COALESCE(country, 'Unknown') as country, COUNT(*) as count
+                 FROM subscribers
+                 GROUP BY country
+                 ORDER BY count DESC
+                 LIMIT 10"
+            ),
+            []
+        );
 
-        // --- Package distribution ---
-        $data['packages'] = $this->db->fetchAll(
-            "SELECT p.name, COUNT(s.id) as subscribers
-             FROM subscribers s
-             JOIN packages p ON s.package_id = p.id
-             GROUP BY p.id, p.name
-             ORDER BY subscribers DESC"
-        ) ?: [];
+        // --- Package distribution (via subscriber_subscriptions) ---
+        $data['packages'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT p.name, COUNT(DISTINCT ss.subscriber_id) as subscribers
+                 FROM subscriber_subscriptions ss
+                 JOIN packages p ON ss.package_id = p.id
+                 WHERE ss.status IN ('active', 'trial')
+                 GROUP BY p.id, p.name
+                 ORDER BY subscribers DESC"
+            ),
+            []
+        );
 
         return $data;
     }
