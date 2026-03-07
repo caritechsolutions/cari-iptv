@@ -302,6 +302,10 @@ apply_update() {
         if [ -d "scripts" ]; then
             rsync -a scripts/ "$INSTALL_DIR/scripts/"
         fi
+        # Copy cron directory (recommendation engine, etc.)
+        if [ -d "cron" ]; then
+            rsync -a cron/ "$INSTALL_DIR/cron/"
+        fi
     else
         # Fallback to cp
         cp -r public/* "$INSTALL_DIR/public/" 2>/dev/null || true
@@ -312,6 +316,11 @@ apply_update() {
         if [ -d "scripts" ]; then
             mkdir -p "$INSTALL_DIR/scripts"
             cp -r scripts/* "$INSTALL_DIR/scripts/" 2>/dev/null || true
+        fi
+        # Copy cron directory
+        if [ -d "cron" ]; then
+            mkdir -p "$INSTALL_DIR/cron"
+            cp -r cron/* "$INSTALL_DIR/cron/" 2>/dev/null || true
         fi
     fi
 
@@ -499,13 +508,18 @@ setup_cron() {
 
 # EPG cleanup: remove expired programmes daily at 2:00 AM
 0 2 * * * $WEB_USER $PHP_BIN $INSTALL_DIR/scripts/epg-fetch.php --cleanup --cleanup-days=2 >> $INSTALL_DIR/storage/logs/epg.log 2>&1
+
+# Recommendation engine: generate AI profiles and recommendations daily at 3:00 AM
+0 3 * * * $WEB_USER $PHP_BIN $INSTALL_DIR/cron/generate-recommendations.php >> $INSTALL_DIR/storage/logs/recommendations.log 2>&1
 CRONEOF
 
     chmod 644 "$CRON_FILE"
 
-    # Ensure log file exists and is writable
+    # Ensure log files exist and are writable
     touch "$INSTALL_DIR/storage/logs/epg.log"
+    touch "$INSTALL_DIR/storage/logs/recommendations.log"
     chown "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/storage/logs/epg.log"
+    chown "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/storage/logs/recommendations.log"
 
     log_info "Cron jobs installed to $CRON_FILE"
 }

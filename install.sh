@@ -1409,6 +1409,18 @@ install_application_files() {
         cp -r "$TEMP_DIR/cari-iptv/src/Config/"* "$INSTALL_DIR/src/Config/" 2>/dev/null || true
     fi
 
+    # Copy cron scripts
+    if [ -d "$TEMP_DIR/cari-iptv/cron" ]; then
+        mkdir -p "$INSTALL_DIR/cron"
+        cp -r "$TEMP_DIR/cari-iptv/cron/"* "$INSTALL_DIR/cron/" 2>/dev/null || true
+    fi
+
+    # Copy scripts directory (EPG fetch, etc.)
+    if [ -d "$TEMP_DIR/cari-iptv/scripts" ]; then
+        mkdir -p "$INSTALL_DIR/scripts"
+        cp -r "$TEMP_DIR/cari-iptv/scripts/"* "$INSTALL_DIR/scripts/" 2>/dev/null || true
+    fi
+
     # Copy version file
     cp "$TEMP_DIR/cari-iptv/version.txt" "$INSTALL_DIR/" 2>/dev/null || echo "1.0.0" > "$INSTALL_DIR/version.txt"
 
@@ -1455,14 +1467,19 @@ setup_cron() {
 
 # EPG cleanup: remove expired programmes daily at 2:00 AM
 0 2 * * * $WEB_USER $PHP_BIN $INSTALL_DIR/scripts/epg-fetch.php --cleanup --cleanup-days=2 >> $INSTALL_DIR/storage/logs/epg.log 2>&1
+
+# Recommendation engine: generate AI profiles and recommendations daily at 3:00 AM
+0 3 * * * $WEB_USER $PHP_BIN $INSTALL_DIR/cron/generate-recommendations.php >> $INSTALL_DIR/storage/logs/recommendations.log 2>&1
 CRONEOF
 
     chmod 644 "$CRON_FILE"
 
-    # Ensure log directory and file exist
+    # Ensure log directory and files exist
     mkdir -p "$INSTALL_DIR/storage/logs"
     touch "$INSTALL_DIR/storage/logs/epg.log"
+    touch "$INSTALL_DIR/storage/logs/recommendations.log"
     chown "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/storage/logs/epg.log"
+    chown "$WEB_USER:$WEB_GROUP" "$INSTALL_DIR/storage/logs/recommendations.log"
 
     log_info "Cron jobs installed to $CRON_FILE"
 }
