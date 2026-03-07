@@ -671,7 +671,7 @@
                         <i class="lucide-layout-dashboard"></i>
                         <span>Dashboard</span>
                     </a>
-                    <a href="/admin/analytics" class="nav-item">
+                    <a href="/admin/analytics" class="nav-item <?= ($pageTitle ?? '') === 'Analytics' ? 'active' : '' ?>">
                         <i class="lucide-bar-chart-2"></i>
                         <span>Analytics</span>
                     </a>

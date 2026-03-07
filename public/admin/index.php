@@ -64,6 +64,7 @@ use CariIPTV\Controllers\Admin\AdController;
 use CariIPTV\Controllers\Admin\SubscriberController;
 use CariIPTV\Controllers\Admin\PackageController;
 use CariIPTV\Controllers\Admin\VodServerController;
+use CariIPTV\Controllers\Admin\AnalyticsController;
 
 // Initialize session
 Session::start();
@@ -94,6 +95,13 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/dashboard/widgets/remove', [DashboardController::class, 'removeWidget']);
     $router->post('/dashboard/widgets/reorder', [DashboardController::class, 'reorderWidgets']);
     $router->get('/dashboard/widgets/data', [DashboardController::class, 'widgetData']);
+
+    // Analytics (AI-powered business intelligence)
+    $router->get('/analytics', [AnalyticsController::class, 'index']);
+    $router->get('/analytics/data', [AnalyticsController::class, 'getData']);
+    $router->post('/analytics/report', [AnalyticsController::class, 'generateReport']);
+    $router->post('/analytics/chat', [AnalyticsController::class, 'chat']);
+    $router->post('/analytics/chat/reset', [AnalyticsController::class, 'resetChat']);
 
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
