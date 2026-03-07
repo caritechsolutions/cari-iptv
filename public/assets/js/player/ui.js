@@ -113,6 +113,7 @@ const CariUI = (function() {
         const year = item.year || item.release_year || '';
         const rating = item.rating || item.vote_average || '';
         const locked = isLocked === true;
+        const matchBadge = item._matchBadge || '';
 
         const el = document.createElement('div');
         el.className = 'card-poster' + (locked ? ' card-locked' : '');
@@ -120,6 +121,7 @@ const CariUI = (function() {
             <img class="card-poster-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderImg}'">
             ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
+            ${matchBadge ? '<div class="card-match-badge">' + esc(matchBadge) + '</div>' : ''}
             ${progressBarHtml(item)}
             <div class="card-poster-title">${esc(title)}</div>
             <div class="card-poster-meta">${esc(year)}${rating ? ' &middot; ' + esc(String(rating)) : ''}</div>
@@ -133,6 +135,7 @@ const CariUI = (function() {
         const title = item.title || item.name || '';
         const meta = item.year || '';
         const locked = isLocked === true;
+        const matchBadge = item._matchBadge || '';
 
         const el = document.createElement('div');
         el.className = 'card-backdrop' + (locked ? ' card-locked' : '');
@@ -140,6 +143,7 @@ const CariUI = (function() {
             <img class="card-backdrop-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderBackdrop}'">
             ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
+            ${matchBadge ? '<div class="card-match-badge">' + esc(matchBadge) + '</div>' : ''}
             ${progressBarHtml(item)}
             <div class="card-backdrop-title">${esc(title)}</div>
             <div class="card-backdrop-meta">${esc(meta)}</div>
@@ -403,6 +407,11 @@ const CariUI = (function() {
                 btn.className = res?.data?.in_watchlist ? 'lucide-check' : 'lucide-plus';
             } catch {}
         });
+
+        // Track detail view
+        if (item.id && typeof CariTracker !== 'undefined') {
+            CariTracker.detailView(type || 'movie', item.id);
+        }
 
         // Star rating widget (movies only, not channels)
         if (item.id && type === 'movie') {

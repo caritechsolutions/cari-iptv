@@ -220,6 +220,24 @@ const CariAPI = (function() {
         return get('/auth/rating?content_type=' + encodeURIComponent(contentType) + '&content_id=' + encodeURIComponent(contentId));
     }
 
+    // Analytics
+    function trackEvent(eventType, data) {
+        return post('/analytics/event', Object.assign({ event_type: eventType }, data || {}));
+    }
+    function trackEventBatch(events, sessionId, platform) {
+        return post('/analytics/batch', { events: events, session_id: sessionId, platform: platform });
+    }
+
+    // Recommendations
+    function getRecommendations(filterType) {
+        var url = '/recommendations';
+        if (filterType) url += '?type=' + encodeURIComponent(filterType);
+        return get(url);
+    }
+    function getRecommendationProfile() {
+        return get('/recommendations/profile');
+    }
+
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
         getAppConfig, getLayout, getNavigation, getPages, getManifest,
@@ -228,6 +246,7 @@ const CariAPI = (function() {
         updateWatchProgress, getWatchProgress, getBatchWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
         rateContent, getRating,
+        trackEvent, trackEventBatch, getRecommendations, getRecommendationProfile,
         bustAllCaches, clearCacheBust,
     };
 })();

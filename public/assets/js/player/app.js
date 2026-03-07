@@ -31,6 +31,9 @@ const CariApp = (function() {
 
         CariRouter.start();
         startManifestPolling();
+
+        // Initialize behavioral event tracker
+        if (typeof CariTracker !== 'undefined') CariTracker.init();
     }
 
     async function loadEntitlements() {
@@ -476,6 +479,26 @@ const CariApp = (function() {
                 renderCategorySection(catPlaceholder, title);
             } else if (type === 'packages_list') {
                 renderPackagesSection(el, title, settings);
+            } else if (type === 'recommended_for_you') {
+                const recPlaceholder = document.createElement('div');
+                el.appendChild(recPlaceholder);
+                renderRecommendationSection(recPlaceholder, 'for_you', settings, pageType);
+            } else if (type === 'because_you_watched') {
+                const bywPlaceholder = document.createElement('div');
+                el.appendChild(bywPlaceholder);
+                renderRecommendationSection(bywPlaceholder, 'because_watched', settings, pageType);
+            } else if (type === 'trending_now') {
+                const trendPlaceholder = document.createElement('div');
+                el.appendChild(trendPlaceholder);
+                renderRecommendationSection(trendPlaceholder, 'trending', settings, pageType);
+            } else if (type === 'top_picks') {
+                const tpPlaceholder = document.createElement('div');
+                el.appendChild(tpPlaceholder);
+                renderRecommendationSection(tpPlaceholder, 'top_picks', settings, pageType);
+            } else if (type === 'hidden_gems') {
+                const hgPlaceholder = document.createElement('div');
+                el.appendChild(hgPlaceholder);
+                renderRecommendationSection(hgPlaceholder, 'hidden_gems', settings, pageType);
             }
         });
     }
@@ -511,6 +534,46 @@ const CariApp = (function() {
 
         section.appendChild(CariUI.wrapWithScrollNav(row));
         el.appendChild(section);
+    }
+
+    /**
+     * Render recommendation sections from the AI-powered recommendation engine.
+     * Fetches pre-computed recommendations and renders them as content rows.
+     */
+    async function renderRecommendationSection(el, setType, settings, pageType) {
+        if (!CariAPI.isAuthenticated()) return;
+        try {
+            const filterType = pageType === 'movies' ? 'movie' : pageType === 'series' ? 'series' : null;
+            const res = await CariAPI.getRecommendations(filterType);
+            const allSets = res?.data || [];
+
+            // Filter to requested set type
+            const matchingSets = allSets.filter(s => s.set_type === setType);
+            if (!matchingSets.length) return;
+
+            const cardStyle = settings?.card_style || 'poster';
+            const maxItems = settings?.max_items || 15;
+            const showMatch = settings?.show_match_percent !== false;
+
+            matchingSets.forEach(set => {
+                const items = (set.items || []).slice(0, maxItems);
+                if (!items.length) return;
+
+                // Add match_percent badge to items if enabled
+                if (showMatch) {
+                    items.forEach(item => {
+                        if (item.match_percent) {
+                            item._matchBadge = item.match_percent + '% Match';
+                        }
+                    });
+                }
+
+                const rowTitle = set.title || 'Recommended';
+                appendContentRow(el, rowTitle, items, cardStyle);
+            });
+        } catch (err) {
+            console.error('[CariApp] Recommendations failed:', err);
+        }
     }
 
     async function renderContinueWatchingRow(el, filterType) {
@@ -2470,6 +2533,9 @@ const CariApp = (function() {
             const series = (seriesRes?.data || []).map(s => ({ ...s, content_type: 'series' }));
             const channels = (channelsRes?.data || []).map(c => ({ ...c, content_type: 'channel' }));
             const totalCount = movies.length + series.length + channels.length;
+
+            // Track search event
+            if (typeof CariTracker !== 'undefined') CariTracker.searchQuery(q, totalCount);
 
             // Update title with count
             const titleEl = document.querySelector('.search-results-title');
@@ -4480,12 +4546,25 @@ const CariApp = (function() {
 
     function setupProgressTracking(video, contentType, contentId) {
         let lastSaved = 0;
+        let watchStartTracked = false;
+        let watchCompleteTracked = false;
         video.addEventListener('timeupdate', () => {
             const now = Math.floor(video.currentTime);
+            const dur = Math.floor(video.duration || 0);
+            // Track watch_start once playback begins
+            if (!watchStartTracked && now > 2) {
+                watchStartTracked = true;
+                if (typeof CariTracker !== 'undefined') CariTracker.watchStart(contentType, contentId, { duration: dur });
+            }
+            // Track watch_complete once past 90%
+            if (!watchCompleteTracked && dur > 0 && now >= dur * 0.9) {
+                watchCompleteTracked = true;
+                if (typeof CariTracker !== 'undefined') CariTracker.watchComplete(contentType, contentId, { duration: dur, progress: now });
+            }
             // Save every 10 seconds
             if (now > 0 && now - lastSaved >= 10) {
                 lastSaved = now;
-                CariAPI.updateWatchProgress(contentType, contentId, now, Math.floor(video.duration || 0)).catch(() => {});
+                CariAPI.updateWatchProgress(contentType, contentId, now, dur).catch(() => {});
             }
         });
     }
@@ -4493,11 +4572,22 @@ const CariApp = (function() {
     /** Like setupProgressTracking but returns a cleanup function for in-place swaps */
     function setupProgressTrackingWithCleanup(video, contentType, contentId) {
         let lastSaved = 0;
+        let watchStartTracked = false;
+        let watchCompleteTracked = false;
         const handler = () => {
             const now = Math.floor(video.currentTime);
+            const dur = Math.floor(video.duration || 0);
+            if (!watchStartTracked && now > 2) {
+                watchStartTracked = true;
+                if (typeof CariTracker !== 'undefined') CariTracker.watchStart(contentType, contentId, { duration: dur });
+            }
+            if (!watchCompleteTracked && dur > 0 && now >= dur * 0.9) {
+                watchCompleteTracked = true;
+                if (typeof CariTracker !== 'undefined') CariTracker.watchComplete(contentType, contentId, { duration: dur, progress: now });
+            }
             if (now > 0 && now - lastSaved >= 10) {
                 lastSaved = now;
-                CariAPI.updateWatchProgress(contentType, contentId, now, Math.floor(video.duration || 0)).catch(() => {});
+                CariAPI.updateWatchProgress(contentType, contentId, now, dur).catch(() => {});
             }
         };
         video.addEventListener('timeupdate', handler);

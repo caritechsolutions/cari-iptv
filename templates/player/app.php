@@ -79,6 +79,7 @@
     <!-- App JavaScript -->
     <script src="/assets/js/player/api.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/ui.js?v=<?= $assetVersion ?>"></script>
+    <script src="/assets/js/player/tracker.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/router.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/app.js?v=<?= $assetVersion ?>"></script>
 </body>

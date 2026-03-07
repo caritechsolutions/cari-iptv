@@ -63,6 +63,7 @@ use CariIPTV\Controllers\Api\ContentController;
 use CariIPTV\Controllers\Api\AppController;
 use CariIPTV\Controllers\Api\EpgController;
 use CariIPTV\Controllers\Api\AuthController;
+use CariIPTV\Controllers\Api\RecommendationController;
 use CariIPTV\Middleware\ApiAuthMiddleware;
 
 // Handle CORS preflight
@@ -159,6 +160,12 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/app/layout/{platform}', [AppController::class, 'layout'], ['api_auth']);
     $router->get('/app/navigation/{platform}', [AppController::class, 'navigation'], ['api_auth']);
     $router->get('/app/pages/{platform}', [AppController::class, 'pages'], ['api_auth']);
+
+    // ----- Analytics & Recommendations -----
+    $router->post('/analytics/event', [RecommendationController::class, 'recordEvent'], ['api_auth']);
+    $router->post('/analytics/batch', [RecommendationController::class, 'recordBatch'], ['api_auth']);
+    $router->get('/recommendations', [RecommendationController::class, 'getRecommendations'], ['api_auth']);
+    $router->get('/recommendations/profile', [RecommendationController::class, 'getProfile'], ['api_auth']);
 });
 
 // Custom 404 for API

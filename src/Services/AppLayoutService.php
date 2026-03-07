@@ -185,6 +185,70 @@ class AppLayoutService
                     'filter_geo' => true,
                 ],
             ],
+            'recommended_for_you' => [
+                'name' => 'Recommended For You',
+                'description' => 'AI-powered personalized content recommendations based on viewing history',
+                'icon' => 'lucide-sparkles',
+                'category' => 'personalized',
+                'max_per_layout' => 1,
+                'supports_items' => false,
+                'default_settings' => [
+                    'card_style' => 'poster',
+                    'max_items' => 15,
+                    'show_match_percent' => true,
+                ],
+            ],
+            'because_you_watched' => [
+                'name' => 'Because You Watched',
+                'description' => 'Personalized rows of similar content based on recently watched items',
+                'icon' => 'lucide-history',
+                'category' => 'personalized',
+                'max_per_layout' => 3,
+                'supports_items' => false,
+                'default_settings' => [
+                    'card_style' => 'poster',
+                    'max_items' => 10,
+                    'max_sets' => 3,
+                    'show_match_percent' => false,
+                ],
+            ],
+            'trending_now' => [
+                'name' => 'Trending Now',
+                'description' => 'Currently popular content across all viewers',
+                'icon' => 'lucide-trending-up',
+                'category' => 'personalized',
+                'max_per_layout' => 1,
+                'supports_items' => false,
+                'default_settings' => [
+                    'card_style' => 'backdrop',
+                    'max_items' => 15,
+                ],
+            ],
+            'top_picks' => [
+                'name' => 'Top Picks For You',
+                'description' => 'Highest rated content matching your taste profile',
+                'icon' => 'lucide-award',
+                'category' => 'personalized',
+                'max_per_layout' => 1,
+                'supports_items' => false,
+                'default_settings' => [
+                    'card_style' => 'poster',
+                    'max_items' => 15,
+                    'show_match_percent' => true,
+                ],
+            ],
+            'hidden_gems' => [
+                'name' => 'Hidden Gems',
+                'description' => 'Highly rated content that deserves more attention',
+                'icon' => 'lucide-gem',
+                'category' => 'personalized',
+                'max_per_layout' => 1,
+                'supports_items' => false,
+                'default_settings' => [
+                    'card_style' => 'poster',
+                    'max_items' => 10,
+                ],
+            ],
         ];
     }
 

@@ -6,6 +6,7 @@ const CariRouter = (function() {
     const routes = [];
     let currentPath = null;
     let beforeEachHook = null;
+    let afterNavigateHooks = [];
 
     function addRoute(path, handler) {
         // Convert path pattern to regex: /movies/:id → /movies/([^/]+)
@@ -54,6 +55,7 @@ const CariRouter = (function() {
                     params[name] = decodeURIComponent(match[i + 1]);
                 });
                 route.handler(params);
+                afterNavigateHooks.forEach(fn => { try { fn(path); } catch(e) {} });
                 return;
             }
         }
@@ -96,5 +98,7 @@ const CariRouter = (function() {
         handleRoute();
     }
 
-    return { addRoute, navigate, beforeEach, start, getCurrentPath, handleRoute, refresh };
+    function onNavigate(fn) { afterNavigateHooks.push(fn); }
+
+    return { addRoute, navigate, beforeEach, onNavigate, start, getCurrentPath, handleRoute, refresh };
 })();
