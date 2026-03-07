@@ -188,13 +188,15 @@ class AIService
                 ],
             ];
 
+            $timeout = $options['timeout'] ?? 60;
+
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => json_encode($payload),
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT => 60,
+                CURLOPT_TIMEOUT => $timeout,
             ]);
 
             $response = curl_exec($ch);
@@ -250,6 +252,8 @@ class AIService
                 'max_tokens' => $options['max_tokens'] ?? 500,
             ];
 
+            $timeout = $options['timeout'] ?? 60;
+
             $ch = curl_init('https://api.openai.com/v1/chat/completions');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -259,7 +263,7 @@ class AIService
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $apiKey,
                 ],
-                CURLOPT_TIMEOUT => 60,
+                CURLOPT_TIMEOUT => $timeout,
             ]);
 
             $response = curl_exec($ch);
@@ -309,6 +313,8 @@ class AIService
                 ],
             ];
 
+            $timeout = $options['timeout'] ?? 60;
+
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -319,7 +325,7 @@ class AIService
                     'x-api-key: ' . $apiKey,
                     'anthropic-version: 2023-06-01',
                 ],
-                CURLOPT_TIMEOUT => 60,
+                CURLOPT_TIMEOUT => $timeout,
             ]);
 
             $response = curl_exec($ch);

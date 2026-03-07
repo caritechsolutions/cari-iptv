@@ -542,6 +542,7 @@
     <div class="chart-card">
         <h3><i class="lucide-radio"></i> Top Channels (30 days)</h3>
         <div id="topChannelsTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
+        <div id="channelInfoTable" style="color:#94a3b8;font-size:0.85rem;margin-top:12px"></div>
     </div>
     <div class="chart-card">
         <h3><i class="lucide-search"></i> Top Searches</h3>
@@ -774,10 +775,37 @@
         ) : '<p style="text-align:center;padding:20px;color:#475569">No watch data yet</p>';
 
         const channels = d.top_channels || [];
-        document.getElementById('topChannelsTable').innerHTML = channels.length ? buildTable(
-            ['Channel', 'Views'],
-            channels.map(r => [esc(r.title), fmt(r.views)])
-        ) : '<p style="text-align:center;padding:20px;color:#475569">No channel data yet</p>';
+        const channelInfo = d.channel_info || [];
+        const channelStatus = d.channel_status || [];
+
+        if (channels.length) {
+            document.getElementById('topChannelsTable').innerHTML = buildTable(
+                ['Channel', 'Views'],
+                channels.map(r => [esc(r.title), fmt(r.views)])
+            );
+            document.getElementById('channelInfoTable').innerHTML = '';
+        } else if (channelInfo.length) {
+            // No watch data but channels exist — show channel listing
+            const statusCounts = {};
+            channelStatus.forEach(r => { statusCounts[r.status] = parseInt(r.count) || 0; });
+            const statusSummary = Object.entries(statusCounts).map(([s, c]) => c + ' ' + s).join(', ');
+            document.getElementById('topChannelsTable').innerHTML =
+                '<p style="text-align:center;padding:10px;color:#64748b;font-size:0.8rem">No watch data yet' +
+                (statusSummary ? ' &mdash; ' + statusSummary + ' channels' : '') + '</p>';
+            document.getElementById('channelInfoTable').innerHTML =
+                '<h4 style="font-size:0.85rem;color:#94a3b8;margin:8px 0">Channel Listing</h4>' +
+                buildTable(
+                    ['Channel', 'Category', 'Status'],
+                    channelInfo.map(r => [
+                        esc(r.name),
+                        esc(r.category),
+                        '<span style="color:' + (r.status === 'active' ? '#22c55e' : '#f59e0b') + '">' + esc(r.status) + '</span>'
+                    ])
+                );
+        } else {
+            document.getElementById('topChannelsTable').innerHTML = '<p style="text-align:center;padding:20px;color:#475569">No channels configured yet</p>';
+            document.getElementById('channelInfoTable').innerHTML = '';
+        }
 
         const searches = d.top_searches || [];
         document.getElementById('topSearchesTable').innerHTML = searches.length ? buildTable(
@@ -818,11 +846,15 @@
         reportBody.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:20px;color:#94a3b8"><div class="loading-dots"><span></span><span></span><span></span></div> Generating AI report...</div>';
 
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 150000); // 2.5 min timeout
             const resp = await fetch('/admin/analytics/report', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: '_token=' + encodeURIComponent(CSRF) + '&focus=' + encodeURIComponent(focus),
+                signal: controller.signal,
             });
+            clearTimeout(timeoutId);
             const json = await resp.json();
             if (json.success) {
                 reportBody.innerHTML = '<div class="md-content">' + marked.parse(json.report) + '</div>';
@@ -830,9 +862,13 @@
                 enableChat();
             } else {
                 reportBody.innerHTML = '<div style="color:#ef4444;padding:20px"><i class="lucide-alert-circle"></i> ' + esc(json.message) + '</div>';
+                // Enable chat even on report error — AI can still answer using platform data
+                enableChat();
             }
         } catch (e) {
-            reportBody.innerHTML = '<div style="color:#ef4444;padding:20px">Network error. Please try again.</div>';
+            reportBody.innerHTML = '<div style="color:#ef4444;padding:20px"><i class="lucide-alert-circle"></i> Request timed out or network error. Try again or use the chat to ask specific questions.</div>';
+            // Enable chat even on report failure — AI can still answer using platform data
+            enableChat();
         }
 
         btnGenerate.disabled = false;
@@ -934,18 +970,25 @@
 
     // Reset chat
     document.getElementById('btnResetChat').addEventListener('click', async () => {
-        await fetch('/admin/analytics/chat/reset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: '_token=' + encodeURIComponent(CSRF),
-        });
-        chatMessages.innerHTML = '';
-        chatPlaceholder.style.display = '';
-        chatMessages.appendChild(chatPlaceholder);
-        if (reportGenerated) {
-            chatSuggestions.style.display = 'flex';
-            chatPlaceholder.innerHTML = '<i class="lucide-message-circle"></i><p>Ask a question about the report or your platform data</p>';
+        try {
+            await fetch('/admin/analytics/chat/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '_token=' + encodeURIComponent(CSRF),
+            });
+        } catch (e) {
+            // Continue with UI reset even if server call fails
         }
+        // Re-create the placeholder since innerHTML destroys child nodes
+        chatMessages.innerHTML = '<div class="chat-empty" id="chatPlaceholder">' +
+            '<i class="lucide-message-circle"></i>' +
+            '<p>Ask a question about your platform data</p>' +
+            '<p style="font-size:0.75rem;color:#334155">e.g. "What content should we acquire?" or "How to reduce churn?"</p>' +
+            '</div>';
+        // Enable chat — allow chatting with AI about platform data even without a report
+        chatInput.disabled = false;
+        btnSend.disabled = false;
+        chatSuggestions.style.display = 'flex';
     });
 
     // Refresh

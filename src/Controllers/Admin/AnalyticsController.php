@@ -64,6 +64,9 @@ class AnalyticsController
             return;
         }
 
+        // Extend PHP execution time for AI report generation
+        set_time_limit(180);
+
         $data = $this->gatherPlatformData();
         $focusArea = trim($_POST['focus'] ?? 'general');
 
@@ -72,6 +75,7 @@ class AnalyticsController
         $report = $aiService->complete($prompt, [
             'max_tokens' => 2000,
             'temperature' => 0.6,
+            'timeout' => 120,
         ]);
 
         if (!$report) {
@@ -114,6 +118,9 @@ class AnalyticsController
             Response::json(['success' => false, 'message' => 'AI is not configured.'], 503);
             return;
         }
+
+        // Extend PHP execution time for AI chat
+        set_time_limit(120);
 
         // Get or create chat history
         $history = $_SESSION['analytics_chat'] ?? [];
@@ -325,6 +332,30 @@ class AnalyticsController
                  GROUP BY ch.id, ch.name
                  ORDER BY views DESC
                  LIMIT 10"
+            ),
+            []
+        );
+
+        // --- Channel info (always available, independent of watch events) ---
+        $data['channel_info'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT ch.name, ch.status,
+                        COALESCE(c.name, 'Uncategorized') as category,
+                        ch.logo_url
+                 FROM channels ch
+                 LEFT JOIN categories c ON ch.category_id = c.id
+                 ORDER BY ch.name ASC
+                 LIMIT 20"
+            ),
+            []
+        );
+
+        // --- Channel status breakdown ---
+        $data['channel_status'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT status, COUNT(*) as count
+                 FROM channels
+                 GROUP BY status"
             ),
             []
         );
