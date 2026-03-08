@@ -600,6 +600,26 @@
         <div class="kpi-label">Searches (30d)</div>
         <div class="kpi-sub" id="kpiSearchSub"></div>
     </div>
+    <div class="kpi-card" style="border-color:rgba(34,197,94,0.3)">
+        <div class="kpi-value" id="kpiConcurrent" style="color:#22c55e">--</div>
+        <div class="kpi-label">Watching Now</div>
+        <div class="kpi-sub" id="kpiConcurrentSub"></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value" id="kpiEngagement">--</div>
+        <div class="kpi-label">Engagement Score</div>
+        <div class="kpi-sub" id="kpiEngagementSub"></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value" id="kpiStartup">--</div>
+        <div class="kpi-label">Avg Startup Time</div>
+        <div class="kpi-sub" id="kpiStartupSub"></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value" id="kpiBounceRate">--</div>
+        <div class="kpi-label">Bounce Rate</div>
+        <div class="kpi-sub" id="kpiBounceSub"></div>
+    </div>
 </div>
 
 <!-- Charts -->
@@ -627,6 +647,50 @@
     <div class="chart-card">
         <h3><i class="lucide-package"></i> Package Distribution</h3>
         <canvas id="chartPackages"></canvas>
+    </div>
+</div>
+
+<!-- QoE & Session Analytics -->
+<div class="charts-grid">
+    <div class="chart-card">
+        <h3><i class="lucide-activity"></i> QoE — Buffering &amp; Errors Trend</h3>
+        <canvas id="chartQoeTrend"></canvas>
+        <div id="qoeErrorsTable" style="margin-top:12px;color:#94a3b8;font-size:0.85rem"></div>
+    </div>
+    <div class="chart-card">
+        <h3><i class="lucide-monitor-smartphone"></i> Device &amp; Browser Breakdown</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><canvas id="chartDevices"></canvas></div>
+            <div><canvas id="chartBrowsers"></canvas></div>
+        </div>
+        <div id="connectionTable" style="margin-top:12px;color:#94a3b8;font-size:0.85rem"></div>
+    </div>
+    <div class="chart-card">
+        <h3><i class="lucide-shield-alert"></i> Churn Risk &amp; Engagement</h3>
+        <canvas id="chartChurnRisk"></canvas>
+        <div id="engagementSegments" style="margin-top:12px;color:#94a3b8;font-size:0.85rem"></div>
+    </div>
+    <div class="chart-card">
+        <h3><i class="lucide-eye"></i> Content Discovery — Impression CTR</h3>
+        <canvas id="chartImpressionCtr"></canvas>
+        <div id="discoveryGapTable" style="margin-top:12px;color:#94a3b8;font-size:0.85rem"></div>
+    </div>
+    <div class="chart-card">
+        <h3><i class="lucide-users"></i> Retention Cohorts</h3>
+        <div id="retentionCohortTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
+    </div>
+    <div class="chart-card">
+        <h3><i class="lucide-flame"></i> Binge Watching &amp; Sharing</h3>
+        <div id="bingeStatsTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
+        <div id="shareStatsTable" style="margin-top:16px;color:#94a3b8;font-size:0.85rem"></div>
+    </div>
+</div>
+
+<!-- At-Risk Subscribers -->
+<div class="charts-grid" style="grid-template-columns:1fr">
+    <div class="chart-card">
+        <h3><i class="lucide-alert-triangle"></i> At-Risk Subscribers — Churn Prevention</h3>
+        <div id="atRiskTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
     </div>
 </div>
 
@@ -770,7 +834,9 @@
                 console.log('[Analytics] Data loaded:', Object.keys(json.data));
                 renderKPIs(json.data);
                 renderCharts(json.data);
+                renderAdvancedCharts(json.data);
                 renderTables(json.data);
+                renderAdvancedTables(json.data);
                 renderGeoMap(json.data);
             } else {
                 console.error('[Analytics] API error:', json);
@@ -821,6 +887,28 @@
         document.getElementById('kpiSearches').textContent = fmt(parseInt(wa.searches) + parseInt(wa.failed_searches || 0));
         const failedPct = pct(parseInt(wa.failed_searches || 0), parseInt(wa.searches) + parseInt(wa.failed_searches || 0));
         document.getElementById('kpiSearchSub').textContent = failedPct + ' returned no results';
+
+        // New KPIs
+        const conc = d.concurrent || {};
+        document.getElementById('kpiConcurrent').textContent = fmt(conc.total);
+        const byType = (conc.by_type || []).map(t => t.content_type + ': ' + t.concurrent).join(', ');
+        document.getElementById('kpiConcurrentSub').textContent = byType || 'No active viewers';
+
+        const eng = d.engagement || {};
+        document.getElementById('kpiEngagement').textContent = eng.avg_score ? eng.avg_score + '/100' : '--';
+        const churnDist = (eng.churn_distribution || []);
+        const highRisk = churnDist.filter(c => c.churn_risk === 'high' || c.churn_risk === 'critical').reduce((sum, c) => sum + parseInt(c.count || 0), 0);
+        document.getElementById('kpiEngagementSub').textContent = highRisk ? highRisk + ' at high/critical churn risk' : 'No engagement data yet';
+
+        const qoe = d.qoe || {};
+        const avgStartup = Math.round(parseFloat((qoe.startup || {}).avg_startup_ms) || 0);
+        document.getElementById('kpiStartup').textContent = avgStartup ? avgStartup + 'ms' : '--';
+        document.getElementById('kpiStartupSub').textContent = (qoe.total_errors || 0) + ' errors, ' + ((qoe.buffering || {}).buffer_events || 0) + ' buffer events';
+
+        const sess = (d.sessions || {}).summary || {};
+        const bounceRate = parseFloat(sess.bounce_rate) || 0;
+        document.getElementById('kpiBounceRate').textContent = bounceRate ? bounceRate + '%' : '--';
+        document.getElementById('kpiBounceSub').textContent = fmt(sess.total_sessions) + ' sessions, avg ' + Math.round((parseInt(sess.avg_duration_seconds) || 0) / 60) + 'min';
     }
 
     // ---- Charts ----
@@ -959,6 +1047,269 @@
             },
             options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
         });
+    }
+
+    // ---- Advanced Charts (QoE, Engagement, Impressions, Devices) ----
+    function renderAdvancedCharts(d) {
+        // QoE Trend chart
+        var qoeTrend = (d.qoe || {}).trend || [];
+        if (qoeTrend.length) {
+            createChart('chartQoeTrend', {
+                type: 'line',
+                data: {
+                    labels: qoeTrend.map(function(r) { var dt = new Date(r.day); return dt.toLocaleDateString('en', {month:'short',day:'numeric'}); }),
+                    datasets: [
+                        {
+                            label: 'Buffer Events',
+                            data: qoeTrend.map(function(r) { return parseInt(r.buffer_events) || 0; }),
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245,158,11,0.1)',
+                            fill: true, tension: 0.3,
+                        },
+                        {
+                            label: 'Errors',
+                            data: qoeTrend.map(function(r) { return parseInt(r.error_events) || 0; }),
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239,68,68,0.1)',
+                            fill: true, tension: 0.3,
+                        },
+                        {
+                            label: 'Avg Startup (ms)',
+                            data: qoeTrend.map(function(r) { return Math.round(parseFloat(r.avg_startup_ms) || 0); }),
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34,197,94,0.05)',
+                            fill: false, tension: 0.3, yAxisID: 'y1',
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Count' } },
+                        y1: { position: 'right', beginAtZero: true, title: { display: true, text: 'ms' }, grid: { drawOnChartArea: false } },
+                    },
+                },
+            });
+        }
+
+        // Device type chart
+        var devices = (d.sessions || {}).devices || [];
+        if (devices.length) {
+            createChart('chartDevices', {
+                type: 'doughnut',
+                data: {
+                    labels: devices.map(function(r) { return r.device_type; }),
+                    datasets: [{ data: devices.map(function(r) { return parseInt(r.sessions); }), backgroundColor: COLORS }],
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } }, title: { display: true, text: 'Devices', font: { size: 11 } } } },
+            });
+        }
+
+        // Browser chart
+        var browsers = (d.sessions || {}).browsers || [];
+        if (browsers.length) {
+            createChart('chartBrowsers', {
+                type: 'doughnut',
+                data: {
+                    labels: browsers.map(function(r) { return r.browser; }),
+                    datasets: [{ data: browsers.map(function(r) { return parseInt(r.sessions); }), backgroundColor: COLORS.slice().reverse() }],
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } }, title: { display: true, text: 'Browsers', font: { size: 11 } } } },
+            });
+        }
+
+        // Churn risk chart
+        var churnDist = (d.engagement || {}).churn_distribution || [];
+        if (churnDist.length) {
+            var churnColors = { low: '#22c55e', medium: '#f59e0b', high: '#f97316', critical: '#ef4444' };
+            createChart('chartChurnRisk', {
+                type: 'bar',
+                data: {
+                    labels: churnDist.map(function(r) { return r.churn_risk.charAt(0).toUpperCase() + r.churn_risk.slice(1); }),
+                    datasets: [{
+                        label: 'Subscribers',
+                        data: churnDist.map(function(r) { return parseInt(r.count); }),
+                        backgroundColor: churnDist.map(function(r) { return churnColors[r.churn_risk] || '#6366f1'; }),
+                        borderRadius: 6,
+                    }],
+                },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+            });
+        }
+
+        // Impression CTR by section
+        var sectionCtr = (d.impressions || {}).section_ctr || [];
+        if (sectionCtr.length) {
+            createChart('chartImpressionCtr', {
+                type: 'bar',
+                data: {
+                    labels: sectionCtr.map(function(r) { return (r.section_type || 'unknown').replace(/_/g, ' '); }),
+                    datasets: [
+                        {
+                            label: 'Impressions',
+                            data: sectionCtr.map(function(r) { return parseInt(r.impressions); }),
+                            backgroundColor: 'rgba(99,102,241,0.5)',
+                            borderRadius: 4,
+                        },
+                        {
+                            label: 'CTR %',
+                            data: sectionCtr.map(function(r) { return parseFloat(r.ctr) || 0; }),
+                            backgroundColor: 'rgba(34,197,94,0.5)',
+                            borderRadius: 4,
+                            yAxisID: 'y1',
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Impressions' } },
+                        y1: { position: 'right', beginAtZero: true, title: { display: true, text: 'CTR %' }, grid: { drawOnChartArea: false } },
+                    },
+                },
+            });
+        }
+    }
+
+    // ---- Advanced Tables (Engagement, Cohorts, Binge, Shares, At-Risk) ----
+    function renderAdvancedTables(d) {
+        // QoE errors table
+        var errors = (d.qoe || {}).errors || [];
+        if (errors.length) {
+            document.getElementById('qoeErrorsTable').innerHTML =
+                '<div style="color:#94a3b8;font-weight:600;margin-bottom:6px;font-size:0.8rem">Error Breakdown</div>' +
+                buildTable(['Error Code', 'Count'], errors.map(function(r) { return [esc(r.error_code || 'unknown'), fmt(r.count)]; }));
+        }
+
+        // Connection types
+        var connections = (d.sessions || {}).connections || [];
+        if (connections.length) {
+            document.getElementById('connectionTable').innerHTML =
+                '<div style="color:#94a3b8;font-weight:600;margin-bottom:6px;font-size:0.8rem">Connection Types</div>' +
+                buildTable(['Type', 'Sessions'], connections.map(function(r) { return [esc(r.connection_type), fmt(r.sessions)]; }));
+        }
+
+        // Engagement segments
+        var segments = (d.engagement || {}).score_segments || [];
+        if (segments.length) {
+            document.getElementById('engagementSegments').innerHTML =
+                buildTable(['Segment', 'Count', 'Avg Score', 'Avg Watch Hrs/30d'], segments.map(function(r) {
+                    return [esc(r.segment), fmt(r.count), r.avg_score, r.avg_watch_hours + 'h'];
+                }));
+        }
+
+        // Discovery gap (seen but not clicked)
+        var gap = (d.impressions || {}).discovery_gap || [];
+        if (gap.length) {
+            document.getElementById('discoveryGapTable').innerHTML =
+                '<div style="color:#94a3b8;font-weight:600;margin-bottom:6px;font-size:0.8rem">Low CTR Content (seen but not clicked)</div>' +
+                buildTable(['Title', 'Type', 'Impressions', 'CTR'], gap.map(function(r) {
+                    return [esc(r.title || 'ID:' + r.content_id), esc(r.content_type), fmt(r.impressions), r.ctr + '%'];
+                }));
+        }
+
+        // Retention cohort heatmap table
+        var cohorts = d.retention_cohorts || [];
+        if (cohorts.length) {
+            var months = {};
+            cohorts.forEach(function(r) {
+                if (!months[r.cohort_month]) months[r.cohort_month] = { size: r.cohort_size, data: {} };
+                months[r.cohort_month].data[r.months_after] = r.retention_rate;
+            });
+            var maxAfter = Math.max.apply(null, cohorts.map(function(r) { return parseInt(r.months_after); }));
+            var html = '<table style="width:100%;border-collapse:collapse;font-size:0.75rem"><thead><tr>';
+            html += '<th style="padding:6px 8px;border-bottom:1px solid #334155;text-align:left;color:#e2e8f0">Cohort</th>';
+            html += '<th style="padding:6px 8px;border-bottom:1px solid #334155;text-align:right;color:#e2e8f0">Size</th>';
+            for (var i = 0; i <= Math.min(maxAfter, 11); i++) {
+                html += '<th style="padding:6px 8px;border-bottom:1px solid #334155;text-align:center;color:#e2e8f0">M+' + i + '</th>';
+            }
+            html += '</tr></thead><tbody>';
+            Object.keys(months).sort().forEach(function(month) {
+                html += '<tr><td style="padding:5px 8px;border-bottom:1px solid rgba(51,65,85,0.3);color:#e2e8f0">' + month + '</td>';
+                html += '<td style="padding:5px 8px;border-bottom:1px solid rgba(51,65,85,0.3);text-align:right">' + months[month].size + '</td>';
+                for (var j = 0; j <= Math.min(maxAfter, 11); j++) {
+                    var rate = months[month].data[j];
+                    var color = 'transparent';
+                    if (rate !== undefined) {
+                        var intensity = Math.max(0.1, parseFloat(rate) / 100);
+                        color = 'rgba(99,102,241,' + intensity.toFixed(2) + ')';
+                    }
+                    html += '<td style="padding:5px 8px;border-bottom:1px solid rgba(51,65,85,0.3);text-align:center;background:' + color + ';border-radius:4px">';
+                    html += rate !== undefined ? parseFloat(rate).toFixed(0) + '%' : '-';
+                    html += '</td>';
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('retentionCohortTable').innerHTML = html;
+        } else {
+            document.getElementById('retentionCohortTable').innerHTML = '<p style="text-align:center;padding:20px;color:#475569">No cohort data yet. Compute engagement scores to generate cohort data.</p>';
+        }
+
+        // Binge stats
+        var binge = d.binge || {};
+        var bingeSummary = binge.summary || {};
+        var bingeHtml = '';
+        if (parseInt(bingeSummary.total_binges) > 0) {
+            bingeHtml += '<div style="display:flex;gap:20px;margin-bottom:12px">';
+            bingeHtml += '<div><span style="font-size:1.2rem;font-weight:700;color:#f59e0b">' + fmt(bingeSummary.total_binges) + '</span><div style="font-size:0.7rem;color:#64748b">Binge Sessions</div></div>';
+            bingeHtml += '<div><span style="font-size:1.2rem;font-weight:700;color:#f59e0b">' + fmt(bingeSummary.unique_bingers) + '</span><div style="font-size:0.7rem;color:#64748b">Binge Watchers</div></div>';
+            bingeHtml += '<div><span style="font-size:1.2rem;font-weight:700;color:#f59e0b">' + (Math.round(parseFloat(bingeSummary.avg_episodes_per_binge) * 10) / 10 || 0) + '</span><div style="font-size:0.7rem;color:#64748b">Avg Eps/Binge</div></div>';
+            bingeHtml += '</div>';
+            var binged = binge.top_binged_series || [];
+            if (binged.length) {
+                bingeHtml += buildTable(['Series', 'Binges', 'Avg Episodes', 'Avg Duration'], binged.map(function(r) {
+                    return [esc(r.series_title), fmt(r.binge_count), Math.round(parseFloat(r.avg_episodes) * 10) / 10, Math.round(parseFloat(r.avg_duration_min)) + ' min'];
+                }));
+            }
+        } else {
+            bingeHtml = '<p style="text-align:center;padding:10px;color:#475569">No binge watching data yet</p>';
+        }
+        document.getElementById('bingeStatsTable').innerHTML = bingeHtml;
+
+        // Share stats
+        var shares = d.shares || {};
+        var byMethod = shares.by_method || [];
+        var topShared = shares.top_shared || [];
+        var shareHtml = '';
+        if (byMethod.length || topShared.length) {
+            shareHtml += '<div style="color:#94a3b8;font-weight:600;margin-bottom:6px;font-size:0.85rem"><i class="lucide-share-2" style="font-size:0.85rem"></i> Content Sharing</div>';
+            if (byMethod.length) {
+                shareHtml += buildTable(['Method', 'Count'], byMethod.map(function(r) { return [esc(r.share_method || 'unknown'), fmt(r.count)]; }));
+            }
+            if (topShared.length) {
+                shareHtml += '<div style="margin-top:8px;color:#94a3b8;font-weight:600;margin-bottom:4px;font-size:0.8rem">Most Shared</div>';
+                shareHtml += buildTable(['Title', 'Type', 'Shares'], topShared.map(function(r) { return [esc(r.title || 'ID:' + r.content_id), esc(r.content_type), fmt(r.shares)]; }));
+            }
+        } else {
+            shareHtml = '<p style="text-align:center;padding:10px;color:#475569">No sharing data yet</p>';
+        }
+        document.getElementById('shareStatsTable').innerHTML = shareHtml;
+
+        // At-risk subscribers table
+        var atRisk = (d.engagement || {}).at_risk || [];
+        if (atRisk.length) {
+            var riskColors = { critical: '#ef4444', high: '#f97316' };
+            document.getElementById('atRiskTable').innerHTML = buildTable(
+                ['Username', 'Email', 'Score', 'Days Inactive', 'Sessions (30d)', 'Watch Hours', 'Risk'],
+                atRisk.map(function(r) {
+                    var riskColor = riskColors[r.churn_risk] || '#f59e0b';
+                    return [
+                        esc(r.username || 'N/A'),
+                        esc(r.email || 'N/A'),
+                        '<span style="font-weight:700">' + parseFloat(r.score).toFixed(0) + '</span>',
+                        r.days_since_last_activity + ' days',
+                        fmt(r.sessions_30d),
+                        parseFloat(r.watch_hours_30d).toFixed(1) + 'h',
+                        '<span style="color:' + riskColor + ';font-weight:600">' + r.churn_risk.toUpperCase() + '</span>'
+                    ];
+                })
+            );
+        } else {
+            document.getElementById('atRiskTable').innerHTML = '<p style="text-align:center;padding:20px;color:#475569">No at-risk subscriber data. Run engagement score computation to identify churn risks.</p>';
+        }
     }
 
     // ---- Geo Map (SVG-based with Caribbean focus) ----

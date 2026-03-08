@@ -164,6 +164,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     // ----- Analytics & Recommendations -----
     $router->post('/analytics/event', [RecommendationController::class, 'recordEvent'], ['api_auth']);
     $router->post('/analytics/batch', [RecommendationController::class, 'recordBatch'], ['api_auth']);
+    $router->post('/analytics/qoe', [RecommendationController::class, 'recordQoeBatch'], ['api_auth']);
+    $router->post('/analytics/impressions', [RecommendationController::class, 'recordImpressions'], ['api_auth']);
+    $router->post('/analytics/share', [RecommendationController::class, 'recordShare'], ['api_auth']);
     $router->get('/recommendations', [RecommendationController::class, 'getRecommendations'], ['api_auth']);
     $router->get('/recommendations/profile', [RecommendationController::class, 'getProfile'], ['api_auth']);
 });

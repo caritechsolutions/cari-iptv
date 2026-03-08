@@ -11,6 +11,7 @@ use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\AIService;
+use CariIPTV\Services\AnalyticsService;
 
 class AnalyticsController
 {
@@ -612,6 +613,66 @@ class AnalyticsController
             []
         );
 
+        // --- Advanced Analytics (Phase 2) ---
+        $analyticsService = new AnalyticsService();
+
+        // QoE stats
+        $data['qoe'] = $this->safeQuery(fn() => $analyticsService->getQoeStats(), [
+            'startup' => ['avg_startup_ms' => 0, 'total_starts' => 0],
+            'buffering' => ['buffer_events' => 0, 'avg_buffer_ms' => 0, 'affected_users' => 0],
+            'errors' => [],
+            'total_errors' => 0,
+            'quality_distribution' => [],
+            'trend' => [],
+        ]);
+
+        // Session analytics
+        $data['sessions'] = $this->safeQuery(fn() => $analyticsService->getSessionStats(), [
+            'summary' => ['total_sessions' => 0, 'unique_users' => 0, 'avg_duration_seconds' => 0, 'bounce_rate' => 0],
+            'devices' => [],
+            'browsers' => [],
+            'os' => [],
+            'connections' => [],
+            'screens' => [],
+        ]);
+
+        // Impression stats (CTR)
+        $data['impressions'] = $this->safeQuery(fn() => $analyticsService->getImpressionStats(), [
+            'section_ctr' => [],
+            'discovery_gap' => [],
+            'position_ctr' => [],
+        ]);
+
+        // Engagement scores
+        $data['engagement'] = $this->safeQuery(fn() => $analyticsService->getEngagementOverview(), [
+            'churn_distribution' => [],
+            'score_segments' => [],
+            'top_engaged' => [],
+            'at_risk' => [],
+            'avg_score' => 0,
+        ]);
+
+        // Retention cohorts
+        $data['retention_cohorts'] = $this->safeQuery(fn() => $analyticsService->getRetentionCohorts(), []);
+
+        // Binge watching stats
+        $data['binge'] = $this->safeQuery(fn() => $analyticsService->getBingeStats(), [
+            'top_binged_series' => [],
+            'summary' => ['total_binges' => 0, 'unique_bingers' => 0],
+        ]);
+
+        // Concurrent viewers (real-time)
+        $data['concurrent'] = $this->safeQuery(fn() => $analyticsService->getConcurrentViewers(), [
+            'total' => 0,
+            'by_type' => [],
+        ]);
+
+        // Share stats
+        $data['shares'] = $this->safeQuery(fn() => $analyticsService->getShareStats(), [
+            'by_method' => [],
+            'top_shared' => [],
+        ]);
+
         return $data;
     }
 
@@ -788,6 +849,44 @@ class AnalyticsController
         $pkgs = $data['packages'] ?? [];
         if ($pkgs) {
             $s .= "PACKAGES: " . implode(', ', array_map(fn($p) => "{$p['name']}({$p['subscribers']})", $pkgs)) . "\n";
+        }
+
+        // QoE
+        $qoe = $data['qoe'] ?? [];
+        if (!empty($qoe['startup'])) {
+            $startup = $qoe['startup'];
+            $buf = $qoe['buffering'] ?? [];
+            $s .= "QoE (30d): Avg startup " . round($startup['avg_startup_ms'] ?? 0) . "ms, ";
+            $s .= ($buf['buffer_events'] ?? 0) . " buffer events affecting " . ($buf['affected_users'] ?? 0) . " users (avg " . round($buf['avg_buffer_ms'] ?? 0) . "ms), ";
+            $s .= ($qoe['total_errors'] ?? 0) . " playback errors.\n";
+        }
+
+        // Session analytics
+        $sess = $data['sessions']['summary'] ?? [];
+        if (($sess['total_sessions'] ?? 0) > 0) {
+            $s .= "SESSIONS (30d): {$sess['total_sessions']} sessions, {$sess['unique_users']} unique users, avg " . round(($sess['avg_duration_seconds'] ?? 0) / 60, 1) . "min duration, {$sess['bounce_rate']}% bounce rate.\n";
+        }
+
+        // Engagement overview
+        $eng = $data['engagement'] ?? [];
+        if (($eng['avg_score'] ?? 0) > 0) {
+            $s .= "ENGAGEMENT: Avg score " . $eng['avg_score'] . "/100. ";
+            $churn = $eng['churn_distribution'] ?? [];
+            if ($churn) {
+                $s .= "Churn risk: " . implode(', ', array_map(fn($c) => "{$c['churn_risk']}={$c['count']}", $churn)) . ".\n";
+            }
+        }
+
+        // Concurrent viewers
+        $conc = $data['concurrent'] ?? [];
+        if (($conc['total'] ?? 0) > 0) {
+            $s .= "CONCURRENT VIEWERS (now): {$conc['total']}.\n";
+        }
+
+        // Binge stats
+        $binge = $data['binge']['summary'] ?? [];
+        if (($binge['total_binges'] ?? 0) > 0) {
+            $s .= "BINGE WATCHING (30d): {$binge['total_binges']} binge sessions by {$binge['unique_bingers']} users, avg " . round($binge['avg_episodes_per_binge'] ?? 0, 1) . " episodes/binge.\n";
         }
 
         return $s;

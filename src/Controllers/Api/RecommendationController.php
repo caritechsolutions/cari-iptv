@@ -96,6 +96,110 @@ class RecommendationController extends BaseApiController
     }
 
     // =========================================================================
+    // QoE, IMPRESSIONS, SHARES
+    // =========================================================================
+
+    /**
+     * POST /api/v1/analytics/qoe
+     * Record a batch of QoE (Quality of Experience) events
+     */
+    public function recordQoeBatch(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $events = $input['events'] ?? [];
+
+        if (!is_array($events) || empty($events)) {
+            $this->error('events array is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        if (count($events) > 50) {
+            $events = array_slice($events, 0, 50);
+        }
+
+        $recorded = $this->analytics->recordQoeBatch(
+            $subscriberId,
+            $events,
+            $input['session_id'] ?? null,
+            $input['platform'] ?? null
+        );
+
+        $this->json(['success' => true, 'recorded' => $recorded], 200);
+    }
+
+    /**
+     * POST /api/v1/analytics/impressions
+     * Record a batch of content impressions
+     */
+    public function recordImpressions(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $impressions = $input['impressions'] ?? [];
+
+        if (!is_array($impressions) || empty($impressions)) {
+            $this->error('impressions array is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        if (count($impressions) > 100) {
+            $impressions = array_slice($impressions, 0, 100);
+        }
+
+        $recorded = $this->analytics->recordImpressions(
+            $subscriberId,
+            $impressions,
+            $input['session_id'] ?? null,
+            $input['platform'] ?? null
+        );
+
+        $this->json(['success' => true, 'recorded' => $recorded], 200);
+    }
+
+    /**
+     * POST /api/v1/analytics/share
+     * Record a content share event
+     */
+    public function recordShare(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $contentType = $input['content_type'] ?? '';
+        $contentId = isset($input['content_id']) ? (int) $input['content_id'] : 0;
+
+        if (!$contentType || !$contentId) {
+            $this->error('content_type and content_id are required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $this->analytics->recordShare(
+            $subscriberId,
+            $contentType,
+            $contentId,
+            $input['share_method'] ?? null,
+            $input['platform'] ?? null
+        );
+
+        $this->json(['success' => true], 200);
+    }
+
+    // =========================================================================
     // RECOMMENDATIONS
     // =========================================================================
 

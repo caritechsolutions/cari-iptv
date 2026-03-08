@@ -227,6 +227,15 @@ const CariAPI = (function() {
     function trackEventBatch(events, sessionId, platform) {
         return post('/analytics/batch', { events: events, session_id: sessionId, platform: platform });
     }
+    function trackQoeBatch(events, sessionId, platform) {
+        return post('/analytics/qoe', { events: events, session_id: sessionId, platform: platform });
+    }
+    function trackImpressions(impressions, sessionId, platform) {
+        return post('/analytics/impressions', { impressions: impressions, session_id: sessionId, platform: platform });
+    }
+    function trackShare(contentType, contentId, shareMethod) {
+        return post('/analytics/share', { content_type: contentType, content_id: contentId, share_method: shareMethod });
+    }
 
     // Recommendations
     function getRecommendations(filterType) {
@@ -246,7 +255,9 @@ const CariAPI = (function() {
         updateWatchProgress, getWatchProgress, getBatchWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
         rateContent, getRating,
-        trackEvent, trackEventBatch, getRecommendations, getRecommendationProfile,
+        trackEvent, trackEventBatch, trackQoeBatch, trackImpressions, trackShare,
+        getRecommendations, getRecommendationProfile,
+        post,
         bustAllCaches, clearCacheBust,
     };
 })();
