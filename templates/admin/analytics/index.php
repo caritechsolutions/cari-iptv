@@ -578,12 +578,19 @@
     async function loadData() {
         try {
             const resp = await fetch('/admin/analytics/data');
+            if (!resp.ok) {
+                console.error('[Analytics] HTTP error:', resp.status, resp.statusText);
+                return;
+            }
             const json = await resp.json();
             if (json.success) {
                 platformData = json.data;
+                console.log('[Analytics] Data loaded:', Object.keys(json.data));
                 renderKPIs(json.data);
                 renderCharts(json.data);
                 renderTables(json.data);
+            } else {
+                console.error('[Analytics] API error:', json);
             }
         } catch (e) {
             console.error('Failed to load analytics data:', e);
@@ -819,6 +826,7 @@
         const channels = d.top_channels || [];
         const channelInfo = d.channel_info || [];
         const channelStatus = d.channel_status || [];
+        console.log('[Analytics] Channel data:', { top_channels: channels.length, channel_info: channelInfo.length, channel_status: channelStatus.length, content_channels: (d.content||{}).channels });
 
         if (channels.length) {
             document.getElementById('topChannelsTable').innerHTML = buildTable(

@@ -47,8 +47,13 @@ class AnalyticsController
      */
     public function getData(): void
     {
-        $data = $this->gatherPlatformData();
-        Response::json(['success' => true, 'data' => $data]);
+        try {
+            $data = $this->gatherPlatformData();
+            Response::json(['success' => true, 'data' => $data]);
+        } catch (\Throwable $e) {
+            error_log('[Analytics] getData() failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            Response::json(['success' => false, 'message' => 'Failed to load analytics data: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -376,10 +381,13 @@ class AnalyticsController
         $data['channel_info'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
                 "SELECT ch.name, ch.status,
-                        COALESCE(c.name, 'Uncategorized') as category,
-                        ch.logo_url
+                        COALESCE(
+                            (SELECT cat.name FROM channel_categories cc
+                             JOIN categories cat ON cc.category_id = cat.id
+                             WHERE cc.channel_id = ch.id AND cc.is_primary = 1 LIMIT 1),
+                            'Uncategorized'
+                        ) as category
                  FROM channels ch
-                 LEFT JOIN categories c ON ch.category_id = c.id
                  ORDER BY ch.name ASC
                  LIMIT 20"
             ),
