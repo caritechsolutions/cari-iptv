@@ -255,6 +255,36 @@ class AnalyticsController
             ['total_events' => 0, 'unique_viewers' => 0, 'starts' => 0, 'completions' => 0, 'abandonments' => 0, 'searches' => 0, 'failed_searches' => 0]
         );
 
+        // --- Watch activity breakdown by content type (last 30 days) ---
+        $data['watch_by_type'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT content_type,
+                        COUNT(DISTINCT subscriber_id) as unique_viewers,
+                        SUM(event_type = 'watch_start') as starts,
+                        SUM(event_type = 'watch_complete') as completions,
+                        SUM(event_type = 'watch_abandon') as abandonments
+                 FROM subscriber_events
+                 WHERE event_type IN ('watch_start', 'watch_complete', 'watch_abandon')
+                   AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY content_type
+                 ORDER BY starts DESC"
+            ),
+            []
+        );
+
+        // --- Live TV total watch time from watch history ---
+        $data['live_tv_stats'] = $this->safeQuery(
+            fn() => $this->db->fetch(
+                "SELECT COUNT(DISTINCT subscriber_id) as unique_viewers,
+                        COUNT(*) as total_sessions,
+                        COALESCE(SUM(progress_seconds), 0) as total_watch_seconds,
+                        COALESCE(ROUND(AVG(progress_seconds)), 0) as avg_watch_seconds
+                 FROM subscriber_watch_history
+                 WHERE content_type = 'channel'"
+            ),
+            ['unique_viewers' => 0, 'total_sessions' => 0, 'total_watch_seconds' => 0, 'avg_watch_seconds' => 0]
+        );
+
         // Daily watch events (last 30 days for trend chart)
         $data['daily_watches'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
@@ -498,12 +528,27 @@ class AnalyticsController
             ['c' => 0]
         )['c'] ?? 0);
 
-        // --- Subscriber country distribution ---
+        // --- Subscriber country distribution (all registered) ---
         $data['countries'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
                 "SELECT COALESCE(country, 'Unknown') as country, COUNT(*) as count
                  FROM subscribers
                  GROUP BY country
+                 ORDER BY count DESC
+                 LIMIT 10"
+            ),
+            []
+        );
+
+        // --- Active viewer countries (subscribers who actually watched in last 30 days) ---
+        $data['viewer_countries'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT COALESCE(s.country, 'Unknown') as country, COUNT(DISTINCT e.subscriber_id) as count
+                 FROM subscriber_events e
+                 JOIN subscribers s ON e.subscriber_id = s.id
+                 WHERE e.event_type = 'watch_start'
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY s.country
                  ORDER BY count DESC
                  LIMIT 10"
             ),
@@ -537,7 +582,9 @@ class AnalyticsController
         $context .= "Your role is to analyze platform data, identify trends, provide actionable business insights, and make recommendations to improve the business.\n\n";
         $context .= "When presenting data, use markdown formatting. Use bullet points, bold text, and headers for clarity.\n";
         $context .= "When you reference numbers, include both absolute values and percentages where meaningful.\n";
-        $context .= "Suggest specific, actionable strategies — not generic advice.\n\n";
+        $context .= "Suggest specific, actionable strategies — not generic advice.\n";
+        $context .= "IMPORTANT: This is an IPTV platform — always analyze Live TV (channel) viewing separately from VOD (movies) and Series. Report both.\n";
+        $context .= "NOTE: Subscriber country data is self-reported during registration and may be inaccurate. Only trust 'Active Viewer Countries' data for viewers who actually watched content.\n\n";
         $context .= "=== PLATFORM DATA (Last 30 Days) ===\n\n";
         $context .= $this->summarizeData($data);
         return $context;
@@ -572,6 +619,24 @@ class AnalyticsController
         if (((int)($w['starts'] ?? 0)) > 0) {
             $rate = round(((int)($w['completions'] ?? 0)) / ((int)$w['starts']) * 100, 1);
             $s .= "  Completion rate: {$rate}%. Searches: {$w['searches']} ({$w['failed_searches']} no results).\n";
+        }
+
+        // Watch activity by content type
+        $byType = $data['watch_by_type'] ?? [];
+        if ($byType) {
+            $typeLabels = ['channel' => 'Live TV', 'movie' => 'Movies', 'episode' => 'TV Shows/Episodes', 'series' => 'Series'];
+            $s .= "WATCH BREAKDOWN BY TYPE: " . implode(', ', array_map(fn($t) =>
+                ($typeLabels[$t['content_type']] ?? $t['content_type']) .
+                "({$t['starts']} starts/{$t['completions']} completions/{$t['unique_viewers']} viewers)",
+                $byType)) . "\n";
+        }
+
+        // Live TV aggregate stats
+        $ltv = $data['live_tv_stats'] ?? [];
+        if (((int)($ltv['total_sessions'] ?? 0)) > 0) {
+            $totalHrs = round(($ltv['total_watch_seconds'] ?? 0) / 3600, 1);
+            $avgMin = round(($ltv['avg_watch_seconds'] ?? 0) / 60, 1);
+            $s .= "LIVE TV TOTAL: {$ltv['unique_viewers']} unique viewers, {$ltv['total_sessions']} sessions, {$totalHrs}hrs total watch time, avg {$avgMin}min/session.\n";
         }
 
         // Peak hours (top 5)
@@ -633,10 +698,16 @@ class AnalyticsController
             $s .= "PLATFORMS: " . implode(', ', array_map(fn($p) => "{$p['platform']}={$p['events']}", $plat)) . "\n";
         }
 
-        // Countries
+        // Countries (self-reported by subscribers during registration)
         $countries = $data['countries'] ?? [];
         if ($countries) {
-            $s .= "COUNTRIES: " . implode(', ', array_map(fn($c) => "{$c['country']}({$c['count']})", array_slice($countries, 0, 8))) . "\n";
+            $s .= "SUBSCRIBER REGISTERED COUNTRIES (self-reported): " . implode(', ', array_map(fn($c) => "{$c['country']}({$c['count']})", array_slice($countries, 0, 8))) . "\n";
+        }
+
+        // Active viewer countries (from recent watch activity)
+        $viewerCountries = $data['viewer_countries'] ?? [];
+        if ($viewerCountries) {
+            $s .= "ACTIVE VIEWER COUNTRIES (from subscribers who watched in last 30d): " . implode(', ', array_map(fn($c) => "{$c['country']}({$c['count']})", array_slice($viewerCountries, 0, 8))) . "\n";
         }
 
         // Packages
@@ -659,7 +730,7 @@ class AnalyticsController
 
         switch ($focusArea) {
             case 'engagement':
-                $prompt .= "Focus on viewer engagement: watch patterns, completion rates, peak hours, content preferences, and how to increase engagement.";
+                $prompt .= "Focus on viewer engagement: watch patterns broken down by Live TV vs VOD vs Series, completion rates, peak hours, content preferences, channel watch time, and how to increase engagement.";
                 break;
             case 'growth':
                 $prompt .= "Focus on subscriber growth: acquisition trends, churn indicators, geographic distribution, and strategies to grow the subscriber base.";
@@ -671,7 +742,7 @@ class AnalyticsController
                 $prompt .= "Focus on revenue and monetization: ad performance, package distribution, revenue optimization, and pricing strategy.";
                 break;
             default:
-                $prompt .= "Cover all areas: subscriber growth, engagement trends, content performance, revenue/ads, and platform usage. Provide an executive summary followed by detailed sections.";
+                $prompt .= "Cover all areas: subscriber growth, engagement trends (including Live TV/channel viewing separately from VOD), content performance, revenue/ads, and platform usage. Provide an executive summary followed by detailed sections.";
                 break;
         }
 
