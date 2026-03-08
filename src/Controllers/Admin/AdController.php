@@ -1208,4 +1208,534 @@ class AdController
         $data['errors'] = $errors;
         return $data;
     }
+
+    // =========================================
+    // Waterfall Chains
+    // =========================================
+
+    public function waterfallIndex(): void
+    {
+        $chains = $this->adService->getWaterfallChains();
+        $zones = $this->adService->getZones();
+        $campaigns = $this->db->fetchAll("SELECT id, name FROM ad_campaigns WHERE status IN ('active','paused') ORDER BY name");
+
+        Response::view('admin/ads/waterfall', [
+            'pageTitle' => 'Ad Waterfall Chains',
+            'chains' => $chains,
+            'zones' => $zones,
+            'campaigns' => $campaigns,
+        ]);
+    }
+
+    public function waterfallStore(): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $name = trim($_POST['name'] ?? '');
+        $zoneId = (int) ($_POST['zone_id'] ?? 0);
+
+        if (!$name || !$zoneId) {
+            Response::json(['success' => false, 'message' => 'Name and zone are required.']);
+            return;
+        }
+
+        $chainId = $this->adService->createWaterfallChain([
+            'zone_id' => $zoneId,
+            'name' => $name,
+            'is_active' => (int) ($_POST['is_active'] ?? 1),
+        ]);
+
+        // Save steps
+        $steps = json_decode($_POST['steps'] ?? '[]', true);
+        if (!empty($steps)) {
+            $this->adService->saveWaterfallSteps($chainId, $steps);
+        }
+
+        Response::json(['success' => true, 'id' => $chainId]);
+    }
+
+    public function waterfallUpdate(int $id): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $data = [];
+        if (isset($_POST['name'])) $data['name'] = trim($_POST['name']);
+        if (isset($_POST['zone_id'])) $data['zone_id'] = (int) $_POST['zone_id'];
+        if (isset($_POST['is_active'])) $data['is_active'] = (int) $_POST['is_active'];
+
+        $this->adService->updateWaterfallChain($id, $data);
+
+        $steps = json_decode($_POST['steps'] ?? '', true);
+        if (is_array($steps)) {
+            $this->adService->saveWaterfallSteps($id, $steps);
+        }
+
+        Response::json(['success' => true]);
+    }
+
+    public function waterfallDelete(int $id): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $this->adService->deleteWaterfallChain($id);
+        Response::json(['success' => true]);
+    }
+
+    // =========================================
+    // A/B Tests
+    // =========================================
+
+    public function abTestIndex(): void
+    {
+        $tests = $this->adService->getAbTests();
+        Response::view('admin/ads/ab-tests', [
+            'pageTitle' => 'A/B Tests',
+            'tests' => $tests,
+        ]);
+    }
+
+    public function abTestStore(int $campaignId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $name = trim($_POST['name'] ?? '');
+        if (!$name) {
+            Response::json(['success' => false, 'message' => 'Test name is required.']);
+            return;
+        }
+
+        $testId = $this->adService->createAbTest($campaignId, [
+            'name' => $name,
+            'confidence_threshold' => (float) ($_POST['confidence_threshold'] ?? 95),
+            'min_impressions' => (int) ($_POST['min_impressions'] ?? 1000),
+            'metric' => in_array($_POST['metric'] ?? '', ['ctr', 'completion_rate', 'conversion_rate'])
+                ? $_POST['metric'] : 'ctr',
+        ]);
+
+        // Add variants
+        $variants = json_decode($_POST['variants'] ?? '[]', true);
+        foreach ($variants as $v) {
+            $this->adService->addAbTestVariant($testId, [
+                'creative_id' => (int) ($v['creative_id'] ?? 0),
+                'traffic_weight' => (int) ($v['traffic_weight'] ?? 50),
+                'is_control' => (int) ($v['is_control'] ?? 0),
+            ]);
+        }
+
+        Response::json(['success' => true, 'id' => $testId]);
+    }
+
+    public function abTestUpdate(int $id): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $data = [];
+        if (isset($_POST['name'])) $data['name'] = trim($_POST['name']);
+        if (isset($_POST['status'])) $data['status'] = $_POST['status'];
+        if (isset($_POST['confidence_threshold'])) $data['confidence_threshold'] = (float) $_POST['confidence_threshold'];
+        if (isset($_POST['min_impressions'])) $data['min_impressions'] = (int) $_POST['min_impressions'];
+        if (isset($_POST['metric'])) $data['metric'] = $_POST['metric'];
+
+        $this->adService->updateAbTest($id, $data);
+        Response::json(['success' => true]);
+    }
+
+    public function abTestDelete(int $id): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $this->adService->deleteAbTest($id);
+        Response::json(['success' => true]);
+    }
+
+    public function abTestEvaluate(int $id): void
+    {
+        $result = $this->adService->evaluateAbTest($id);
+        Response::json(['success' => true, 'result' => $result]);
+    }
+
+    // =========================================
+    // Ad Pods
+    // =========================================
+
+    public function podIndex(): void
+    {
+        $pods = $this->adService->getAdPods();
+        $zones = $this->adService->getZones();
+
+        Response::view('admin/ads/pods', [
+            'pageTitle' => 'Ad Pods & Breaks',
+            'pods' => $pods,
+            'zones' => $zones,
+        ]);
+    }
+
+    public function podStore(): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $name = trim($_POST['name'] ?? '');
+        $zoneId = (int) ($_POST['zone_id'] ?? 0);
+
+        if (!$name || !$zoneId) {
+            Response::json(['success' => false, 'message' => 'Name and zone are required.']);
+            return;
+        }
+
+        $id = $this->adService->createAdPod([
+            'zone_id' => $zoneId,
+            'name' => $name,
+            'max_ads' => (int) ($_POST['max_ads'] ?? 3),
+            'max_duration_seconds' => (int) ($_POST['max_duration_seconds'] ?? 90),
+            'min_content_duration' => !empty($_POST['min_content_duration']) ? (int) $_POST['min_content_duration'] : null,
+            'separation_seconds' => (int) ($_POST['separation_seconds'] ?? 300),
+            'allow_competitor_ads' => (int) ($_POST['allow_competitor_ads'] ?? 0),
+            'pod_type' => in_array($_POST['pod_type'] ?? '', ['pre_roll', 'mid_roll', 'post_roll'])
+                ? $_POST['pod_type'] : 'pre_roll',
+            'is_active' => (int) ($_POST['is_active'] ?? 1),
+        ]);
+
+        Response::json(['success' => true, 'id' => $id]);
+    }
+
+    public function podUpdate(int $id): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $data = $_POST;
+        unset($data['csrf_token']);
+        $this->adService->updateAdPod($id, $data);
+        Response::json(['success' => true]);
+    }
+
+    public function podDelete(int $id): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $this->adService->deleteAdPod($id);
+        Response::json(['success' => true]);
+    }
+
+    // =========================================
+    // Conversion Goals
+    // =========================================
+
+    public function conversionGoalStore(int $campaignId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $name = trim($_POST['name'] ?? '');
+        if (!$name) {
+            Response::json(['success' => false, 'message' => 'Goal name is required.']);
+            return;
+        }
+
+        $id = $this->adService->createConversionGoal($campaignId, [
+            'name' => $name,
+            'goal_type' => in_array($_POST['goal_type'] ?? '', ['page_visit', 'signup', 'purchase', 'custom'])
+                ? $_POST['goal_type'] : 'page_visit',
+            'tracking_url' => trim($_POST['tracking_url'] ?? '') ?: null,
+            'pixel_code' => trim($_POST['pixel_code'] ?? '') ?: null,
+            'value' => !empty($_POST['value']) ? (float) $_POST['value'] : null,
+            'attribution_window_hours' => (int) ($_POST['attribution_window_hours'] ?? 720),
+        ]);
+
+        Response::json(['success' => true, 'id' => $id]);
+    }
+
+    public function conversionGoalUpdate(int $campaignId, int $goalId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $data = [];
+        foreach (['name', 'goal_type', 'tracking_url', 'pixel_code', 'value', 'attribution_window_hours', 'is_active'] as $f) {
+            if (isset($_POST[$f])) $data[$f] = $_POST[$f];
+        }
+        $this->adService->updateConversionGoal($goalId, $data);
+        Response::json(['success' => true]);
+    }
+
+    public function conversionGoalDelete(int $campaignId, int $goalId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $this->adService->deleteConversionGoal($goalId);
+        Response::json(['success' => true]);
+    }
+
+    public function trackConversion(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $pixelCode = $input['pixel_code'] ?? '';
+        if (!$pixelCode) {
+            Response::json(['success' => false, 'message' => 'Missing pixel_code']);
+            return;
+        }
+
+        $id = $this->adService->recordConversion($pixelCode, [
+            'user_id' => !empty($input['user_id']) ? (int) $input['user_id'] : null,
+            'session_id' => $input['session_id'] ?? session_id(),
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'conversion_value' => !empty($input['value']) ? (float) $input['value'] : null,
+            'metadata' => $input['metadata'] ?? null,
+        ]);
+
+        Response::json(['success' => $id !== null, 'conversion_id' => $id]);
+    }
+
+    public function conversionStats(int $campaignId): void
+    {
+        $stats = $this->adService->getConversionStats($campaignId);
+        Response::json(['success' => true, 'stats' => $stats]);
+    }
+
+    // =========================================
+    // Daypart Schedules
+    // =========================================
+
+    public function daypartStore(int $campaignId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $grid = json_decode($_POST['schedule_grid'] ?? '{}', true);
+        if (empty($grid)) {
+            Response::json(['success' => false, 'message' => 'Schedule grid is required.']);
+            return;
+        }
+
+        $id = $this->adService->createDaypartSchedule($campaignId, [
+            'name' => trim($_POST['name'] ?? 'Default Schedule'),
+            'priority_multiplier' => (float) ($_POST['priority_multiplier'] ?? 1.0),
+            'budget_multiplier' => (float) ($_POST['budget_multiplier'] ?? 1.0),
+            'schedule_grid' => $grid,
+        ]);
+
+        Response::json(['success' => true, 'id' => $id]);
+    }
+
+    public function daypartUpdate(int $campaignId, int $scheduleId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $data = [];
+        if (isset($_POST['name'])) $data['name'] = trim($_POST['name']);
+        if (isset($_POST['priority_multiplier'])) $data['priority_multiplier'] = (float) $_POST['priority_multiplier'];
+        if (isset($_POST['budget_multiplier'])) $data['budget_multiplier'] = (float) $_POST['budget_multiplier'];
+        if (isset($_POST['schedule_grid'])) $data['schedule_grid'] = json_decode($_POST['schedule_grid'], true);
+        if (isset($_POST['is_active'])) $data['is_active'] = (int) $_POST['is_active'];
+
+        $this->adService->updateDaypartSchedule($scheduleId, $data);
+        Response::json(['success' => true]);
+    }
+
+    public function daypartDelete(int $campaignId, int $scheduleId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $this->adService->deleteDaypartSchedule($scheduleId);
+        Response::json(['success' => true]);
+    }
+
+    // =========================================
+    // Floor Prices
+    // =========================================
+
+    public function updateFloorPrice(int $zoneId): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+        $floorCpm = !empty($_POST['floor_cpm']) ? (float) $_POST['floor_cpm'] : null;
+        $fallbackVast = trim($_POST['fallback_vast_url'] ?? '') ?: null;
+        $this->adService->updateZoneFloorPrice($zoneId, $floorCpm, $fallbackVast);
+        Response::json(['success' => true]);
+    }
+
+    // =========================================
+    // Enhanced Serve (with waterfall, pods, dayparting)
+    // =========================================
+
+    public function serveEnhanced(): void
+    {
+        $context = [
+            'zone_type' => $_GET['zone_type'] ?? null,
+            'zone_slug' => $_GET['zone_slug'] ?? null,
+            'channel_id' => !empty($_GET['channel_id']) ? (int) $_GET['channel_id'] : null,
+            'content_type' => $_GET['content_type'] ?? null,
+            'content_id' => !empty($_GET['content_id']) ? (int) $_GET['content_id'] : null,
+            'category_id' => !empty($_GET['category_id']) ? (int) $_GET['category_id'] : null,
+            'package_id' => !empty($_GET['package_id']) ? (int) $_GET['package_id'] : null,
+            'platform' => $_GET['platform'] ?? null,
+            'user_id' => !empty($_GET['user_id']) ? (int) $_GET['user_id'] : null,
+            'geo' => $_GET['geo'] ?? null,
+            'limit' => !empty($_GET['limit']) ? min(10, (int) $_GET['limit']) : 3,
+        ];
+
+        $result = $this->adService->serveAdsEnhanced($context);
+
+        // If result includes a VAST URL (from waterfall/fallback), return redirect
+        if (!empty($result['vast_url'])) {
+            Response::json([
+                'success' => true,
+                'source' => $result['source'],
+                'vast_url' => $result['vast_url'],
+                'ads' => [],
+                'count' => 0,
+            ]);
+            return;
+        }
+
+        // Format ads for player
+        $formatted = [];
+        foreach ($result['ads'] ?? [] as $ad) {
+            $entry = [
+                'id' => $ad['id'],
+                'campaign_id' => $ad['campaign_id'],
+                'placement_id' => $ad['placement_id'] ?? null,
+                'type' => $ad['type'],
+                'zone' => $ad['zone_slug'] ?? null,
+                'scroll_text' => $ad['scroll_text'] ?? null,
+                'scroll_speed' => $ad['scroll_speed'] ?? null,
+                'text_color' => $ad['text_color'] ?? null,
+                'bg_color' => $ad['bg_color'] ?? null,
+                'bg_opacity' => $ad['bg_opacity'] ?? null,
+                'image_url' => $ad['image_url'] ?? null,
+                'image_width' => $ad['image_width'] ?? null,
+                'image_height' => $ad['image_height'] ?? null,
+                'banner_position' => $ad['banner_position'] ?? null,
+                'click_url' => $ad['click_url'] ?? null,
+                'click_target' => $ad['click_target'] ?? null,
+                'video_url' => $ad['video_url'] ?? null,
+                'vast_tag_url' => $ad['vast_tag_url'] ?? null,
+                'video_duration' => $ad['video_duration'] ?? null,
+                'skip_after' => $ad['skip_after'] ?? null,
+                'companion_banner_url' => $ad['companion_banner_url'] ?? null,
+                'midroll_offset_type' => $ad['midroll_offset_type'] ?? null,
+                'midroll_offset_value' => $ad['midroll_offset_value'] ?? null,
+                'alt_text' => $ad['alt_text'] ?? null,
+                'ab_variant_id' => $ad['ab_variant_id'] ?? null,
+                'tracking' => [
+                    'impression_url' => '/admin/ads/api/impression',
+                    'event_url' => '/admin/ads/api/event',
+                ],
+            ];
+
+            // Attach companion ads for video types
+            if (in_array($ad['type'], ['pre_roll', 'mid_roll'])) {
+                $companions = $this->adService->getCompanionAds((int) $ad['id']);
+                if ($companions) {
+                    $entry['companions'] = array_map(fn($c) => [
+                        'type' => 'banner',
+                        'image_url' => $c['image_url'],
+                        'position' => $c['banner_position'] ?? 'overlay_bottom',
+                        'click_url' => $c['click_url'] ?? null,
+                        'click_target' => $c['click_target'] ?? '_blank',
+                    ], $companions);
+                }
+            }
+
+            $formatted[] = $entry;
+        }
+
+        Response::json([
+            'success' => true,
+            'source' => $result['source'] ?? 'direct',
+            'pod' => $result['pod'] ?? null,
+            'ads' => $formatted,
+            'count' => count($formatted),
+        ]);
+    }
+
+    /**
+     * Get ad break schedule for VOD content (uses cue points)
+     */
+    public function adBreakSchedule(): void
+    {
+        $contentType = $_GET['content_type'] ?? 'movie';
+        $contentId = (int) ($_GET['content_id'] ?? 0);
+        $duration = (float) ($_GET['duration'] ?? 0);
+
+        if (!$contentId || !$duration) {
+            Response::json(['success' => false, 'message' => 'content_id and duration required']);
+            return;
+        }
+
+        $schedule = $this->adService->getAdBreakSchedule($contentType, $contentId, $duration);
+        Response::json(['success' => true, 'breaks' => $schedule]);
+    }
+
+    // =========================================
+    // Revenue Forecasting
+    // =========================================
+
+    public function forecastIndex(): void
+    {
+        $forecasts = $this->adService->getForecasts(30);
+        $historical = $this->adService->getHistoricalPerformance(90);
+
+        // Update actuals for past forecasts
+        $this->adService->updateForecastActuals();
+
+        Response::view('admin/ads/forecast', [
+            'pageTitle' => 'Revenue Forecast',
+            'forecasts' => $forecasts,
+            'historical' => $historical,
+        ]);
+    }
+
+    public function generateForecast(): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $historical = $this->adService->getHistoricalPerformance(90);
+
+        // Build AI prompt
+        $prompt = "You are an ad revenue forecasting analyst for CARI-IPTV.\n\n";
+        $prompt .= "Historical Performance (last 90 days):\n";
+        $prompt .= "- Active campaigns: {$historical['active_campaigns']}\n";
+        $prompt .= "- Avg daily impressions: {$historical['avg_daily_impressions']}\n";
+        $prompt .= "- Avg daily revenue: \${$historical['avg_daily_revenue']}\n\n";
+
+        if (!empty($historical['daily'])) {
+            $prompt .= "Daily data (last 30 entries):\n";
+            foreach (array_slice($historical['daily'], -30) as $d) {
+                $prompt .= "  {$d['date']}: {$d['impressions']} impressions, \${$d['revenue']} revenue\n";
+            }
+        }
+
+        if (!empty($historical['by_zone_type'])) {
+            $prompt .= "\nBy zone type:\n";
+            foreach ($historical['by_zone_type'] as $z) {
+                $prompt .= "  {$z['zone_type']}: {$z['impressions']} impressions, \${$z['revenue']} revenue\n";
+            }
+        }
+
+        $prompt .= "\nGenerate a 14-day revenue forecast. Return ONLY valid JSON:\n";
+        $prompt .= '{"forecasts":[{"date":"YYYY-MM-DD","impressions":N,"revenue":N.NN,"fill_rate":N.N,"confidence":N.N}],"analysis":"Brief narrative analysis"}';
+
+        try {
+            $aiService = new \CariIPTV\Services\AIService();
+            $response = $aiService->chat($prompt);
+
+            // Parse JSON from AI response
+            $jsonMatch = [];
+            if (preg_match('/\{[\s\S]*"forecasts"[\s\S]*\}/', $response, $jsonMatch)) {
+                $parsed = json_decode($jsonMatch[0], true);
+                if ($parsed && !empty($parsed['forecasts'])) {
+                    foreach ($parsed['forecasts'] as $f) {
+                        $this->adService->saveForecast([
+                            'forecast_date' => $f['date'],
+                            'zone_type' => null,
+                            'predicted_impressions' => (int) ($f['impressions'] ?? 0),
+                            'predicted_revenue' => (float) ($f['revenue'] ?? 0),
+                            'predicted_fill_rate' => $f['fill_rate'] ?? null,
+                            'confidence_level' => $f['confidence'] ?? null,
+                            'ai_analysis' => $parsed['analysis'] ?? null,
+                        ]);
+                    }
+
+                    Response::json([
+                        'success' => true,
+                        'forecasts' => $parsed['forecasts'],
+                        'analysis' => $parsed['analysis'] ?? '',
+                    ]);
+                    return;
+                }
+            }
+
+            Response::json(['success' => false, 'message' => 'AI response could not be parsed.', 'raw' => $response]);
+        } catch (\Exception $e) {
+            Response::json(['success' => false, 'message' => 'AI service error: ' . $e->getMessage()]);
+        }
+    }
 }

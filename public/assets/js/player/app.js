@@ -3138,8 +3138,9 @@ const CariApp = (function() {
                 return;
             }
 
-            // Clean up old marker overlays
+            // Clean up old marker overlays and ads
             if (_markerCleanup) { _markerCleanup(); _markerCleanup = null; }
+            if (typeof CariAdManager !== 'undefined') { CariAdManager.destroy(); }
             resetSubtitleOffset();
 
             // Remove any existing pause overlay
@@ -3402,22 +3403,58 @@ const CariApp = (function() {
                 } catch {}
             }
 
-            if (streamUrl && window.shaka) {
-                await initShakaPlayer(video, streamUrl, drmConfig);
-            } else if (streamUrl) {
-                video.src = streamUrl;
-                video.play().catch(() => {});
+            // Initialize Ad Manager for this content
+            const adContentType = type === 'episode' ? 'episode' : 'movie';
+            if (typeof CariAdManager !== 'undefined') {
+                CariAdManager.init({
+                    video: video,
+                    container: document.getElementById('playerContainer'),
+                    platform: 'web',
+                    packageId: CariAPI.getUser()?.package_id || null,
+                    userId: CariAPI.getUser()?.id || null,
+                    contentType: adContentType === 'movie' ? 'vod' : adContentType,
+                    contentId: item.id,
+                    categoryId: item.category_id || null,
+                    onAdStart: function() { video.pause(); },
+                    onAdEnd: function() { video.play().catch(function() {}); },
+                });
             }
 
-            // Load external subtitle tracks from API
-            const subtitles = item.subtitles || [];
-            if (subtitles.length > 0) {
-                loadExternalSubtitles(video, subtitles);
-            }
+            // Play pre-roll ads, then start content
+            const startContent = async () => {
+                if (streamUrl && window.shaka) {
+                    await initShakaPlayer(video, streamUrl, drmConfig);
+                } else if (streamUrl) {
+                    video.src = streamUrl;
+                    video.play().catch(() => {});
+                }
 
-            // Show resume prompt if we have saved progress
-            if (savedProgress) {
-                showResumePrompt(video, savedProgress.progress_seconds, savedProgress.duration_seconds);
+                // Load external subtitle tracks from API
+                const subtitles = item.subtitles || [];
+                if (subtitles.length > 0) {
+                    loadExternalSubtitles(video, subtitles);
+                }
+
+                // Show resume prompt if we have saved progress
+                if (savedProgress) {
+                    showResumePrompt(video, savedProgress.progress_seconds, savedProgress.duration_seconds);
+                }
+
+                // Set up mid-roll ads at cue points
+                if (typeof CariAdManager !== 'undefined' && item.runtime) {
+                    CariAdManager.setupMidRolls(video, adContentType, item.id, item.runtime * 60);
+                }
+
+                // Load overlay ads (banners, text scrollers) after a delay
+                if (typeof CariAdManager !== 'undefined') {
+                    CariAdManager.loadOverlayAds();
+                }
+            };
+
+            if (typeof CariAdManager !== 'undefined' && !savedProgress) {
+                CariAdManager.playPreRoll(startContent);
+            } else {
+                await startContent();
             }
 
             // Set up custom VOD controls (play/pause, seek, volume, CC, fullscreen, auto-hide)

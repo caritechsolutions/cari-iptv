@@ -339,11 +339,51 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/ads/upload/image', [AdController::class, 'uploadAdImage']);
     $router->post('/ads/upload/video', [AdController::class, 'uploadAdVideo']);
 
-    // Advertising - Ad Serving API
-    $router->get('/ads/api/serve', [AdController::class, 'serve']);
+    // Advertising - Waterfall Chains
+    $router->get('/ads/waterfall', [AdController::class, 'waterfallIndex'], ['auth']);
+    $router->post('/ads/waterfall/store', [AdController::class, 'waterfallStore'], ['auth']);
+    $router->post('/ads/waterfall/{id}/update', [AdController::class, 'waterfallUpdate'], ['auth']);
+    $router->post('/ads/waterfall/{id}/delete', [AdController::class, 'waterfallDelete'], ['auth']);
+
+    // Advertising - A/B Tests
+    $router->get('/ads/ab-tests', [AdController::class, 'abTestIndex'], ['auth']);
+    $router->post('/ads/{id}/ab-tests/store', [AdController::class, 'abTestStore'], ['auth']);
+    $router->post('/ads/ab-tests/{id}/update', [AdController::class, 'abTestUpdate'], ['auth']);
+    $router->post('/ads/ab-tests/{id}/delete', [AdController::class, 'abTestDelete'], ['auth']);
+    $router->get('/ads/ab-tests/{id}/evaluate', [AdController::class, 'abTestEvaluate'], ['auth']);
+
+    // Advertising - Ad Pods
+    $router->get('/ads/pods', [AdController::class, 'podIndex'], ['auth']);
+    $router->post('/ads/pods/store', [AdController::class, 'podStore'], ['auth']);
+    $router->post('/ads/pods/{id}/update', [AdController::class, 'podUpdate'], ['auth']);
+    $router->post('/ads/pods/{id}/delete', [AdController::class, 'podDelete'], ['auth']);
+
+    // Advertising - Conversion Goals
+    $router->post('/ads/{id}/conversions/store', [AdController::class, 'conversionGoalStore'], ['auth']);
+    $router->post('/ads/{id}/conversions/{gid}/update', [AdController::class, 'conversionGoalUpdate'], ['auth']);
+    $router->post('/ads/{id}/conversions/{gid}/delete', [AdController::class, 'conversionGoalDelete'], ['auth']);
+    $router->get('/ads/{id}/conversions/stats', [AdController::class, 'conversionStats'], ['auth']);
+
+    // Advertising - Daypart Schedules
+    $router->post('/ads/{id}/dayparts/store', [AdController::class, 'daypartStore'], ['auth']);
+    $router->post('/ads/{id}/dayparts/{sid}/update', [AdController::class, 'daypartUpdate'], ['auth']);
+    $router->post('/ads/{id}/dayparts/{sid}/delete', [AdController::class, 'daypartDelete'], ['auth']);
+
+    // Advertising - Floor Prices
+    $router->post('/ads/zones/{id}/floor-price', [AdController::class, 'updateFloorPrice'], ['auth']);
+
+    // Advertising - Revenue Forecast
+    $router->get('/ads/forecast', [AdController::class, 'forecastIndex'], ['auth']);
+    $router->post('/ads/forecast/generate', [AdController::class, 'generateForecast'], ['auth']);
+
+    // Advertising - Ad Serving API (Enhanced)
+    $router->get('/ads/api/serve', [AdController::class, 'serveEnhanced']);
+    $router->get('/ads/api/serve-legacy', [AdController::class, 'serve']);
     $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);
     $router->post('/ads/api/event', [AdController::class, 'recordEvent']);
+    $router->post('/ads/api/conversion', [AdController::class, 'trackConversion']);
     $router->get('/ads/api/vast', [AdController::class, 'vastXml']);
+    $router->get('/ads/api/breaks', [AdController::class, 'adBreakSchedule']);
 
     // Subscriber Management
     $router->get('/subscribers', [SubscriberController::class, 'index']);

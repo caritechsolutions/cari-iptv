@@ -71,6 +71,14 @@ foreach ($zones as $zone) {
                             <?php if ($zone['description']): ?>
                                 <div style="font-size:0.8rem;color:var(--text-muted);"><?= htmlspecialchars($zone['description']) ?></div>
                             <?php endif; ?>
+                            <div style="display:flex;gap:1rem;margin-top:0.5rem;font-size:0.75rem;">
+                                <?php if (!empty($zone['floor_cpm'])): ?>
+                                <span style="color:#f59e0b"><strong>Floor CPM:</strong> $<?= $zone['floor_cpm'] ?></span>
+                                <?php endif; ?>
+                                <?php if (!empty($zone['fallback_vast_url'])): ?>
+                                <span style="color:#818cf8" title="<?= htmlspecialchars($zone['fallback_vast_url']) ?>"><strong>Fallback:</strong> VAST configured</span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -111,6 +119,18 @@ foreach ($zones as $zone) {
                 <label class="form-label">Description</label>
                 <textarea id="zoneDescription" class="form-input" rows="2" placeholder="Where this zone appears..."></textarea>
             </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+                <div class="form-group">
+                    <label class="form-label">Floor CPM ($)</label>
+                    <input type="number" id="zoneFloorCpm" class="form-input" step="0.01" min="0" placeholder="Min CPM">
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;">Minimum CPM to serve ads in this zone</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fallback VAST URL</label>
+                    <input type="url" id="zoneFallbackVast" class="form-input" placeholder="https://...">
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;">3rd-party VAST when no direct ads fill</div>
+                </div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal('zoneModal')">Cancel</button>
@@ -131,6 +151,8 @@ function openZoneModal() {
     document.getElementById('zoneSlug').value = '';
     document.getElementById('zoneType').value = '';
     document.getElementById('zoneDescription').value = '';
+    document.getElementById('zoneFloorCpm').value = '';
+    document.getElementById('zoneFallbackVast').value = '';
     document.getElementById('zoneModalTitle').textContent = 'Add Zone';
     openModal('zoneModal');
 }
@@ -141,6 +163,8 @@ function editZone(zone) {
     document.getElementById('zoneSlug').value = zone.slug;
     document.getElementById('zoneType').value = zone.zone_type;
     document.getElementById('zoneDescription').value = zone.description || '';
+    document.getElementById('zoneFloorCpm').value = zone.floor_cpm || '';
+    document.getElementById('zoneFallbackVast').value = zone.fallback_vast_url || '';
     document.getElementById('zoneModalTitle').textContent = 'Edit Zone';
     openModal('zoneModal');
 }
@@ -159,8 +183,21 @@ function saveZone() {
     fetch(url, { method: 'POST', body: data })
         .then(r => r.json())
         .then(d => {
-            if (d.success) location.reload();
-            else alert(d.message || 'Error saving zone');
+            if (d.success) {
+                // Save floor price if editing
+                if (id) {
+                    const fpData = new URLSearchParams();
+                    fpData.append('csrf_token', csrf);
+                    fpData.append('floor_cpm', document.getElementById('zoneFloorCpm').value);
+                    fpData.append('fallback_vast_url', document.getElementById('zoneFallbackVast').value);
+                    fetch(`/admin/ads/zones/${id}/floor-price`, { method: 'POST', body: fpData })
+                        .then(() => location.reload());
+                } else {
+                    location.reload();
+                }
+            } else {
+                alert(d.message || 'Error saving zone');
+            }
         });
 }
 

@@ -76,9 +76,13 @@
     <!-- Shaka Player (loaded from CDN; host locally in production) -->
     <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.16.17/dist/shaka-player.compiled.min.js" crossorigin="anonymous"></script>
 
+    <!-- Ad Styles -->
+    <link rel="stylesheet" href="/assets/css/player-ads.css?v=<?= $assetVersion ?>">
+
     <!-- App JavaScript -->
     <script src="/assets/js/player/api.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/ui.js?v=<?= $assetVersion ?>"></script>
+    <script src="/assets/js/player/ads.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/tracker.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/router.js?v=<?= $assetVersion ?>"></script>
     <script src="/assets/js/player/app.js?v=<?= $assetVersion ?>"></script>
