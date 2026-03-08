@@ -784,8 +784,15 @@
         const seriesInfo = d.series_info || [];
         if (series.length) {
             document.getElementById('topSeriesTable').innerHTML = buildTable(
-                ['Title', 'Views', 'Completions', 'Rate'],
-                series.map(r => [esc(r.title), fmt(r.views), fmt(r.completions), pct(parseInt(r.completions)||0, parseInt(r.views)||0)])
+                ['Title', 'Episodes', 'Views', 'Completions', 'Viewers', 'Rate'],
+                series.map(r => [
+                    esc(r.title),
+                    fmt(r.episodes_watched),
+                    fmt(r.views),
+                    fmt(r.completions),
+                    fmt(r.unique_viewers),
+                    pct(parseInt(r.completions)||0, parseInt(r.views)||0)
+                ])
             );
             document.getElementById('seriesInfoTable').innerHTML = '';
         } else if (seriesInfo.length) {
@@ -794,9 +801,11 @@
             document.getElementById('seriesInfoTable').innerHTML =
                 '<h4 style="font-size:0.85rem;color:#94a3b8;margin:8px 0">Series Library</h4>' +
                 buildTable(
-                    ['Title', 'Year', 'Category', 'Status'],
+                    ['Title', 'Seasons', 'Episodes', 'Year', 'Category', 'Status'],
                     seriesInfo.map(r => [
                         esc(r.title),
+                        fmt(r.total_seasons),
+                        fmt(r.total_episodes),
                         esc(r.year || '-'),
                         esc(r.category),
                         '<span style="color:' + (r.status === 'published' ? '#22c55e' : '#f59e0b') + '">' + esc(r.status) + '</span>'

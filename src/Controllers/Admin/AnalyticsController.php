@@ -337,13 +337,17 @@ class AnalyticsController
             []
         );
 
+        // Top series by episode watch events
         $data['top_series'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
                 "SELECT s.title, COUNT(*) as views,
-                        SUM(e.event_type = 'watch_complete') as completions
+                        SUM(e.event_type = 'watch_complete') as completions,
+                        COUNT(DISTINCT e.content_id) as episodes_watched,
+                        COUNT(DISTINCT e.subscriber_id) as unique_viewers
                  FROM subscriber_events e
-                 JOIN series s ON e.content_id = s.id
-                 WHERE e.content_type = 'series'
+                 JOIN series_episodes ep ON e.content_id = ep.id
+                 JOIN series s ON ep.series_id = s.id
+                 WHERE e.content_type = 'episode'
                    AND e.event_type IN ('watch_start', 'watch_complete')
                    AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                  GROUP BY s.id, s.title
@@ -357,7 +361,9 @@ class AnalyticsController
         $data['series_info'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
                 "SELECT s.title, s.status, s.year,
-                        COALESCE(c.name, 'Uncategorized') as category
+                        COALESCE(c.name, 'Uncategorized') as category,
+                        (SELECT COUNT(*) FROM series_episodes ep WHERE ep.series_id = s.id) as total_episodes,
+                        (SELECT COUNT(*) FROM series_seasons ss WHERE ss.series_id = s.id) as total_seasons
                  FROM series s
                  LEFT JOIN categories c ON s.category_id = c.id
                  ORDER BY s.title ASC
@@ -469,7 +475,9 @@ class AnalyticsController
     }
 
     /**
-     * Build the system context for AI with all platform data
+     * Build the system context for AI with summarized platform data.
+     * Uses a compact text summary instead of raw JSON to reduce prompt size
+     * and improve AI response times (especially with local models like Ollama).
      */
     private function buildSystemContext(array $data): string
     {
@@ -479,8 +487,109 @@ class AnalyticsController
         $context .= "When you reference numbers, include both absolute values and percentages where meaningful.\n";
         $context .= "Suggest specific, actionable strategies — not generic advice.\n\n";
         $context .= "=== PLATFORM DATA (Last 30 Days) ===\n\n";
-        $context .= json_encode($data, JSON_PRETTY_PRINT);
+        $context .= $this->summarizeData($data);
         return $context;
+    }
+
+    /**
+     * Summarize platform data into compact text for AI prompt.
+     * Reduces prompt size from ~20KB JSON to ~2-3KB text.
+     */
+    private function summarizeData(array $data): string
+    {
+        $s = '';
+
+        // Subscribers
+        $sub = $data['subscribers'] ?? [];
+        $s .= "SUBSCRIBERS: {$sub['total']} total, {$sub['active']} active, {$sub['suspended']} suspended, {$sub['expired']} expired. New: {$sub['new_7d']} (7d), {$sub['new_30d']} (30d).\n";
+
+        // Subscriber growth
+        $growth = $data['subscriber_growth'] ?? [];
+        if ($growth) {
+            $months = array_map(fn($g) => "{$g['month']}:{$g['count']}", $growth);
+            $s .= "GROWTH (monthly): " . implode(', ', $months) . "\n";
+        }
+
+        // Content library
+        $c = $data['content'] ?? [];
+        $s .= "CONTENT: {$c['movies']} movies ({$c['movies_published']} published), {$c['series']} series, {$c['channels']} channels ({$c['channels_active']} active), {$c['categories']} categories.\n";
+
+        // Watch activity
+        $w = $data['watch_activity'] ?? [];
+        $s .= "WATCH ACTIVITY (30d): {$w['total_events']} events, {$w['unique_viewers']} unique viewers, {$w['starts']} starts, {$w['completions']} completions, {$w['abandonments']} abandonments.\n";
+        if (((int)($w['starts'] ?? 0)) > 0) {
+            $rate = round(((int)($w['completions'] ?? 0)) / ((int)$w['starts']) * 100, 1);
+            $s .= "  Completion rate: {$rate}%. Searches: {$w['searches']} ({$w['failed_searches']} no results).\n";
+        }
+
+        // Peak hours (top 5)
+        $hours = $data['peak_hours'] ?? [];
+        if ($hours) {
+            usort($hours, fn($a, $b) => ($b['events'] ?? 0) - ($a['events'] ?? 0));
+            $top = array_slice($hours, 0, 5);
+            $s .= "PEAK HOURS: " . implode(', ', array_map(fn($h) => "{$h['hour']}:00={$h['events']}", $top)) . "\n";
+        }
+
+        // Top genres
+        $genres = $data['top_genres'] ?? [];
+        if ($genres) {
+            $s .= "TOP GENRES: " . implode(', ', array_map(fn($g) => "{$g['genre']}({$g['views']})", array_slice($genres, 0, 8))) . "\n";
+        }
+
+        // Top movies
+        $movies = $data['top_movies'] ?? [];
+        if ($movies) {
+            $s .= "TOP MOVIES: " . implode(', ', array_map(fn($m) => "{$m['title']}({$m['views']}v/{$m['completions']}c)", array_slice($movies, 0, 8))) . "\n";
+        }
+
+        // Top series
+        $series = $data['top_series'] ?? [];
+        if ($series) {
+            $s .= "TOP TV SHOWS: " . implode(', ', array_map(fn($t) => "{$t['title']}({$t['views']}v/{$t['completions']}c/{$t['episodes_watched']}ep)", array_slice($series, 0, 8))) . "\n";
+        }
+
+        // Top channels
+        $channels = $data['top_channels'] ?? [];
+        if ($channels) {
+            $s .= "TOP CHANNELS: " . implode(', ', array_map(fn($ch) => "{$ch['title']}({$ch['views']})", array_slice($channels, 0, 8))) . "\n";
+        }
+
+        // Channel status
+        $chStatus = $data['channel_status'] ?? [];
+        if ($chStatus) {
+            $s .= "CHANNEL STATUS: " . implode(', ', array_map(fn($cs) => "{$cs['status']}={$cs['count']}", $chStatus)) . "\n";
+        }
+
+        // Top searches
+        $searches = $data['top_searches'] ?? [];
+        if ($searches) {
+            $s .= "TOP SEARCHES: " . implode(', ', array_map(fn($t) => "{$t['term']}({$t['count']}" . ($t['no_results'] > 0 ? ",{$t['no_results']}fail" : '') . ")", array_slice($searches, 0, 10))) . "\n";
+        }
+
+        // Ads
+        $ad = $data['ad_performance'] ?? [];
+        $clicks = $data['ad_clicks'] ?? 0;
+        $s .= "ADS (30d): {$ad['total_impressions']} impressions, {$clicks} clicks, \${$ad['total_revenue']} revenue.\n";
+
+        // Platforms
+        $plat = $data['platforms'] ?? [];
+        if ($plat) {
+            $s .= "PLATFORMS: " . implode(', ', array_map(fn($p) => "{$p['platform']}={$p['events']}", $plat)) . "\n";
+        }
+
+        // Countries
+        $countries = $data['countries'] ?? [];
+        if ($countries) {
+            $s .= "COUNTRIES: " . implode(', ', array_map(fn($c) => "{$c['country']}({$c['count']})", array_slice($countries, 0, 8))) . "\n";
+        }
+
+        // Packages
+        $pkgs = $data['packages'] ?? [];
+        if ($pkgs) {
+            $s .= "PACKAGES: " . implode(', ', array_map(fn($p) => "{$p['name']}({$p['subscribers']})", $pkgs)) . "\n";
+        }
+
+        return $s;
     }
 
     /**

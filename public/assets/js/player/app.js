@@ -3410,9 +3410,10 @@ const CariApp = (function() {
             // Set up pause info overlay (shows content details when paused in fullscreen)
             setupPauseOverlay(video, document.getElementById('playerContainer'));
 
-            // Track progress for VOD
-            if (type === 'movie' || type === 'episode') {
-                setupProgressTracking(video, type === 'episode' ? 'episode' : 'movie', item.id);
+            // Track progress and watch events
+            if (type === 'movie' || type === 'episode' || type === 'channel') {
+                const trackType = type === 'episode' ? 'episode' : (type === 'channel' ? 'channel' : 'movie');
+                setupProgressTracking(video, trackType, item.id);
             }
 
             // Set up skip intro / credits countdown / auto-play from markers
