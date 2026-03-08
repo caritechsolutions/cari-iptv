@@ -919,8 +919,10 @@
     // ---- Geo Map ----
     let geoMapInstance = null;
 
-    // Country name to ISO 3166-1 numeric code mapping (for topojson matching)
+    // Country name/code to ISO 3166-1 numeric code mapping (for topojson matching)
+    // Supports full names, ISO alpha-2, and ISO alpha-3 codes
     const COUNTRY_NAME_TO_ID = {
+        // Full names
         'Afghanistan':4,'Albania':8,'Algeria':12,'Andorra':20,'Angola':24,'Antigua and Barbuda':28,
         'Argentina':32,'Armenia':51,'Australia':36,'Austria':40,'Azerbaijan':31,'Bahamas':44,
         'Bahrain':48,'Bangladesh':50,'Barbados':52,'Belarus':112,'Belgium':56,'Belize':84,
@@ -960,11 +962,72 @@
         'Ukraine':804,'United Arab Emirates':784,'United Kingdom':826,'United States':840,
         'Uruguay':858,'Uzbekistan':860,'Vanuatu':548,'Vatican City':336,'Venezuela':862,
         'Vietnam':704,'Yemen':887,'Zambia':894,'Zimbabwe':716,
-        // Caribbean specific
-        'Anguilla':660,'Aruba':533,'Bermuda':60,'Cayman Islands':136,
-        'Curacao':531,'Guadeloupe':312,'Martinique':474,'Montserrat':500,
-        'Puerto Rico':630,'Sint Maarten':534,'Turks and Caicos Islands':796,
-        'Virgin Islands':850
+        // ISO alpha-2 codes (Caribbean + common)
+        'AF':4,'AL':8,'DZ':12,'AD':20,'AO':24,'AG':28,'AR':32,'AM':51,'AU':36,'AT':40,
+        'AZ':31,'BS':44,'BH':48,'BD':50,'BB':52,'BY':112,'BE':56,'BZ':84,'BJ':204,'BT':64,
+        'BO':68,'BA':70,'BW':72,'BR':76,'BN':96,'BG':100,'BF':854,'BI':108,'KH':116,
+        'CM':120,'CA':124,'CV':132,'CF':140,'TD':148,'CL':152,'CN':156,'CO':170,'KM':174,
+        'CG':178,'CD':180,'CR':188,'HR':191,'CU':192,'CY':196,'CZ':203,'DK':208,'DJ':262,
+        'DM':212,'DO':214,'TL':626,'EC':218,'EG':818,'SV':222,'GQ':226,'ER':232,'EE':233,
+        'ET':231,'FJ':242,'FI':246,'FR':250,'GA':266,'GM':270,'GE':268,'DE':276,'GH':288,
+        'GR':300,'GD':308,'GT':320,'GN':324,'GW':624,'GY':328,'HT':332,'HN':340,'HU':348,
+        'IS':352,'IN':356,'ID':360,'IR':364,'IQ':368,'IE':372,'IL':376,'IT':380,'CI':384,
+        'JM':388,'JP':392,'JO':400,'KZ':398,'KE':404,'KI':296,'KW':414,'KG':417,'LA':418,
+        'LV':428,'LB':422,'LS':426,'LR':430,'LY':434,'LI':438,'LT':440,'LU':442,
+        'MG':450,'MW':454,'MY':458,'MV':462,'ML':466,'MT':470,'MH':584,'MR':478,'MU':480,
+        'MX':484,'FM':583,'MD':498,'MC':492,'MN':496,'ME':499,'MA':504,'MZ':508,'MM':104,
+        'NA':516,'NR':520,'NP':524,'NL':528,'NZ':554,'NI':558,'NE':562,'NG':566,'KP':408,
+        'MK':807,'NO':578,'OM':512,'PK':586,'PW':585,'PS':275,'PA':591,'PG':598,'PY':600,
+        'PE':604,'PH':608,'PL':616,'PT':620,'QA':634,'RO':642,'RU':643,'RW':646,'KN':659,
+        'LC':662,'VC':670,'WS':882,'SM':674,'ST':678,'SA':682,'SN':686,'RS':688,'SC':690,
+        'SL':694,'SG':702,'SK':703,'SI':705,'SB':90,'SO':706,'ZA':710,'KR':410,'SS':728,
+        'ES':724,'LK':144,'SD':729,'SR':740,'SE':752,'CH':756,'SY':760,'TW':158,'TJ':762,
+        'TZ':834,'TH':764,'TG':768,'TO':776,'TT':780,'TN':788,'TR':792,'TM':795,'TV':798,
+        'UG':800,'UA':804,'AE':784,'GB':826,'US':840,'UY':858,'UZ':860,'VU':548,'VA':336,
+        'VE':862,'VN':704,'YE':887,'ZM':894,'ZW':716,
+        // Caribbean territories
+        'AI':660,'AW':533,'BM':60,'KY':136,'CW':531,'GP':312,'MQ':474,'MS':500,
+        'PR':630,'SX':534,'TC':796,'VI':850
+    };
+
+    // Reverse mapping: numeric ID to display name
+    const NUMERIC_TO_DISPLAY = {
+        4:'Afghanistan',8:'Albania',12:'Algeria',20:'Andorra',24:'Angola',28:'Antigua & Barbuda',
+        32:'Argentina',51:'Armenia',36:'Australia',40:'Austria',31:'Azerbaijan',44:'Bahamas',
+        48:'Bahrain',50:'Bangladesh',52:'Barbados',112:'Belarus',56:'Belgium',84:'Belize',
+        204:'Benin',64:'Bhutan',68:'Bolivia',70:'Bosnia & Herzegovina',72:'Botswana',
+        76:'Brazil',96:'Brunei',100:'Bulgaria',854:'Burkina Faso',108:'Burundi',116:'Cambodia',
+        120:'Cameroon',124:'Canada',132:'Cape Verde',140:'Central African Republic',148:'Chad',
+        152:'Chile',156:'China',170:'Colombia',174:'Comoros',178:'Congo',180:'DR Congo',
+        188:'Costa Rica',191:'Croatia',192:'Cuba',196:'Cyprus',203:'Czechia',208:'Denmark',
+        262:'Djibouti',212:'Dominica',214:'Dominican Republic',626:'East Timor',218:'Ecuador',
+        818:'Egypt',222:'El Salvador',226:'Equatorial Guinea',232:'Eritrea',233:'Estonia',
+        231:'Ethiopia',242:'Fiji',246:'Finland',250:'France',266:'Gabon',270:'Gambia',
+        268:'Georgia',276:'Germany',288:'Ghana',300:'Greece',308:'Grenada',320:'Guatemala',
+        324:'Guinea',624:'Guinea-Bissau',328:'Guyana',332:'Haiti',340:'Honduras',348:'Hungary',
+        352:'Iceland',356:'India',360:'Indonesia',364:'Iran',368:'Iraq',372:'Ireland',
+        376:'Israel',380:'Italy',384:'Ivory Coast',388:'Jamaica',392:'Japan',400:'Jordan',
+        398:'Kazakhstan',404:'Kenya',296:'Kiribati',414:'Kuwait',417:'Kyrgyzstan',418:'Laos',
+        428:'Latvia',422:'Lebanon',426:'Lesotho',430:'Liberia',434:'Libya',438:'Liechtenstein',
+        440:'Lithuania',442:'Luxembourg',450:'Madagascar',454:'Malawi',458:'Malaysia',
+        462:'Maldives',466:'Mali',470:'Malta',584:'Marshall Islands',478:'Mauritania',
+        480:'Mauritius',484:'Mexico',583:'Micronesia',498:'Moldova',492:'Monaco',496:'Mongolia',
+        499:'Montenegro',504:'Morocco',508:'Mozambique',104:'Myanmar',516:'Namibia',520:'Nauru',
+        524:'Nepal',528:'Netherlands',554:'New Zealand',558:'Nicaragua',562:'Niger',566:'Nigeria',
+        408:'North Korea',807:'North Macedonia',578:'Norway',512:'Oman',586:'Pakistan',
+        585:'Palau',275:'Palestine',591:'Panama',598:'Papua New Guinea',600:'Paraguay',
+        604:'Peru',608:'Philippines',616:'Poland',620:'Portugal',634:'Qatar',642:'Romania',
+        643:'Russia',646:'Rwanda',659:'St Kitts & Nevis',662:'Saint Lucia',
+        670:'St Vincent & Grenadines',882:'Samoa',674:'San Marino',678:'Sao Tome & Principe',
+        682:'Saudi Arabia',686:'Senegal',688:'Serbia',690:'Seychelles',694:'Sierra Leone',
+        702:'Singapore',703:'Slovakia',705:'Slovenia',90:'Solomon Islands',706:'Somalia',
+        710:'South Africa',410:'South Korea',728:'South Sudan',724:'Spain',144:'Sri Lanka',
+        729:'Sudan',740:'Suriname',752:'Sweden',756:'Switzerland',760:'Syria',158:'Taiwan',
+        762:'Tajikistan',834:'Tanzania',764:'Thailand',768:'Togo',776:'Tonga',
+        780:'Trinidad & Tobago',788:'Tunisia',792:'Turkey',795:'Turkmenistan',798:'Tuvalu',
+        800:'Uganda',804:'Ukraine',784:'UAE',826:'United Kingdom',840:'United States',
+        858:'Uruguay',860:'Uzbekistan',548:'Vanuatu',336:'Vatican City',862:'Venezuela',
+        704:'Vietnam',887:'Yemen',894:'Zambia',716:'Zimbabwe'
     };
 
     async function renderGeoMap(d) {
@@ -1003,7 +1066,9 @@
 
                 html += '<div class="country-detail-card">';
                 html += '<div class="country-header">';
-                html += '<span class="country-name">' + esc(c.country) + '</span>';
+                const numId = COUNTRY_NAME_TO_ID[c.country];
+                const displayName = (numId !== undefined && NUMERIC_TO_DISPLAY[numId]) ? NUMERIC_TO_DISPLAY[numId] : c.country;
+                html += '<span class="country-name">' + esc(displayName) + '</span>';
                 html += '<span class="country-viewers">' + viewers + ' viewer' + (viewers !== 1 ? 's' : '') + '</span>';
                 html += '</div>';
                 html += '<div class="country-stats">';
@@ -1032,10 +1097,15 @@
             detailsEl.innerHTML = html;
         }
 
-        // Build country viewer lookup for choropleth
-        const viewersByCountry = {};
+        // Build country viewer lookup for choropleth — map DB values to numeric IDs
+        const viewersByNumericId = {};
+        const viewerDataByNumericId = {};
         viewerCountries.forEach(c => {
-            viewersByCountry[c.country] = parseInt(c.viewers) || 0;
+            const numId = COUNTRY_NAME_TO_ID[c.country];
+            if (numId !== undefined) {
+                viewersByNumericId[numId] = parseInt(c.viewers) || 0;
+                viewerDataByNumericId[numId] = c;
+            }
         });
 
         // Load world topojson and render choropleth
@@ -1043,20 +1113,15 @@
             const resp = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
             if (!resp.ok) throw new Error('Failed to load map data');
             const topoData = await resp.json();
-            const countries = ChartGeo.topojson.feature(topoData, topoData.objects.countries).features;
-
-            // Build reverse lookup: numeric ID -> country name
-            const idToName = {};
-            Object.entries(COUNTRY_NAME_TO_ID).forEach(([name, id]) => {
-                if (!idToName[id]) idToName[id] = name;
-            });
+            const geoFeatures = ChartGeo.topojson.feature(topoData, topoData.objects.countries).features;
 
             // Map features to data points
-            const maxViewers = Math.max(1, ...Object.values(viewersByCountry));
-            const mapData = countries.map(f => {
-                const countryName = idToName[parseInt(f.id)] || f.properties.name || '';
-                const viewers = viewersByCountry[countryName] || 0;
-                return { feature: f, value: viewers, countryName: countryName };
+            const maxViewers = Math.max(1, ...Object.values(viewersByNumericId));
+            const mapData = geoFeatures.map(f => {
+                const numId = parseInt(f.id);
+                const displayName = NUMERIC_TO_DISPLAY[numId] || f.properties.name || 'Unknown';
+                const viewers = viewersByNumericId[numId] || 0;
+                return { feature: f, value: viewers, countryName: displayName };
             });
 
             const canvas = document.getElementById('geoMapCanvas');
@@ -1069,14 +1134,9 @@
                     labels: mapData.map(d => d.countryName),
                     datasets: [{
                         label: 'Viewers',
+                        outline: geoFeatures,
                         data: mapData,
-                        backgroundColor: (ctx) => {
-                            const v = ctx.raw?.value || 0;
-                            if (v === 0) return 'rgba(30,41,59,0.8)';
-                            const intensity = Math.max(0.2, v / maxViewers);
-                            return 'rgba(99,102,241,' + intensity + ')';
-                        },
-                        borderColor: 'rgba(51,65,85,0.5)',
+                        borderColor: 'rgba(71,85,105,0.6)',
                         borderWidth: 0.5,
                     }],
                 },
@@ -1093,7 +1153,8 @@
                                     const v = ctx.raw?.value || 0;
                                     const name = ctx.raw?.countryName || 'Unknown';
                                     if (v === 0) return name + ': No viewers';
-                                    const cData = viewerCountries.find(c => c.country === name);
+                                    const numId = parseInt(ctx.raw?.feature?.id);
+                                    const cData = viewerDataByNumericId[numId];
                                     if (!cData) return name + ': ' + v + ' viewer(s)';
                                     return [
                                         name + ': ' + v + ' viewer(s)',
@@ -1110,7 +1171,16 @@
                         },
                         color: {
                             axis: 'x',
-                            display: false
+                            quantize: 5,
+                            interpolate: function(v) {
+                                if (v === 0) return 'rgba(51,65,85,0.4)';
+                                var r = Math.round(99 + (99 - 99) * v);
+                                var g = Math.round(102 + (102 - 102) * v);
+                                var b = Math.round(241 + (241 - 241) * v);
+                                var a = 0.15 + v * 0.85;
+                                return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+                            },
+                            missing: 'rgba(51,65,85,0.4)'
                         }
                     },
                 },
