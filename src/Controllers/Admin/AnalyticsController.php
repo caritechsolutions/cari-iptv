@@ -234,7 +234,7 @@ class AnalyticsController
             'movies_published' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM movies WHERE status = 'published'"), ['c' => 0])['c'] ?? 0),
             'series' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM series"), ['c' => 0])['c'] ?? 0),
             'channels' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM channels"), ['c' => 0])['c'] ?? 0),
-            'channels_active' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM channels WHERE status = 'active'"), ['c' => 0])['c'] ?? 0),
+            'channels_active' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM channels WHERE is_active = 1"), ['c' => 0])['c'] ?? 0),
             'categories' => (int) ($this->safeQuery(fn() => $this->db->fetch("SELECT COUNT(*) as c FROM categories"), ['c' => 0])['c'] ?? 0),
         ];
 
@@ -380,7 +380,10 @@ class AnalyticsController
         // --- Channel info (always available, independent of watch events) ---
         $data['channel_info'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
-                "SELECT ch.name, ch.status,
+                "SELECT ch.name,
+                        CASE WHEN ch.is_active = 1 AND ch.is_published = 1 THEN 'active'
+                             WHEN ch.is_active = 1 THEN 'unpublished'
+                             ELSE 'inactive' END as status,
                         COALESCE(
                             (SELECT cat.name FROM channel_categories cc
                              JOIN categories cat ON cc.category_id = cat.id
@@ -397,7 +400,10 @@ class AnalyticsController
         // --- Channel status breakdown ---
         $data['channel_status'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
-                "SELECT status, COUNT(*) as count
+                "SELECT CASE WHEN is_active = 1 AND is_published = 1 THEN 'active'
+                             WHEN is_active = 1 THEN 'unpublished'
+                             ELSE 'inactive' END as status,
+                        COUNT(*) as count
                  FROM channels
                  GROUP BY status"
             ),
