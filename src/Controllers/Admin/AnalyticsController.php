@@ -886,7 +886,96 @@ class AnalyticsController
         // Binge stats
         $binge = $data['binge']['summary'] ?? [];
         if (($binge['total_binges'] ?? 0) > 0) {
-            $s .= "BINGE WATCHING (30d): {$binge['total_binges']} binge sessions by {$binge['unique_bingers']} users, avg " . round($binge['avg_episodes_per_binge'] ?? 0, 1) . " episodes/binge.\n";
+            $s .= "BINGE WATCHING (30d): {$binge['total_binges']} binge sessions by {$binge['unique_bingers']} users, avg " . round($binge['avg_episodes_per_binge'] ?? 0, 1) . " episodes/binge.";
+            $topBinged = $data['binge']['top_binged_series'] ?? [];
+            if ($topBinged) {
+                $s .= " Top binged: " . implode(', ', array_map(fn($b) => "{$b['title']}({$b['binge_count']}x)", array_slice($topBinged, 0, 5)));
+            }
+            $s .= "\n";
+        }
+
+        // Content impressions & CTR
+        $impressions = $data['impressions'] ?? [];
+        $sectionCtr = $impressions['section_ctr'] ?? [];
+        if ($sectionCtr) {
+            $s .= "CONTENT CTR BY SECTION: " . implode(', ', array_map(fn($sec) => "{$sec['section_type']}=" . round($sec['ctr'] ?? 0, 1) . "% ({$sec['impressions']} views/{$sec['clicks']} clicks)", array_slice($sectionCtr, 0, 8))) . "\n";
+        }
+        $discoveryGap = $impressions['discovery_gap'] ?? [];
+        if ($discoveryGap) {
+            $s .= "DISCOVERY GAP (seen but never clicked): " . implode(', ', array_map(fn($d) => "{$d['title']}({$d['impressions']} impressions, 0 clicks)", array_slice($discoveryGap, 0, 5))) . "\n";
+        }
+        $posCtr = $impressions['position_ctr'] ?? [];
+        if ($posCtr) {
+            $s .= "POSITION CTR: " . implode(', ', array_map(fn($p) => "pos{$p['position']}=" . round($p['ctr'] ?? 0, 1) . "%", array_slice($posCtr, 0, 6))) . "\n";
+        }
+
+        // Share stats
+        $shares = $data['shares'] ?? [];
+        $byMethod = $shares['by_method'] ?? [];
+        if ($byMethod) {
+            $s .= "SHARES BY METHOD: " . implode(', ', array_map(fn($m) => "{$m['share_method']}={$m['count']}", $byMethod)) . "\n";
+        }
+        $topShared = $shares['top_shared'] ?? [];
+        if ($topShared) {
+            $s .= "TOP SHARED CONTENT: " . implode(', ', array_map(fn($t) => "{$t['title']}({$t['shares']})", array_slice($topShared, 0, 5))) . "\n";
+        }
+
+        // Device/browser/OS/connection breakdown from sessions
+        $sessDevices = $data['sessions']['devices'] ?? [];
+        if ($sessDevices) {
+            $s .= "DEVICE TYPES: " . implode(', ', array_map(fn($d) => "{$d['device_type']}={$d['count']}", array_slice($sessDevices, 0, 6))) . "\n";
+        }
+        $sessBrowsers = $data['sessions']['browsers'] ?? [];
+        if ($sessBrowsers) {
+            $s .= "BROWSERS: " . implode(', ', array_map(fn($b) => "{$b['browser']}={$b['count']}", array_slice($sessBrowsers, 0, 6))) . "\n";
+        }
+        $sessOs = $data['sessions']['os'] ?? [];
+        if ($sessOs) {
+            $s .= "OS: " . implode(', ', array_map(fn($o) => "{$o['os']}={$o['count']}", array_slice($sessOs, 0, 6))) . "\n";
+        }
+        $sessConn = $data['sessions']['connections'] ?? [];
+        if ($sessConn) {
+            $s .= "CONNECTION TYPES: " . implode(', ', array_map(fn($c) => "{$c['connection_type']}={$c['count']}", array_slice($sessConn, 0, 5))) . "\n";
+        }
+        $sessScreens = $data['sessions']['screens'] ?? [];
+        if ($sessScreens) {
+            $s .= "SCREEN RESOLUTIONS: " . implode(', ', array_map(fn($r) => "{$r['screen_resolution']}={$r['count']}", array_slice($sessScreens, 0, 5))) . "\n";
+        }
+
+        // Retention cohorts
+        $cohorts = $data['retention_cohorts'] ?? [];
+        if ($cohorts) {
+            $cohortSummary = [];
+            foreach ($cohorts as $c) {
+                $key = $c['cohort_month'];
+                if (!isset($cohortSummary[$key])) {
+                    $cohortSummary[$key] = ['size' => $c['cohort_size'], 'rates' => []];
+                }
+                $cohortSummary[$key]['rates'][] = "M{$c['months_after']}=" . round($c['retention_rate'], 0) . "%";
+            }
+            $parts = [];
+            foreach (array_slice($cohortSummary, 0, 6, true) as $month => $info) {
+                $parts[] = "{$month}(n={$info['size']}): " . implode(', ', $info['rates']);
+            }
+            $s .= "RETENTION COHORTS: " . implode(' | ', $parts) . "\n";
+        }
+
+        // At-risk subscribers
+        $atRisk = $data['engagement']['at_risk'] ?? [];
+        if ($atRisk) {
+            $critical = array_filter($atRisk, fn($a) => ($a['churn_risk'] ?? '') === 'critical');
+            $high = array_filter($atRisk, fn($a) => ($a['churn_risk'] ?? '') === 'high');
+            $s .= "AT-RISK SUBSCRIBERS: " . count($critical) . " critical, " . count($high) . " high risk.";
+            if ($critical) {
+                $s .= " Critical: " . implode(', ', array_map(fn($a) => "{$a['username']}(score={$a['score']}, {$a['days_since_last_activity']}d inactive)", array_slice(array_values($critical), 0, 5)));
+            }
+            $s .= "\n";
+        }
+
+        // QoE quality distribution
+        $qoeQuality = $qoe['quality_distribution'] ?? [];
+        if ($qoeQuality) {
+            $s .= "QUALITY DISTRIBUTION: " . implode(', ', array_map(fn($q) => "{$q['resolution']}={$q['count']}", array_slice($qoeQuality, 0, 5))) . "\n";
         }
 
         return $s;
