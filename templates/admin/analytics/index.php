@@ -823,37 +823,41 @@
             document.getElementById('seriesInfoTable').innerHTML = '';
         }
 
+        // Channel viewing data — prefer watch history (has duration), fall back to events
+        const channelViews = d.channel_views || [];
         const channels = d.top_channels || [];
-        const channelInfo = d.channel_info || [];
-        const channelStatus = d.channel_status || [];
-        console.log('[Analytics] Channel data:', { top_channels: channels.length, channel_info: channelInfo.length, channel_status: channelStatus.length, content_channels: (d.content||{}).channels });
 
-        if (channels.length) {
+        function fmtDuration(secs) {
+            secs = parseInt(secs) || 0;
+            if (secs < 60) return secs + 's';
+            if (secs < 3600) return Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
+            var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+            return h + 'h ' + m + 'm';
+        }
+
+        if (channelViews.length) {
+            document.getElementById('topChannelsTable').innerHTML = buildTable(
+                ['Channel', 'Viewers', 'Sessions', 'Total Watch Time', 'Avg Session', 'Last Watched'],
+                channelViews.map(r => [
+                    esc(r.title),
+                    fmt(r.unique_viewers),
+                    fmt(r.total_sessions),
+                    fmtDuration(r.total_watch_seconds),
+                    fmtDuration(r.avg_watch_seconds),
+                    r.last_watched ? new Date(r.last_watched).toLocaleDateString() : '-'
+                ])
+            );
+            document.getElementById('channelInfoTable').innerHTML = '';
+        } else if (channels.length) {
             document.getElementById('topChannelsTable').innerHTML = buildTable(
                 ['Channel', 'Views'],
                 channels.map(r => [esc(r.title), fmt(r.views)])
             );
             document.getElementById('channelInfoTable').innerHTML = '';
-        } else if (channelInfo.length) {
-            // No watch data but channels exist — show channel listing
-            const statusCounts = {};
-            channelStatus.forEach(r => { statusCounts[r.status] = parseInt(r.count) || 0; });
-            const statusSummary = Object.entries(statusCounts).map(([s, c]) => c + ' ' + s).join(', ');
-            document.getElementById('topChannelsTable').innerHTML =
-                '<p style="text-align:center;padding:10px;color:#64748b;font-size:0.8rem">No watch data yet' +
-                (statusSummary ? ' &mdash; ' + statusSummary + ' channels' : '') + '</p>';
-            document.getElementById('channelInfoTable').innerHTML =
-                '<h4 style="font-size:0.85rem;color:#94a3b8;margin:8px 0">Channel Listing</h4>' +
-                buildTable(
-                    ['Channel', 'Category', 'Status'],
-                    channelInfo.map(r => [
-                        esc(r.name),
-                        esc(r.category),
-                        '<span style="color:' + (r.status === 'active' ? '#22c55e' : '#f59e0b') + '">' + esc(r.status) + '</span>'
-                    ])
-                );
         } else {
-            document.getElementById('topChannelsTable').innerHTML = '<p style="text-align:center;padding:20px;color:#475569">No channels configured yet</p>';
+            const chCount = (d.content || {}).channels || 0;
+            document.getElementById('topChannelsTable').innerHTML = '<p style="text-align:center;padding:20px;color:#475569">' +
+                (chCount > 0 ? 'No viewing data yet — ' + chCount + ' channels available. Data will appear as subscribers watch live TV.' : 'No channels configured yet') + '</p>';
             document.getElementById('channelInfoTable').innerHTML = '';
         }
 

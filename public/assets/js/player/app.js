@@ -4549,23 +4549,29 @@ const CariApp = (function() {
         let lastSaved = 0;
         let watchStartTracked = false;
         let watchCompleteTracked = false;
+        const isLive = contentType === 'channel';
+        const startedAt = Date.now();
         video.addEventListener('timeupdate', () => {
             const now = Math.floor(video.currentTime);
             const dur = Math.floor(video.duration || 0);
+            const isFiniteDur = isFinite(dur) && dur > 0;
+            // For live streams, track elapsed wall-clock time
+            const elapsed = isLive ? Math.floor((Date.now() - startedAt) / 1000) : now;
             // Track watch_start once playback begins
-            if (!watchStartTracked && now > 2) {
+            if (!watchStartTracked && (isLive ? elapsed > 2 : now > 2)) {
                 watchStartTracked = true;
-                if (typeof CariTracker !== 'undefined') CariTracker.watchStart(contentType, contentId, { duration: dur });
+                if (typeof CariTracker !== 'undefined') CariTracker.watchStart(contentType, contentId, { duration: isFiniteDur ? dur : 0 });
             }
-            // Track watch_complete once past 90%
-            if (!watchCompleteTracked && dur > 0 && now >= dur * 0.9) {
+            // Track watch_complete once past 90% (VOD only, not live)
+            if (!watchCompleteTracked && !isLive && isFiniteDur && now >= dur * 0.9) {
                 watchCompleteTracked = true;
                 if (typeof CariTracker !== 'undefined') CariTracker.watchComplete(contentType, contentId, { duration: dur, progress: now });
             }
-            // Save every 10 seconds
-            if (now > 0 && now - lastSaved >= 10) {
-                lastSaved = now;
-                CariAPI.updateWatchProgress(contentType, contentId, now, dur).catch(() => {});
+            // Save progress every 10 seconds
+            const saveCheck = isLive ? elapsed : now;
+            if (saveCheck > 0 && saveCheck - lastSaved >= 10) {
+                lastSaved = saveCheck;
+                CariAPI.updateWatchProgress(contentType, contentId, elapsed, isFiniteDur ? dur : 0).catch(() => {});
             }
         });
     }

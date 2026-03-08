@@ -327,6 +327,7 @@ class AnalyticsController
             []
         );
 
+        // Top channels from subscriber_events (watch_start events)
         $data['top_channels'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
                 "SELECT ch.name as title, COUNT(*) as views
@@ -338,6 +339,26 @@ class AnalyticsController
                  GROUP BY ch.id, ch.name
                  ORDER BY views DESC
                  LIMIT 10"
+            ),
+            []
+        );
+
+        // Channel viewing data from watch history (progress tracking)
+        $data['channel_views'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT ch.name as title,
+                        COUNT(DISTINCT wh.subscriber_id) as unique_viewers,
+                        COUNT(*) as total_sessions,
+                        SUM(wh.progress_seconds) as total_watch_seconds,
+                        ROUND(AVG(wh.progress_seconds)) as avg_watch_seconds,
+                        MAX(wh.progress_seconds) as max_watch_seconds,
+                        MAX(wh.last_watched_at) as last_watched
+                 FROM subscriber_watch_history wh
+                 JOIN channels ch ON wh.content_id = ch.id
+                 WHERE wh.content_type = 'channel'
+                 GROUP BY ch.id, ch.name
+                 ORDER BY total_sessions DESC
+                 LIMIT 20"
             ),
             []
         );
@@ -562,10 +583,14 @@ class AnalyticsController
             $s .= "TOP TV SHOWS: " . implode(', ', array_map(fn($t) => "{$t['title']}({$t['views']}v/{$t['completions']}c/{$t['episodes_watched']}ep)", array_slice($series, 0, 8))) . "\n";
         }
 
-        // Top channels
+        // Channel viewing
+        $channelViews = $data['channel_views'] ?? [];
+        if ($channelViews) {
+            $s .= "CHANNEL VIEWING: " . implode(', ', array_map(fn($ch) => "{$ch['title']}({$ch['unique_viewers']}viewers/{$ch['total_sessions']}sessions/avg" . round(($ch['avg_watch_seconds'] ?? 0) / 60) . "min)", array_slice($channelViews, 0, 8))) . "\n";
+        }
         $channels = $data['top_channels'] ?? [];
         if ($channels) {
-            $s .= "TOP CHANNELS: " . implode(', ', array_map(fn($ch) => "{$ch['title']}({$ch['views']})", array_slice($channels, 0, 8))) . "\n";
+            $s .= "TOP CHANNELS (events): " . implode(', ', array_map(fn($ch) => "{$ch['title']}({$ch['views']})", array_slice($channels, 0, 8))) . "\n";
         }
 
         // Channel status
