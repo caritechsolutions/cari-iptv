@@ -2,8 +2,8 @@
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<!-- Chart.js Geo plugin for choropleth maps -->
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.6/build/index.umd.min.js"></script>
+<!-- TopoJSON client for geo map -->
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <!-- Marked.js for markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.0/marked.min.js"></script>
 
@@ -153,28 +153,68 @@
     gap: 8px;
 }
 .geo-map-card h3 i { color: #6366f1; font-size: 1rem; }
+.geo-view-btn {
+    background: rgba(15,23,42,0.5);
+    border: 1px solid rgba(99,102,241,0.2);
+    color: #94a3b8;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+.geo-view-btn:hover { color: #e2e8f0; border-color: rgba(99,102,241,0.5); }
+.geo-view-btn.active {
+    background: rgba(99,102,241,0.15);
+    border-color: rgba(99,102,241,0.5);
+    color: #a5b4fc;
+}
 .geo-map-container {
     position: relative;
     width: 100%;
-    min-height: 400px;
 }
-.geo-map-container canvas {
-    max-height: 420px;
-    width: 100% !important;
+.geo-tooltip {
+    position: absolute;
+    background: rgba(15,23,42,0.95);
+    border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    color: #e2e8f0;
+    pointer-events: none;
+    z-index: 100;
+    max-width: 260px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.geo-tooltip .tt-country { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; }
+.geo-tooltip .tt-stats { color: #94a3b8; font-size: 0.75rem; line-height: 1.5; }
+.geo-tooltip .tt-stats span { color: #6366f1; font-weight: 600; }
+#geoMapSvg .country-path {
+    transition: opacity 0.15s, stroke-width 0.15s;
+    cursor: pointer;
+}
+#geoMapSvg .country-path:hover {
+    opacity: 0.85;
+    stroke-width: 1.5;
+    stroke: #a5b4fc;
+}
+#geoMapSvg .country-label {
+    font-size: 8px;
+    fill: #94a3b8;
+    text-anchor: middle;
+    pointer-events: none;
 }
 .geo-map-legend {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     margin-top: 12px;
     font-size: 0.75rem;
     color: #94a3b8;
-}
-.geo-map-legend .gradient-bar {
-    width: 120px;
-    height: 10px;
-    border-radius: 4px;
-    background: linear-gradient(90deg, rgba(99,102,241,0.1), rgba(99,102,241,1));
+    flex-wrap: wrap;
 }
 .geo-country-details {
     display: grid;
@@ -671,14 +711,29 @@
 <!-- Geo Map Audience Visualization -->
 <div class="geo-map-section">
     <div class="geo-map-card">
-        <h3><i class="lucide-map"></i> Audience Geo-Map &mdash; Viewer Distribution by Country</h3>
-        <div class="geo-map-container">
-            <canvas id="geoMapCanvas"></canvas>
+        <h3><i class="lucide-map"></i> Audience Geo-Map &mdash; Viewer Distribution</h3>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+            <button class="geo-view-btn active" data-view="caribbean" onclick="switchGeoView('caribbean')">
+                <i class="lucide-compass"></i> Caribbean &amp; Americas
+            </button>
+            <button class="geo-view-btn" data-view="world" onclick="switchGeoView('world')">
+                <i class="lucide-globe"></i> World View
+            </button>
+        </div>
+        <div class="geo-map-container" id="geoMapContainer">
+            <div id="geoMapSvgWrap" style="width:100%;overflow:hidden;position:relative">
+                <svg id="geoMapSvg" viewBox="0 0 1000 600" style="width:100%;height:auto;background:rgba(15,23,42,0.5);border-radius:8px"></svg>
+            </div>
+            <div id="geoMapTooltip" class="geo-tooltip" style="display:none"></div>
         </div>
         <div class="geo-map-legend">
-            <span>Fewer viewers</span>
-            <div class="gradient-bar"></div>
-            <span>More viewers</span>
+            <span>No viewers</span>
+            <div style="width:16px;height:10px;border-radius:2px;background:rgba(51,65,85,0.5)"></div>
+            <span style="margin-left:12px">Active viewers</span>
+            <div style="width:16px;height:10px;border-radius:2px;background:rgba(99,102,241,0.4)"></div>
+            <div style="width:16px;height:10px;border-radius:2px;background:rgba(99,102,241,0.7)"></div>
+            <div style="width:16px;height:10px;border-radius:2px;background:rgba(99,102,241,1)"></div>
+            <span>Most viewers</span>
         </div>
         <div class="geo-country-details" id="geoCountryDetails">
             <p style="color:#475569;text-align:center;grid-column:1/-1;padding:20px">Loading viewer data...</p>
@@ -698,16 +753,6 @@
     Chart.defaults.borderColor = 'rgba(51,65,85,0.5)';
     Chart.defaults.plugins.legend.labels.boxWidth = 12;
     Chart.defaults.plugins.legend.labels.padding = 12;
-
-    // Register chartjs-chart-geo components for choropleth map
-    if (typeof ChartGeo !== 'undefined') {
-        Chart.register(
-            ChartGeo.ChoroplethController,
-            ChartGeo.GeoFeature,
-            ChartGeo.ColorScale,
-            ChartGeo.ProjectionScale
-        );
-    }
 
     const COLORS = ['#6366f1','#8b5cf6','#a855f7','#ec4899','#f43f5e','#f59e0b','#22c55e','#14b8a6','#3b82f6','#06b6d4'];
 
@@ -916,53 +961,13 @@
         });
     }
 
-    // ---- Geo Map ----
-    let geoMapInstance = null;
+    // ---- Geo Map (SVG-based with Caribbean focus) ----
+    let geoTopoData = null;
+    let geoCurrentView = 'caribbean';
+    let geoViewerData = {};
 
-    // Country name/code to ISO 3166-1 numeric code mapping (for topojson matching)
-    // Supports full names, ISO alpha-2, and ISO alpha-3 codes
-    const COUNTRY_NAME_TO_ID = {
-        // Full names
-        'Afghanistan':4,'Albania':8,'Algeria':12,'Andorra':20,'Angola':24,'Antigua and Barbuda':28,
-        'Argentina':32,'Armenia':51,'Australia':36,'Austria':40,'Azerbaijan':31,'Bahamas':44,
-        'Bahrain':48,'Bangladesh':50,'Barbados':52,'Belarus':112,'Belgium':56,'Belize':84,
-        'Benin':204,'Bhutan':64,'Bolivia':68,'Bosnia and Herzegovina':70,'Botswana':72,
-        'Brazil':76,'Brunei':96,'Bulgaria':100,'Burkina Faso':854,'Burundi':108,'Cambodia':116,
-        'Cameroon':120,'Canada':124,'Cape Verde':132,'Central African Republic':140,'Chad':148,
-        'Chile':152,'China':156,'Colombia':170,'Comoros':174,'Congo':178,
-        'Democratic Republic of the Congo':180,'Costa Rica':188,'Croatia':191,
-        'Cuba':192,'Cyprus':196,'Czech Republic':203,'Czechia':203,'Denmark':208,'Djibouti':262,
-        'Dominica':212,'Dominican Republic':214,'East Timor':626,'Ecuador':218,'Egypt':818,
-        'El Salvador':222,'Equatorial Guinea':226,'Eritrea':232,'Estonia':233,'Ethiopia':231,
-        'Fiji':242,'Finland':246,'France':250,'Gabon':266,'Gambia':270,'Georgia':268,
-        'Germany':276,'Ghana':288,'Greece':300,'Grenada':308,'Guatemala':320,'Guinea':324,
-        'Guinea-Bissau':624,'Guyana':328,'Haiti':332,'Honduras':340,'Hungary':348,
-        'Iceland':352,'India':356,'Indonesia':360,'Iran':364,'Iraq':368,'Ireland':372,
-        'Israel':376,'Italy':380,'Ivory Coast':384,"Cote d'Ivoire":384,'Jamaica':388,'Japan':392,
-        'Jordan':400,'Kazakhstan':398,'Kenya':404,'Kiribati':296,'Kosovo':0,
-        'Kuwait':414,'Kyrgyzstan':417,'Laos':418,'Latvia':428,'Lebanon':422,'Lesotho':426,
-        'Liberia':430,'Libya':434,'Liechtenstein':438,'Lithuania':440,'Luxembourg':442,
-        'Madagascar':450,'Malawi':454,'Malaysia':458,'Maldives':462,'Mali':466,'Malta':470,
-        'Marshall Islands':584,'Mauritania':478,'Mauritius':480,'Mexico':484,'Micronesia':583,
-        'Moldova':498,'Monaco':492,'Mongolia':496,'Montenegro':499,'Morocco':504,'Mozambique':508,
-        'Myanmar':104,'Namibia':516,'Nauru':520,'Nepal':524,'Netherlands':528,
-        'New Zealand':554,'Nicaragua':558,'Niger':562,'Nigeria':566,'North Korea':408,
-        'North Macedonia':807,'Norway':578,'Oman':512,'Pakistan':586,'Palau':585,
-        'Palestine':275,'Panama':591,'Papua New Guinea':598,'Paraguay':600,'Peru':604,
-        'Philippines':608,'Poland':616,'Portugal':620,'Qatar':634,'Romania':642,
-        'Russia':643,'Rwanda':646,'Saint Kitts and Nevis':659,'Saint Lucia':662,
-        'Saint Vincent and the Grenadines':670,'Samoa':882,'San Marino':674,
-        'Sao Tome and Principe':678,'Saudi Arabia':682,'Senegal':686,'Serbia':688,
-        'Seychelles':690,'Sierra Leone':694,'Singapore':702,'Slovakia':703,'Slovenia':705,
-        'Solomon Islands':90,'Somalia':706,'South Africa':710,'South Korea':410,
-        'South Sudan':728,'Spain':724,'Sri Lanka':144,'Sudan':729,'Suriname':740,
-        'Sweden':752,'Switzerland':756,'Syria':760,'Taiwan':158,'Tajikistan':762,
-        'Tanzania':834,'Thailand':764,'Togo':768,'Tonga':776,'Trinidad and Tobago':780,
-        'Tunisia':788,'Turkey':792,'Turkmenistan':795,'Tuvalu':798,'Uganda':800,
-        'Ukraine':804,'United Arab Emirates':784,'United Kingdom':826,'United States':840,
-        'Uruguay':858,'Uzbekistan':860,'Vanuatu':548,'Vatican City':336,'Venezuela':862,
-        'Vietnam':704,'Yemen':887,'Zambia':894,'Zimbabwe':716,
-        // ISO alpha-2 codes (Caribbean + common)
+    // Country code/name to numeric ID mapping
+    const C2N = {
         'AF':4,'AL':8,'DZ':12,'AD':20,'AO':24,'AG':28,'AR':32,'AM':51,'AU':36,'AT':40,
         'AZ':31,'BS':44,'BH':48,'BD':50,'BB':52,'BY':112,'BE':56,'BZ':84,'BJ':204,'BT':64,
         'BO':68,'BA':70,'BW':72,'BR':76,'BN':96,'BG':100,'BF':854,'BI':108,'KH':116,
@@ -985,89 +990,300 @@
         'TZ':834,'TH':764,'TG':768,'TO':776,'TT':780,'TN':788,'TR':792,'TM':795,'TV':798,
         'UG':800,'UA':804,'AE':784,'GB':826,'US':840,'UY':858,'UZ':860,'VU':548,'VA':336,
         'VE':862,'VN':704,'YE':887,'ZM':894,'ZW':716,
-        // Caribbean territories
-        'AI':660,'AW':533,'BM':60,'KY':136,'CW':531,'GP':312,'MQ':474,'MS':500,
-        'PR':630,'SX':534,'TC':796,'VI':850
+        // Full names
+        'Afghanistan':4,'Albania':8,'Algeria':12,'Angola':24,'Antigua and Barbuda':28,
+        'Argentina':32,'Armenia':51,'Australia':36,'Austria':40,'Azerbaijan':31,'Bahamas':44,
+        'Bahrain':48,'Bangladesh':50,'Barbados':52,'Belarus':112,'Belgium':56,'Belize':84,
+        'Bolivia':68,'Bosnia and Herzegovina':70,'Botswana':72,'Brazil':76,'Bulgaria':100,
+        'Burkina Faso':854,'Burundi':108,'Cambodia':116,'Cameroon':120,'Canada':124,
+        'Central African Republic':140,'Chad':148,'Chile':152,'China':156,'Colombia':170,
+        'Congo':178,'Democratic Republic of the Congo':180,'Costa Rica':188,'Croatia':191,
+        'Cuba':192,'Cyprus':196,'Czech Republic':203,'Czechia':203,'Denmark':208,
+        'Dominica':212,'Dominican Republic':214,'Ecuador':218,'Egypt':818,'El Salvador':222,
+        'Estonia':233,'Ethiopia':231,'Fiji':242,'Finland':246,'France':250,'Gabon':266,
+        'Georgia':268,'Germany':276,'Ghana':288,'Greece':300,'Grenada':308,'Guatemala':320,
+        'Guinea':324,'Guyana':328,'Haiti':332,'Honduras':340,'Hungary':348,'Iceland':352,
+        'India':356,'Indonesia':360,'Iran':364,'Iraq':368,'Ireland':372,'Israel':376,
+        'Italy':380,'Ivory Coast':384,"Cote d'Ivoire":384,'Jamaica':388,'Japan':392,
+        'Jordan':400,'Kazakhstan':398,'Kenya':404,'Kuwait':414,'Laos':418,'Latvia':428,
+        'Lebanon':422,'Libya':434,'Lithuania':440,'Luxembourg':442,'Madagascar':450,
+        'Malaysia':458,'Mali':466,'Mexico':484,'Moldova':498,'Mongolia':496,'Montenegro':499,
+        'Morocco':504,'Mozambique':508,'Myanmar':104,'Namibia':516,'Nepal':524,
+        'Netherlands':528,'New Zealand':554,'Nicaragua':558,'Niger':562,'Nigeria':566,
+        'North Korea':408,'North Macedonia':807,'Norway':578,'Oman':512,'Pakistan':586,
+        'Palestine':275,'Panama':591,'Papua New Guinea':598,'Paraguay':600,'Peru':604,
+        'Philippines':608,'Poland':616,'Portugal':620,'Qatar':634,'Romania':642,'Russia':643,
+        'Rwanda':646,'Saint Kitts and Nevis':659,'Saint Lucia':662,
+        'Saint Vincent and the Grenadines':670,'Saudi Arabia':682,'Senegal':686,'Serbia':688,
+        'Sierra Leone':694,'Singapore':702,'Slovakia':703,'Slovenia':705,'Somalia':706,
+        'South Africa':710,'South Korea':410,'South Sudan':728,'Spain':724,'Sri Lanka':144,
+        'Sudan':729,'Suriname':740,'Sweden':752,'Switzerland':756,'Syria':760,'Taiwan':158,
+        'Tanzania':834,'Thailand':764,'Trinidad and Tobago':780,'Tunisia':788,'Turkey':792,
+        'Uganda':800,'Ukraine':804,'United Arab Emirates':784,'United Kingdom':826,
+        'United States':840,'Uruguay':858,'Uzbekistan':860,'Venezuela':862,'Vietnam':704,
+        'Yemen':887,'Zambia':894,'Zimbabwe':716
     };
 
-    // Reverse mapping: numeric ID to display name
-    const NUMERIC_TO_DISPLAY = {
+    // Numeric ID to display name
+    const N2D = {
         4:'Afghanistan',8:'Albania',12:'Algeria',20:'Andorra',24:'Angola',28:'Antigua & Barbuda',
-        32:'Argentina',51:'Armenia',36:'Australia',40:'Austria',31:'Azerbaijan',44:'Bahamas',
-        48:'Bahrain',50:'Bangladesh',52:'Barbados',112:'Belarus',56:'Belgium',84:'Belize',
-        204:'Benin',64:'Bhutan',68:'Bolivia',70:'Bosnia & Herzegovina',72:'Botswana',
-        76:'Brazil',96:'Brunei',100:'Bulgaria',854:'Burkina Faso',108:'Burundi',116:'Cambodia',
-        120:'Cameroon',124:'Canada',132:'Cape Verde',140:'Central African Republic',148:'Chad',
-        152:'Chile',156:'China',170:'Colombia',174:'Comoros',178:'Congo',180:'DR Congo',
-        188:'Costa Rica',191:'Croatia',192:'Cuba',196:'Cyprus',203:'Czechia',208:'Denmark',
-        262:'Djibouti',212:'Dominica',214:'Dominican Republic',626:'East Timor',218:'Ecuador',
-        818:'Egypt',222:'El Salvador',226:'Equatorial Guinea',232:'Eritrea',233:'Estonia',
-        231:'Ethiopia',242:'Fiji',246:'Finland',250:'France',266:'Gabon',270:'Gambia',
-        268:'Georgia',276:'Germany',288:'Ghana',300:'Greece',308:'Grenada',320:'Guatemala',
-        324:'Guinea',624:'Guinea-Bissau',328:'Guyana',332:'Haiti',340:'Honduras',348:'Hungary',
-        352:'Iceland',356:'India',360:'Indonesia',364:'Iran',368:'Iraq',372:'Ireland',
-        376:'Israel',380:'Italy',384:'Ivory Coast',388:'Jamaica',392:'Japan',400:'Jordan',
-        398:'Kazakhstan',404:'Kenya',296:'Kiribati',414:'Kuwait',417:'Kyrgyzstan',418:'Laos',
-        428:'Latvia',422:'Lebanon',426:'Lesotho',430:'Liberia',434:'Libya',438:'Liechtenstein',
-        440:'Lithuania',442:'Luxembourg',450:'Madagascar',454:'Malawi',458:'Malaysia',
-        462:'Maldives',466:'Mali',470:'Malta',584:'Marshall Islands',478:'Mauritania',
-        480:'Mauritius',484:'Mexico',583:'Micronesia',498:'Moldova',492:'Monaco',496:'Mongolia',
-        499:'Montenegro',504:'Morocco',508:'Mozambique',104:'Myanmar',516:'Namibia',520:'Nauru',
-        524:'Nepal',528:'Netherlands',554:'New Zealand',558:'Nicaragua',562:'Niger',566:'Nigeria',
-        408:'North Korea',807:'North Macedonia',578:'Norway',512:'Oman',586:'Pakistan',
-        585:'Palau',275:'Palestine',591:'Panama',598:'Papua New Guinea',600:'Paraguay',
-        604:'Peru',608:'Philippines',616:'Poland',620:'Portugal',634:'Qatar',642:'Romania',
-        643:'Russia',646:'Rwanda',659:'St Kitts & Nevis',662:'Saint Lucia',
-        670:'St Vincent & Grenadines',882:'Samoa',674:'San Marino',678:'Sao Tome & Principe',
-        682:'Saudi Arabia',686:'Senegal',688:'Serbia',690:'Seychelles',694:'Sierra Leone',
-        702:'Singapore',703:'Slovakia',705:'Slovenia',90:'Solomon Islands',706:'Somalia',
-        710:'South Africa',410:'South Korea',728:'South Sudan',724:'Spain',144:'Sri Lanka',
-        729:'Sudan',740:'Suriname',752:'Sweden',756:'Switzerland',760:'Syria',158:'Taiwan',
-        762:'Tajikistan',834:'Tanzania',764:'Thailand',768:'Togo',776:'Tonga',
-        780:'Trinidad & Tobago',788:'Tunisia',792:'Turkey',795:'Turkmenistan',798:'Tuvalu',
-        800:'Uganda',804:'Ukraine',784:'UAE',826:'United Kingdom',840:'United States',
-        858:'Uruguay',860:'Uzbekistan',548:'Vanuatu',336:'Vatican City',862:'Venezuela',
-        704:'Vietnam',887:'Yemen',894:'Zambia',716:'Zimbabwe'
+        32:'Argentina',36:'Australia',40:'Austria',44:'Bahamas',48:'Bahrain',50:'Bangladesh',
+        52:'Barbados',56:'Belgium',84:'Belize',68:'Bolivia',70:'Bosnia & Herzegovina',
+        72:'Botswana',76:'Brazil',100:'Bulgaria',120:'Cameroon',124:'Canada',
+        140:'Central African Republic',148:'Chad',152:'Chile',156:'China',170:'Colombia',
+        178:'Congo',180:'DR Congo',188:'Costa Rica',191:'Croatia',192:'Cuba',196:'Cyprus',
+        203:'Czechia',208:'Denmark',212:'Dominica',214:'Dominican Republic',218:'Ecuador',
+        818:'Egypt',222:'El Salvador',233:'Estonia',231:'Ethiopia',242:'Fiji',246:'Finland',
+        250:'France',276:'Germany',288:'Ghana',300:'Greece',308:'Grenada',320:'Guatemala',
+        324:'Guinea',328:'Guyana',332:'Haiti',340:'Honduras',348:'Hungary',352:'Iceland',
+        356:'India',360:'Indonesia',364:'Iran',368:'Iraq',372:'Ireland',376:'Israel',
+        380:'Italy',384:'Ivory Coast',388:'Jamaica',392:'Japan',400:'Jordan',398:'Kazakhstan',
+        404:'Kenya',414:'Kuwait',428:'Latvia',422:'Lebanon',434:'Libya',440:'Lithuania',
+        442:'Luxembourg',450:'Madagascar',458:'Malaysia',466:'Mali',484:'Mexico',498:'Moldova',
+        496:'Mongolia',499:'Montenegro',504:'Morocco',508:'Mozambique',104:'Myanmar',
+        516:'Namibia',524:'Nepal',528:'Netherlands',554:'New Zealand',558:'Nicaragua',
+        562:'Niger',566:'Nigeria',578:'Norway',512:'Oman',586:'Pakistan',591:'Panama',
+        598:'Papua New Guinea',600:'Paraguay',604:'Peru',608:'Philippines',616:'Poland',
+        620:'Portugal',634:'Qatar',642:'Romania',643:'Russia',646:'Rwanda',
+        659:'St Kitts & Nevis',662:'Saint Lucia',670:'St Vincent & Grenadines',
+        682:'Saudi Arabia',686:'Senegal',688:'Serbia',702:'Singapore',703:'Slovakia',
+        705:'Slovenia',706:'Somalia',710:'South Africa',410:'South Korea',728:'South Sudan',
+        724:'Spain',144:'Sri Lanka',729:'Sudan',740:'Suriname',752:'Sweden',756:'Switzerland',
+        760:'Syria',158:'Taiwan',834:'Tanzania',764:'Thailand',780:'Trinidad & Tobago',
+        788:'Tunisia',792:'Turkey',800:'Uganda',804:'Ukraine',784:'UAE',826:'United Kingdom',
+        840:'United States',858:'Uruguay',862:'Venezuela',704:'Vietnam',887:'Yemen',
+        894:'Zambia',716:'Zimbabwe'
+    };
+
+    // Mercator projection helpers
+    function mercX(lon, w, lonMin, lonMax) {
+        return ((lon - lonMin) / (lonMax - lonMin)) * w;
+    }
+    function mercY(lat, h, latMin, latMax) {
+        function toMerc(l) { return Math.log(Math.tan(Math.PI / 4 + (l * Math.PI / 180) / 2)); }
+        var yMin = toMerc(latMin), yMax = toMerc(latMax);
+        return h - ((toMerc(lat) - yMin) / (yMax - yMin)) * h;
+    }
+
+    // Convert GeoJSON coordinates to SVG path with Mercator projection
+    function geoToSvgPath(coords, w, h, lonMin, lonMax, latMin, latMax) {
+        var d = '';
+        coords.forEach(function(ring) {
+            ring.forEach(function(pt, i) {
+                var x = mercX(pt[0], w, lonMin, lonMax);
+                var y = mercY(pt[1], h, latMin, latMax);
+                d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+            });
+            d += 'Z';
+        });
+        return d;
+    }
+
+    // View configurations
+    const GEO_VIEWS = {
+        caribbean: { lonMin: -100, lonMax: -55, latMin: 5, latMax: 35, label: 'Caribbean & Central America' },
+        world: { lonMin: -180, lonMax: 180, latMin: -60, latMax: 85, label: 'World' }
+    };
+
+    function renderSvgMap(viewKey) {
+        var svg = document.getElementById('geoMapSvg');
+        if (!svg || !geoTopoData) return;
+
+        var view = GEO_VIEWS[viewKey];
+        var W = 1000, H = viewKey === 'world' ? 500 : 600;
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+        // Clear previous
+        svg.innerHTML = '';
+
+        // Draw ocean background
+        var ocean = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        ocean.setAttribute('width', W);
+        ocean.setAttribute('height', H);
+        ocean.setAttribute('fill', 'rgba(15,23,42,0.3)');
+        svg.appendChild(ocean);
+
+        var features = topojson.feature(geoTopoData, geoTopoData.objects.countries).features;
+        var maxViewers = Math.max(1, ...Object.values(geoViewerData).map(function(v) { return v.viewers; }));
+        var tooltip = document.getElementById('geoMapTooltip');
+
+        features.forEach(function(f) {
+            var numId = parseInt(f.id);
+            var name = N2D[numId] || f.properties.name || '';
+            var vData = geoViewerData[numId];
+            var viewers = vData ? vData.viewers : 0;
+
+            // Get color
+            var fill;
+            if (viewers > 0) {
+                var intensity = Math.max(0.3, viewers / maxViewers);
+                fill = 'rgba(99,102,241,' + intensity.toFixed(2) + ')';
+            } else {
+                fill = 'rgba(51,65,85,0.5)';
+            }
+
+            // Process geometry
+            var geom = f.geometry;
+            var allCoords = [];
+            if (geom.type === 'Polygon') {
+                allCoords = [geom.coordinates];
+            } else if (geom.type === 'MultiPolygon') {
+                allCoords = geom.coordinates;
+            }
+
+            allCoords.forEach(function(polyCoords) {
+                var d = geoToSvgPath(polyCoords, W, H, view.lonMin, view.lonMax, view.latMin, view.latMax);
+                if (!d || d.length < 5) return;
+
+                var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d);
+                path.setAttribute('fill', fill);
+                path.setAttribute('stroke', viewers > 0 ? 'rgba(165,180,252,0.6)' : 'rgba(71,85,105,0.4)');
+                path.setAttribute('stroke-width', viewers > 0 ? '1' : '0.5');
+                path.setAttribute('class', 'country-path');
+                path.setAttribute('data-id', numId);
+                path.setAttribute('data-name', name);
+
+                // Tooltip events
+                path.addEventListener('mouseenter', function(e) {
+                    var html = '<div class="tt-country">' + esc(name) + '</div>';
+                    if (vData) {
+                        html += '<div class="tt-stats">';
+                        html += '<span>' + vData.viewers + '</span> viewer' + (vData.viewers !== 1 ? 's' : '') + '<br>';
+                        html += 'Live TV: <span>' + vData.live_tv + '</span> &bull; ';
+                        html += 'Movies: <span>' + vData.movies + '</span> &bull; ';
+                        html += 'Series: <span>' + vData.series + '</span>';
+                        html += '</div>';
+                    } else {
+                        html += '<div class="tt-stats">No viewer data</div>';
+                    }
+                    tooltip.innerHTML = html;
+                    tooltip.style.display = 'block';
+                });
+                path.addEventListener('mousemove', function(e) {
+                    var rect = svg.closest('.geo-map-container').getBoundingClientRect();
+                    tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+                    tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+                });
+                path.addEventListener('mouseleave', function() {
+                    tooltip.style.display = 'none';
+                });
+
+                svg.appendChild(path);
+            });
+
+            // Add labels for Caribbean view countries with viewers
+            if (viewKey === 'caribbean' && viewers > 0 && f.geometry) {
+                var centroid = getCentroid(f.geometry);
+                if (centroid) {
+                    var lx = mercX(centroid[0], W, view.lonMin, view.lonMax);
+                    var ly = mercY(centroid[1], H, view.latMin, view.latMax);
+                    if (lx > 0 && lx < W && ly > 0 && ly < H) {
+                        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        label.setAttribute('x', lx);
+                        label.setAttribute('y', ly - 6);
+                        label.setAttribute('class', 'country-label');
+                        label.setAttribute('style', 'font-size:9px;fill:#a5b4fc;font-weight:600');
+                        label.textContent = name;
+                        svg.appendChild(label);
+
+                        // Viewer count badge
+                        var badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        badge.setAttribute('x', lx);
+                        badge.setAttribute('y', ly + 6);
+                        badge.setAttribute('class', 'country-label');
+                        badge.setAttribute('style', 'font-size:7px;fill:#6366f1');
+                        badge.textContent = viewers + ' viewer' + (viewers !== 1 ? 's' : '');
+                        svg.appendChild(badge);
+                    }
+                }
+            }
+        });
+
+        // Add grid lines for Caribbean view
+        if (viewKey === 'caribbean') {
+            for (var lon = -100; lon <= -55; lon += 5) {
+                var x = mercX(lon, W, view.lonMin, view.lonMax);
+                var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x); line.setAttribute('y1', 0);
+                line.setAttribute('x2', x); line.setAttribute('y2', H);
+                line.setAttribute('stroke', 'rgba(51,65,85,0.15)');
+                line.setAttribute('stroke-width', '0.5');
+                svg.insertBefore(line, svg.children[1]);
+            }
+            for (var lat = 5; lat <= 35; lat += 5) {
+                var y = mercY(lat, H, view.latMin, view.latMax);
+                var line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line2.setAttribute('x1', 0); line2.setAttribute('y1', y);
+                line2.setAttribute('x2', W); line2.setAttribute('y2', y);
+                line2.setAttribute('stroke', 'rgba(51,65,85,0.15)');
+                line2.setAttribute('stroke-width', '0.5');
+                svg.insertBefore(line2, svg.children[1]);
+            }
+        }
+    }
+
+    function getCentroid(geometry) {
+        var coords = [];
+        if (geometry.type === 'Polygon') {
+            coords = geometry.coordinates[0];
+        } else if (geometry.type === 'MultiPolygon') {
+            // Use the largest polygon
+            var maxLen = 0;
+            geometry.coordinates.forEach(function(poly) {
+                if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; }
+            });
+        }
+        if (coords.length === 0) return null;
+        var sumX = 0, sumY = 0;
+        coords.forEach(function(p) { sumX += p[0]; sumY += p[1]; });
+        return [sumX / coords.length, sumY / coords.length];
+    }
+
+    // Global function for view switching
+    window.switchGeoView = function(viewKey) {
+        geoCurrentView = viewKey;
+        document.querySelectorAll('.geo-view-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-view') === viewKey);
+        });
+        renderSvgMap(viewKey);
     };
 
     async function renderGeoMap(d) {
-        const viewerCountries = d.viewer_countries || [];
-        const countryChannels = d.country_top_channels || [];
-        const countryCats = d.country_top_categories || [];
-        const detailsEl = document.getElementById('geoCountryDetails');
+        var viewerCountries = d.viewer_countries || [];
+        var countryChannels = d.country_top_channels || [];
+        var countryCats = d.country_top_categories || [];
+        var detailsEl = document.getElementById('geoCountryDetails');
 
-        // Build per-country channel lookup
-        const channelsByCountry = {};
-        countryChannels.forEach(r => {
+        // Build per-country channel/category lookups
+        var channelsByCountry = {}, catsByCountry = {};
+        countryChannels.forEach(function(r) {
             if (!channelsByCountry[r.country]) channelsByCountry[r.country] = [];
             channelsByCountry[r.country].push({ name: r.channel_name, watches: parseInt(r.watches) || 0 });
         });
-
-        // Build per-country category lookup
-        const catsByCountry = {};
-        countryCats.forEach(r => {
+        countryCats.forEach(function(r) {
             if (!catsByCountry[r.country]) catsByCountry[r.country] = [];
             catsByCountry[r.country].push({ name: r.category, watches: parseInt(r.watches) || 0 });
         });
 
         // Render country detail cards
         if (viewerCountries.length === 0) {
-            detailsEl.innerHTML = '<p style="color:#475569;text-align:center;grid-column:1/-1;padding:20px">No viewer data yet. Viewing data will appear once subscribers start watching content.</p>';
+            detailsEl.innerHTML = '<p style="color:#475569;text-align:center;grid-column:1/-1;padding:20px">No viewer data yet. Data appears once subscribers watch content.</p>';
         } else {
-            let html = '';
-            viewerCountries.forEach(c => {
-                const viewers = parseInt(c.viewers) || 0;
-                const total = parseInt(c.total_watches) || 0;
-                const liveTv = parseInt(c.live_tv_watches) || 0;
-                const movies = parseInt(c.movie_watches) || 0;
-                const series = parseInt(c.series_watches) || 0;
-                const topChans = (channelsByCountry[c.country] || []).slice(0, 3);
-                const topCats = (catsByCountry[c.country] || []).slice(0, 3);
+            var html = '';
+            viewerCountries.forEach(function(c) {
+                var viewers = parseInt(c.viewers) || 0;
+                var liveTv = parseInt(c.live_tv_watches) || 0;
+                var movies = parseInt(c.movie_watches) || 0;
+                var series = parseInt(c.series_watches) || 0;
+                var topChans = (channelsByCountry[c.country] || []).slice(0, 3);
+                var topCats = (catsByCountry[c.country] || []).slice(0, 3);
+
+                var numId = C2N[c.country];
+                var displayName = (numId !== undefined && N2D[numId]) ? N2D[numId] : c.country;
 
                 html += '<div class="country-detail-card">';
                 html += '<div class="country-header">';
-                const numId = COUNTRY_NAME_TO_ID[c.country];
-                const displayName = (numId !== undefined && NUMERIC_TO_DISPLAY[numId]) ? NUMERIC_TO_DISPLAY[numId] : c.country;
                 html += '<span class="country-name">' + esc(displayName) + '</span>';
                 html += '<span class="country-viewers">' + viewers + ' viewer' + (viewers !== 1 ? 's' : '') + '</span>';
                 html += '</div>';
@@ -1077,19 +1293,13 @@
                 html += '<div class="stat-item"><div class="stat-value" style="color:#a855f7">' + series + '</div><div class="stat-label">Series</div></div>';
                 html += '</div>';
                 if (topChans.length) {
-                    html += '<div class="country-breakdown">';
-                    html += '<div style="color:#94a3b8;font-weight:600;margin-bottom:4px">Top Channels</div>';
-                    topChans.forEach(ch => {
-                        html += '<div class="breakdown-row"><span>' + esc(ch.name) + '</span><span style="color:#6366f1">' + ch.watches + '</span></div>';
-                    });
+                    html += '<div class="country-breakdown"><div style="color:#94a3b8;font-weight:600;margin-bottom:4px">Top Channels</div>';
+                    topChans.forEach(function(ch) { html += '<div class="breakdown-row"><span>' + esc(ch.name) + '</span><span style="color:#6366f1">' + ch.watches + '</span></div>'; });
                     html += '</div>';
                 }
                 if (topCats.length) {
-                    html += '<div class="country-breakdown" style="border-top:1px solid rgba(99,102,241,0.1);padding-top:8px;margin-top:6px">';
-                    html += '<div style="color:#94a3b8;font-weight:600;margin-bottom:4px">Top Categories</div>';
-                    topCats.forEach(cat => {
-                        html += '<div class="breakdown-row"><span>' + esc(cat.name) + '</span><span style="color:#8b5cf6">' + cat.watches + '</span></div>';
-                    });
+                    html += '<div class="country-breakdown" style="border-top:1px solid rgba(99,102,241,0.1);padding-top:8px;margin-top:6px"><div style="color:#94a3b8;font-weight:600;margin-bottom:4px">Top Categories</div>';
+                    topCats.forEach(function(cat) { html += '<div class="breakdown-row"><span>' + esc(cat.name) + '</span><span style="color:#8b5cf6">' + cat.watches + '</span></div>'; });
                     html += '</div>';
                 }
                 html += '</div>';
@@ -1097,104 +1307,30 @@
             detailsEl.innerHTML = html;
         }
 
-        // Build country viewer lookup for choropleth — map DB values to numeric IDs
-        const viewersByNumericId = {};
-        const viewerDataByNumericId = {};
-        viewerCountries.forEach(c => {
-            const numId = COUNTRY_NAME_TO_ID[c.country];
+        // Build viewer data indexed by numeric ID
+        geoViewerData = {};
+        viewerCountries.forEach(function(c) {
+            var numId = C2N[c.country];
             if (numId !== undefined) {
-                viewersByNumericId[numId] = parseInt(c.viewers) || 0;
-                viewerDataByNumericId[numId] = c;
+                geoViewerData[numId] = {
+                    viewers: parseInt(c.viewers) || 0,
+                    live_tv: parseInt(c.live_tv_watches) || 0,
+                    movies: parseInt(c.movie_watches) || 0,
+                    series: parseInt(c.series_watches) || 0
+                };
             }
         });
 
-        // Load world topojson and render choropleth
+        // Load topojson (higher resolution 50m for better Caribbean islands)
         try {
-            const resp = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+            var resp = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json');
             if (!resp.ok) throw new Error('Failed to load map data');
-            const topoData = await resp.json();
-            const geoFeatures = ChartGeo.topojson.feature(topoData, topoData.objects.countries).features;
-
-            // Map features to data points
-            const maxViewers = Math.max(1, ...Object.values(viewersByNumericId));
-            const mapData = geoFeatures.map(f => {
-                const numId = parseInt(f.id);
-                const displayName = NUMERIC_TO_DISPLAY[numId] || f.properties.name || 'Unknown';
-                const viewers = viewersByNumericId[numId] || 0;
-                return { feature: f, value: viewers, countryName: displayName };
-            });
-
-            const canvas = document.getElementById('geoMapCanvas');
-            if (!canvas) return;
-
-            if (geoMapInstance) geoMapInstance.destroy();
-            geoMapInstance = new Chart(canvas.getContext('2d'), {
-                type: 'choropleth',
-                data: {
-                    labels: mapData.map(d => d.countryName),
-                    datasets: [{
-                        label: 'Viewers',
-                        outline: geoFeatures,
-                        data: mapData,
-                        borderColor: 'rgba(71,85,105,0.6)',
-                        borderWidth: 0.5,
-                    }],
-                },
-                options: {
-                    showOutline: true,
-                    showGraticule: false,
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(ctx) {
-                                    const v = ctx.raw?.value || 0;
-                                    const name = ctx.raw?.countryName || 'Unknown';
-                                    if (v === 0) return name + ': No viewers';
-                                    const numId = parseInt(ctx.raw?.feature?.id);
-                                    const cData = viewerDataByNumericId[numId];
-                                    if (!cData) return name + ': ' + v + ' viewer(s)';
-                                    return [
-                                        name + ': ' + v + ' viewer(s)',
-                                        'Live TV: ' + (parseInt(cData.live_tv_watches) || 0) + ' | Movies: ' + (parseInt(cData.movie_watches) || 0) + ' | Series: ' + (parseInt(cData.series_watches) || 0)
-                                    ];
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        projection: {
-                            axis: 'x',
-                            projection: 'equalEarth'
-                        },
-                        color: {
-                            axis: 'x',
-                            quantize: 5,
-                            interpolate: function(v) {
-                                if (v === 0) return 'rgba(51,65,85,0.4)';
-                                var r = Math.round(99 + (99 - 99) * v);
-                                var g = Math.round(102 + (102 - 102) * v);
-                                var b = Math.round(241 + (241 - 241) * v);
-                                var a = 0.15 + v * 0.85;
-                                return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
-                            },
-                            missing: 'rgba(51,65,85,0.4)'
-                        }
-                    },
-                },
-            });
+            geoTopoData = await resp.json();
+            renderSvgMap(geoCurrentView);
         } catch (e) {
             console.error('[Analytics] Geo map failed:', e);
-            const canvas = document.getElementById('geoMapCanvas');
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#475569';
-                ctx.font = '14px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Map visualization unavailable. Country data shown below.', canvas.width / 2, canvas.height / 2);
-            }
+            document.getElementById('geoMapSvgWrap').innerHTML =
+                '<div style="text-align:center;padding:40px;color:#475569">Map visualization unavailable. Country data shown below.</div>';
         }
     }
 
