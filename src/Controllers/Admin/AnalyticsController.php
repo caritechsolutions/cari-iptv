@@ -141,6 +141,7 @@ class AnalyticsController
         $reply = $aiService->complete($prompt, [
             'max_tokens' => 1500,
             'temperature' => 0.6,
+            'timeout' => 120,
         ]);
 
         if (!$reply) {
@@ -332,6 +333,35 @@ class AnalyticsController
                  GROUP BY ch.id, ch.name
                  ORDER BY views DESC
                  LIMIT 10"
+            ),
+            []
+        );
+
+        $data['top_series'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT s.title, COUNT(*) as views,
+                        SUM(e.event_type = 'watch_complete') as completions
+                 FROM subscriber_events e
+                 JOIN series s ON e.content_id = s.id
+                 WHERE e.content_type = 'series'
+                   AND e.event_type IN ('watch_start', 'watch_complete')
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY s.id, s.title
+                 ORDER BY views DESC
+                 LIMIT 10"
+            ),
+            []
+        );
+
+        // --- Series info (always available, independent of watch events) ---
+        $data['series_info'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT s.title, s.status, s.year,
+                        COALESCE(c.name, 'Uncategorized') as category
+                 FROM series s
+                 LEFT JOIN categories c ON s.category_id = c.id
+                 ORDER BY s.title ASC
+                 LIMIT 20"
             ),
             []
         );

@@ -540,6 +540,11 @@
         <div id="topMoviesTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
     </div>
     <div class="chart-card">
+        <h3><i class="lucide-tv"></i> Top TV Shows (30 days)</h3>
+        <div id="topSeriesTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
+        <div id="seriesInfoTable" style="color:#94a3b8;font-size:0.85rem;margin-top:12px"></div>
+    </div>
+    <div class="chart-card">
         <h3><i class="lucide-radio"></i> Top Channels (30 days)</h3>
         <div id="topChannelsTable" style="color:#94a3b8;font-size:0.85rem">Loading...</div>
         <div id="channelInfoTable" style="color:#94a3b8;font-size:0.85rem;margin-top:12px"></div>
@@ -774,6 +779,34 @@
             movies.map(r => [esc(r.title), fmt(r.views), fmt(r.completions), pct(parseInt(r.completions)||0, parseInt(r.views)||0)])
         ) : '<p style="text-align:center;padding:20px;color:#475569">No watch data yet</p>';
 
+        // Top TV Shows
+        const series = d.top_series || [];
+        const seriesInfo = d.series_info || [];
+        if (series.length) {
+            document.getElementById('topSeriesTable').innerHTML = buildTable(
+                ['Title', 'Views', 'Completions', 'Rate'],
+                series.map(r => [esc(r.title), fmt(r.views), fmt(r.completions), pct(parseInt(r.completions)||0, parseInt(r.views)||0)])
+            );
+            document.getElementById('seriesInfoTable').innerHTML = '';
+        } else if (seriesInfo.length) {
+            document.getElementById('topSeriesTable').innerHTML =
+                '<p style="text-align:center;padding:10px;color:#64748b;font-size:0.8rem">No watch data yet</p>';
+            document.getElementById('seriesInfoTable').innerHTML =
+                '<h4 style="font-size:0.85rem;color:#94a3b8;margin:8px 0">Series Library</h4>' +
+                buildTable(
+                    ['Title', 'Year', 'Category', 'Status'],
+                    seriesInfo.map(r => [
+                        esc(r.title),
+                        esc(r.year || '-'),
+                        esc(r.category),
+                        '<span style="color:' + (r.status === 'published' ? '#22c55e' : '#f59e0b') + '">' + esc(r.status) + '</span>'
+                    ])
+                );
+        } else {
+            document.getElementById('topSeriesTable').innerHTML = '<p style="text-align:center;padding:20px;color:#475569">No TV shows added yet</p>';
+            document.getElementById('seriesInfoTable').innerHTML = '';
+        }
+
         const channels = d.top_channels || [];
         const channelInfo = d.channel_info || [];
         const channelStatus = d.channel_status || [];
@@ -861,13 +894,22 @@
                 reportGenerated = true;
                 enableChat();
             } else {
-                reportBody.innerHTML = '<div style="color:#ef4444;padding:20px"><i class="lucide-alert-circle"></i> ' + esc(json.message) + '</div>';
-                // Enable chat even on report error — AI can still answer using platform data
+                const errMsg = json.message || 'Unknown error';
+                const isTimeout = errMsg.toLowerCase().includes('timed out') || errMsg.toLowerCase().includes('timeout');
+                reportBody.innerHTML = '<div style="color:#ef4444;padding:20px"><i class="lucide-alert-circle"></i> ' +
+                    (isTimeout
+                        ? 'AI request timed out. Your AI provider (Ollama) may be slow or overloaded.<br><br>Suggestions:<br>&bull; Try again — the model may need to warm up<br>&bull; Use a smaller/faster Ollama model<br>&bull; Switch to a cloud provider (OpenAI or Anthropic) in <a href="/admin/settings" style="color:#a5b4fc">Settings > AI</a>'
+                        : esc(errMsg)) +
+                    '</div>';
                 enableChat();
             }
         } catch (e) {
-            reportBody.innerHTML = '<div style="color:#ef4444;padding:20px"><i class="lucide-alert-circle"></i> Request timed out or network error. Try again or use the chat to ask specific questions.</div>';
-            // Enable chat even on report failure — AI can still answer using platform data
+            const isAbort = e.name === 'AbortError';
+            reportBody.innerHTML = '<div style="color:#ef4444;padding:20px"><i class="lucide-alert-circle"></i> ' +
+                (isAbort
+                    ? 'Request timed out after 2.5 minutes. Your AI provider is too slow for report generation.<br><br>Consider switching to a cloud provider (OpenAI or Anthropic) in <a href="/admin/settings" style="color:#a5b4fc">Settings > AI</a>'
+                    : 'Network error. Please check your connection and try again.') +
+                '</div>';
             enableChat();
         }
 
@@ -934,21 +976,32 @@
         chatInput.disabled = true;
 
         try {
+            const chatController = new AbortController();
+            const chatTimeout = setTimeout(() => chatController.abort(), 150000); // 2.5 min
             const resp = await fetch('/admin/analytics/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: '_token=' + encodeURIComponent(CSRF) + '&message=' + encodeURIComponent(msg),
+                signal: chatController.signal,
             });
+            clearTimeout(chatTimeout);
             const json = await resp.json();
             loadingEl.remove();
             if (json.success) {
                 appendMessage('assistant', json.reply);
             } else {
-                appendMessage('assistant', 'Error: ' + (json.message || 'Unknown error'));
+                const errMsg = json.message || 'Unknown error';
+                const isTimeout = errMsg.toLowerCase().includes('timed out') || errMsg.toLowerCase().includes('timeout');
+                appendMessage('assistant', isTimeout
+                    ? 'The AI request timed out. Your AI provider may be slow or overloaded. Try a shorter question, or switch to a faster provider in Settings > AI.'
+                    : 'Error: ' + errMsg);
             }
         } catch (e) {
             loadingEl.remove();
-            appendMessage('assistant', 'Network error. Please try again.');
+            const isAbort = e.name === 'AbortError';
+            appendMessage('assistant', isAbort
+                ? 'Request timed out after 2.5 minutes. Your AI provider may be too slow. Consider switching to a cloud provider (OpenAI/Anthropic) in Settings > AI.'
+                : 'Network error. Please try again.');
         }
 
         btnSend.disabled = false;
