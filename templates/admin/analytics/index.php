@@ -699,6 +699,16 @@
     Chart.defaults.plugins.legend.labels.boxWidth = 12;
     Chart.defaults.plugins.legend.labels.padding = 12;
 
+    // Register chartjs-chart-geo components for choropleth map
+    if (typeof ChartGeo !== 'undefined') {
+        Chart.register(
+            ChartGeo.ChoroplethController,
+            ChartGeo.GeoFeature,
+            ChartGeo.ColorScale,
+            ChartGeo.ProjectionScale
+        );
+    }
+
     const COLORS = ['#6366f1','#8b5cf6','#a855f7','#ec4899','#f43f5e','#f59e0b','#22c55e','#14b8a6','#3b82f6','#06b6d4'];
 
     // ---- Data Loading ----
@@ -1096,9 +1106,10 @@
                     scales: {
                         projection: {
                             axis: 'x',
-                            projection: 'equalEarth',
+                            projection: 'equalEarth'
                         },
                         color: {
+                            axis: 'x',
                             display: false
                         }
                     },
