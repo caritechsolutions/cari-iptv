@@ -309,8 +309,8 @@ $isEdit = !empty($campaign);
                 <div class="form-group">
                     <label class="form-label">Status</label>
                     <select id="creativeStatus" class="form-input">
-                        <option value="draft">Draft</option>
                         <option value="active">Active</option>
+                        <option value="draft">Draft</option>
                         <option value="paused">Paused</option>
                     </select>
                 </div>

@@ -1173,7 +1173,7 @@ class AdController
         }
 
         $data['status'] = in_array($post['status'] ?? '', ['draft', 'active', 'paused', 'archived'])
-            ? $post['status'] : 'draft';
+            ? $post['status'] : 'active';
 
         // Type-specific fields
         $data['scroll_text'] = trim($post['scroll_text'] ?? '') ?: null;

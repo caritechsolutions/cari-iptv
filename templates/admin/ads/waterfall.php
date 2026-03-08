@@ -25,6 +25,7 @@
     .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.25rem; padding: 0.25rem; }
     .step-builder { margin-top: 1rem; }
     .step-builder-row { display: grid; grid-template-columns: 120px 1fr 100px 80px 40px; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px; }
+    .step-builder-row .form-input { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
     .empty-state i { font-size: 2.5rem; margin-bottom: 0.75rem; display: block; }
 </style>
@@ -93,11 +94,11 @@
         <input type="hidden" id="chainId" value="">
         <div class="form-group">
             <label class="form-label">Chain Name</label>
-            <input type="text" class="form-control" id="chainName" placeholder="e.g. Pre-Roll VOD Waterfall">
+            <input type="text" class="form-input" id="chainName" placeholder="e.g. Pre-Roll VOD Waterfall">
         </div>
         <div class="form-group">
             <label class="form-label">Zone</label>
-            <select class="form-control" id="chainZone">
+            <select class="form-input" id="chainZone">
                 <option value="">Select zone...</option>
                 <?php foreach ($zones as $z): ?>
                 <option value="<?= $z['id'] ?>"><?= htmlspecialchars($z['name']) ?> (<?= $z['zone_type'] ?>)</option>
@@ -151,15 +152,15 @@ function addStep(data) {
     var idx = container.children.length;
     var div = document.createElement('div');
     div.className = 'step-builder-row';
-    div.innerHTML = '<select class="form-control form-control-sm step-source" onchange="toggleStepFields(this)">' +
+    div.innerHTML = '<select class="form-input step-source" onchange="toggleStepFields(this)">' +
         '<option value="direct"' + (data && data.source_type === 'direct' ? ' selected' : '') + '>Direct</option>' +
         '<option value="campaign"' + (data && data.source_type === 'campaign' ? ' selected' : '') + '>Campaign</option>' +
         '<option value="vast_tag"' + (data && data.source_type === 'vast_tag' ? ' selected' : '') + '>VAST Tag</option>' +
         '<option value="house"' + (data && data.source_type === 'house' ? ' selected' : '') + '>House Ad</option>' +
         '</select>' +
         '<div class="step-value">' + getStepValueInput(data) + '</div>' +
-        '<input type="number" class="form-control form-control-sm step-timeout" value="' + (data ? data.timeout_ms : 3000) + '" placeholder="Timeout ms" title="Timeout (ms)">' +
-        '<input type="number" class="form-control form-control-sm step-floor" value="' + (data && data.floor_cpm ? data.floor_cpm : '') + '" placeholder="Floor $" step="0.01" title="Floor CPM">' +
+        '<input type="number" class="form-input step-timeout" value="' + (data ? data.timeout_ms : 3000) + '" placeholder="Timeout ms" title="Timeout (ms)">' +
+        '<input type="number" class="form-input step-floor" value="' + (data && data.floor_cpm ? data.floor_cpm : '') + '" placeholder="Floor $" step="0.01" title="Floor CPM">' +
         '<button class="btn btn-sm btn-danger" onclick="this.parentNode.remove()" title="Remove">&times;</button>';
     container.appendChild(div);
 }
@@ -167,13 +168,13 @@ function addStep(data) {
 function getStepValueInput(data) {
     var type = data ? data.source_type : 'direct';
     if (type === 'campaign') {
-        var sel = '<select class="form-control form-control-sm step-campaign"><option value="">Any campaign</option>';
+        var sel = '<select class="form-input step-campaign"><option value="">Any campaign</option>';
         campaignsList.forEach(function(c) {
             sel += '<option value="' + c.id + '"' + (data && data.campaign_id == c.id ? ' selected' : '') + '>' + c.name + '</option>';
         });
         return sel + '</select>';
     } else if (type === 'vast_tag') {
-        return '<input type="url" class="form-control form-control-sm step-vast" value="' + (data ? (data.vast_tag_url || '') : '') + '" placeholder="VAST URL">';
+        return '<input type="url" class="form-input step-vast" value="' + (data ? (data.vast_tag_url || '') : '') + '" placeholder="VAST URL">';
     }
     return '<span style="color:var(--text-muted);font-size:0.8rem">Match any active ads</span>';
 }

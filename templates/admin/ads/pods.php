@@ -90,12 +90,12 @@
         <input type="hidden" id="podId" value="">
         <div class="form-group">
             <label class="form-label">Pod Name</label>
-            <input type="text" class="form-control" id="podName" placeholder="e.g. Standard Pre-Roll Pod">
+            <input type="text" class="form-input" id="podName" placeholder="e.g. Standard Pre-Roll Pod">
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
             <div class="form-group">
                 <label class="form-label">Zone</label>
-                <select class="form-control" id="podZone">
+                <select class="form-input" id="podZone">
                     <?php foreach ($zones as $z): ?>
                     <option value="<?= $z['id'] ?>"><?= htmlspecialchars($z['name']) ?></option>
                     <?php endforeach; ?>
@@ -103,7 +103,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Pod Type</label>
-                <select class="form-control" id="podType">
+                <select class="form-input" id="podType">
                     <option value="pre_roll">Pre-Roll</option>
                     <option value="mid_roll">Mid-Roll (cue point)</option>
                     <option value="post_roll">Post-Roll</option>
@@ -113,21 +113,21 @@
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
             <div class="form-group">
                 <label class="form-label">Max Ads in Pod</label>
-                <input type="number" class="form-control" id="podMaxAds" value="3" min="1" max="10">
+                <input type="number" class="form-input" id="podMaxAds" value="3" min="1" max="10">
             </div>
             <div class="form-group">
                 <label class="form-label">Max Total Duration (sec)</label>
-                <input type="number" class="form-control" id="podMaxDuration" value="90" min="5" max="600">
+                <input type="number" class="form-input" id="podMaxDuration" value="90" min="5" max="600">
             </div>
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
             <div class="form-group">
                 <label class="form-label">Min Gap Between Pods (sec)</label>
-                <input type="number" class="form-control" id="podSeparation" value="300" min="0">
+                <input type="number" class="form-input" id="podSeparation" value="300" min="0">
             </div>
             <div class="form-group">
                 <label class="form-label">Min Content Duration (sec)</label>
-                <input type="number" class="form-control" id="podMinContent" value="" placeholder="Optional">
+                <input type="number" class="form-input" id="podMinContent" value="" placeholder="Optional">
             </div>
         </div>
         <div class="form-group">
