@@ -120,6 +120,10 @@
     border: 1px solid rgba(99,102,241,0.12);
     border-radius: 12px;
     padding: 20px;
+    overflow: hidden;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .chart-card h3 {
     font-size: 0.95rem;
@@ -132,6 +136,8 @@
 }
 .chart-card h3 i { color: #6366f1; font-size: 1rem; }
 .chart-card canvas { max-height: 280px; }
+.chart-card table { width: 100%; word-wrap: break-word; }
+.chart-card > div { min-width: 0; overflow-x: auto; }
 
 /* Geo Map */
 .geo-map-section {
