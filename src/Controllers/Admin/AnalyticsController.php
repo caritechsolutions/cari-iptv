@@ -543,14 +543,58 @@ class AnalyticsController
         // --- Active viewer countries (subscribers who actually watched in last 30 days) ---
         $data['viewer_countries'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
-                "SELECT COALESCE(s.country, 'Unknown') as country, COUNT(DISTINCT e.subscriber_id) as count
+                "SELECT COALESCE(s.country, 'Unknown') as country,
+                        COUNT(DISTINCT e.subscriber_id) as viewers,
+                        COUNT(*) as total_watches,
+                        SUM(e.content_type = 'channel') as live_tv_watches,
+                        SUM(e.content_type = 'movie') as movie_watches,
+                        SUM(e.content_type = 'episode') as series_watches
                  FROM subscriber_events e
                  JOIN subscribers s ON e.subscriber_id = s.id
                  WHERE e.event_type = 'watch_start'
                    AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                  GROUP BY s.country
-                 ORDER BY count DESC
-                 LIMIT 10"
+                 ORDER BY viewers DESC
+                 LIMIT 20"
+            ),
+            []
+        );
+
+        // --- Per-country top channels and categories ---
+        $data['country_top_channels'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT COALESCE(s.country, 'Unknown') as country,
+                        ch.name as channel_name,
+                        COUNT(*) as watches
+                 FROM subscriber_events e
+                 JOIN subscribers s ON e.subscriber_id = s.id
+                 JOIN channels ch ON e.content_id = ch.id
+                 WHERE e.event_type = 'watch_start'
+                   AND e.content_type = 'channel'
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY s.country, ch.id, ch.name
+                 ORDER BY s.country, watches DESC"
+            ),
+            []
+        );
+
+        // --- Per-country top categories (from movies + series) ---
+        $data['country_top_categories'] = $this->safeQuery(
+            fn() => $this->db->fetchAll(
+                "SELECT COALESCE(s.country, 'Unknown') as country,
+                        COALESCE(c.name, 'Uncategorized') as category,
+                        COUNT(*) as watches
+                 FROM subscriber_events e
+                 JOIN subscribers s ON e.subscriber_id = s.id
+                 LEFT JOIN movies m ON e.content_type = 'movie' AND e.content_id = m.id
+                 LEFT JOIN series_episodes ep ON e.content_type = 'episode' AND e.content_id = ep.id
+                 LEFT JOIN series sr ON ep.series_id = sr.id
+                 LEFT JOIN categories c ON c.id = COALESCE(m.category_id, sr.category_id)
+                 WHERE e.event_type = 'watch_start'
+                   AND e.content_type IN ('movie', 'episode')
+                   AND e.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                 GROUP BY s.country, c.id, c.name
+                 ORDER BY s.country, watches DESC"
             ),
             []
         );
@@ -707,7 +751,37 @@ class AnalyticsController
         // Active viewer countries (from recent watch activity)
         $viewerCountries = $data['viewer_countries'] ?? [];
         if ($viewerCountries) {
-            $s .= "ACTIVE VIEWER COUNTRIES (from subscribers who watched in last 30d): " . implode(', ', array_map(fn($c) => "{$c['country']}({$c['count']})", array_slice($viewerCountries, 0, 8))) . "\n";
+            $s .= "ACTIVE VIEWER COUNTRIES (last 30d): " . implode(', ', array_map(fn($c) =>
+                "{$c['country']}({$c['viewers']} viewers, {$c['total_watches']} watches: {$c['live_tv_watches']} live/{$c['movie_watches']} movies/{$c['series_watches']} series)",
+                array_slice($viewerCountries, 0, 8))) . "\n";
+        }
+
+        // Per-country top channels
+        $countryChannels = $data['country_top_channels'] ?? [];
+        if ($countryChannels) {
+            $byCountry = [];
+            foreach ($countryChannels as $cc) {
+                $byCountry[$cc['country']][] = "{$cc['channel_name']}({$cc['watches']})";
+            }
+            $parts = [];
+            foreach ($byCountry as $country => $chans) {
+                $parts[] = "{$country}: " . implode(', ', array_slice($chans, 0, 3));
+            }
+            $s .= "TOP CHANNELS BY COUNTRY: " . implode(' | ', array_slice($parts, 0, 5)) . "\n";
+        }
+
+        // Per-country top categories
+        $countryCats = $data['country_top_categories'] ?? [];
+        if ($countryCats) {
+            $byCountry = [];
+            foreach ($countryCats as $cc) {
+                $byCountry[$cc['country']][] = "{$cc['category']}({$cc['watches']})";
+            }
+            $parts = [];
+            foreach ($byCountry as $country => $cats) {
+                $parts[] = "{$country}: " . implode(', ', array_slice($cats, 0, 3));
+            }
+            $s .= "TOP CATEGORIES BY COUNTRY: " . implode(' | ', array_slice($parts, 0, 5)) . "\n";
         }
 
         // Packages

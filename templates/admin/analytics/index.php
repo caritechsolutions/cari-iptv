@@ -2,6 +2,8 @@
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<!-- Chart.js Geo plugin for choropleth maps -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.6/build/index.umd.min.js"></script>
 <!-- Marked.js for markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.0/marked.min.js"></script>
 
@@ -130,6 +132,113 @@
 }
 .chart-card h3 i { color: #6366f1; font-size: 1rem; }
 .chart-card canvas { max-height: 280px; }
+
+/* Geo Map */
+.geo-map-section {
+    margin-bottom: 24px;
+}
+.geo-map-card {
+    background: var(--bg-card, #1e293b);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 12px;
+    padding: 20px;
+}
+.geo-map-card h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.geo-map-card h3 i { color: #6366f1; font-size: 1rem; }
+.geo-map-container {
+    position: relative;
+    width: 100%;
+    min-height: 400px;
+}
+.geo-map-container canvas {
+    max-height: 420px;
+    width: 100% !important;
+}
+.geo-map-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.geo-map-legend .gradient-bar {
+    width: 120px;
+    height: 10px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(99,102,241,0.1), rgba(99,102,241,1));
+}
+.geo-country-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+.country-detail-card {
+    background: rgba(15,23,42,0.5);
+    border: 1px solid rgba(99,102,241,0.1);
+    border-radius: 8px;
+    padding: 14px;
+}
+.country-detail-card .country-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.country-detail-card .country-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+.country-detail-card .country-viewers {
+    font-size: 0.75rem;
+    color: #6366f1;
+    background: rgba(99,102,241,0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.country-detail-card .country-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.country-detail-card .stat-item {
+    text-align: center;
+}
+.country-detail-card .stat-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+.country-detail-card .stat-label {
+    font-size: 0.65rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.country-detail-card .country-breakdown {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    border-top: 1px solid rgba(99,102,241,0.1);
+    padding-top: 8px;
+    margin-top: 4px;
+}
+.country-detail-card .breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+}
+.country-detail-card .breakdown-label { color: #64748b; }
 
 /* AI Report Area */
 .report-section {
@@ -559,6 +668,24 @@
     </div>
 </div>
 
+<!-- Geo Map Audience Visualization -->
+<div class="geo-map-section">
+    <div class="geo-map-card">
+        <h3><i class="lucide-map"></i> Audience Geo-Map &mdash; Viewer Distribution by Country</h3>
+        <div class="geo-map-container">
+            <canvas id="geoMapCanvas"></canvas>
+        </div>
+        <div class="geo-map-legend">
+            <span>Fewer viewers</span>
+            <div class="gradient-bar"></div>
+            <span>More viewers</span>
+        </div>
+        <div class="geo-country-details" id="geoCountryDetails">
+            <p style="color:#475569;text-align:center;grid-column:1/-1;padding:20px">Loading viewer data...</p>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
     const CSRF = '<?= $csrf ?>';
@@ -589,6 +716,7 @@
                 renderKPIs(json.data);
                 renderCharts(json.data);
                 renderTables(json.data);
+                renderGeoMap(json.data);
             } else {
                 console.error('[Analytics] API error:', json);
             }
@@ -776,6 +904,217 @@
             },
             options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
         });
+    }
+
+    // ---- Geo Map ----
+    let geoMapInstance = null;
+
+    // Country name to ISO 3166-1 numeric code mapping (for topojson matching)
+    const COUNTRY_NAME_TO_ID = {
+        'Afghanistan':4,'Albania':8,'Algeria':12,'Andorra':20,'Angola':24,'Antigua and Barbuda':28,
+        'Argentina':32,'Armenia':51,'Australia':36,'Austria':40,'Azerbaijan':31,'Bahamas':44,
+        'Bahrain':48,'Bangladesh':50,'Barbados':52,'Belarus':112,'Belgium':56,'Belize':84,
+        'Benin':204,'Bhutan':64,'Bolivia':68,'Bosnia and Herzegovina':70,'Botswana':72,
+        'Brazil':76,'Brunei':96,'Bulgaria':100,'Burkina Faso':854,'Burundi':108,'Cambodia':116,
+        'Cameroon':120,'Canada':124,'Cape Verde':132,'Central African Republic':140,'Chad':148,
+        'Chile':152,'China':156,'Colombia':170,'Comoros':174,'Congo':178,
+        'Democratic Republic of the Congo':180,'Costa Rica':188,'Croatia':191,
+        'Cuba':192,'Cyprus':196,'Czech Republic':203,'Czechia':203,'Denmark':208,'Djibouti':262,
+        'Dominica':212,'Dominican Republic':214,'East Timor':626,'Ecuador':218,'Egypt':818,
+        'El Salvador':222,'Equatorial Guinea':226,'Eritrea':232,'Estonia':233,'Ethiopia':231,
+        'Fiji':242,'Finland':246,'France':250,'Gabon':266,'Gambia':270,'Georgia':268,
+        'Germany':276,'Ghana':288,'Greece':300,'Grenada':308,'Guatemala':320,'Guinea':324,
+        'Guinea-Bissau':624,'Guyana':328,'Haiti':332,'Honduras':340,'Hungary':348,
+        'Iceland':352,'India':356,'Indonesia':360,'Iran':364,'Iraq':368,'Ireland':372,
+        'Israel':376,'Italy':380,'Ivory Coast':384,"Cote d'Ivoire":384,'Jamaica':388,'Japan':392,
+        'Jordan':400,'Kazakhstan':398,'Kenya':404,'Kiribati':296,'Kosovo':0,
+        'Kuwait':414,'Kyrgyzstan':417,'Laos':418,'Latvia':428,'Lebanon':422,'Lesotho':426,
+        'Liberia':430,'Libya':434,'Liechtenstein':438,'Lithuania':440,'Luxembourg':442,
+        'Madagascar':450,'Malawi':454,'Malaysia':458,'Maldives':462,'Mali':466,'Malta':470,
+        'Marshall Islands':584,'Mauritania':478,'Mauritius':480,'Mexico':484,'Micronesia':583,
+        'Moldova':498,'Monaco':492,'Mongolia':496,'Montenegro':499,'Morocco':504,'Mozambique':508,
+        'Myanmar':104,'Namibia':516,'Nauru':520,'Nepal':524,'Netherlands':528,
+        'New Zealand':554,'Nicaragua':558,'Niger':562,'Nigeria':566,'North Korea':408,
+        'North Macedonia':807,'Norway':578,'Oman':512,'Pakistan':586,'Palau':585,
+        'Palestine':275,'Panama':591,'Papua New Guinea':598,'Paraguay':600,'Peru':604,
+        'Philippines':608,'Poland':616,'Portugal':620,'Qatar':634,'Romania':642,
+        'Russia':643,'Rwanda':646,'Saint Kitts and Nevis':659,'Saint Lucia':662,
+        'Saint Vincent and the Grenadines':670,'Samoa':882,'San Marino':674,
+        'Sao Tome and Principe':678,'Saudi Arabia':682,'Senegal':686,'Serbia':688,
+        'Seychelles':690,'Sierra Leone':694,'Singapore':702,'Slovakia':703,'Slovenia':705,
+        'Solomon Islands':90,'Somalia':706,'South Africa':710,'South Korea':410,
+        'South Sudan':728,'Spain':724,'Sri Lanka':144,'Sudan':729,'Suriname':740,
+        'Sweden':752,'Switzerland':756,'Syria':760,'Taiwan':158,'Tajikistan':762,
+        'Tanzania':834,'Thailand':764,'Togo':768,'Tonga':776,'Trinidad and Tobago':780,
+        'Tunisia':788,'Turkey':792,'Turkmenistan':795,'Tuvalu':798,'Uganda':800,
+        'Ukraine':804,'United Arab Emirates':784,'United Kingdom':826,'United States':840,
+        'Uruguay':858,'Uzbekistan':860,'Vanuatu':548,'Vatican City':336,'Venezuela':862,
+        'Vietnam':704,'Yemen':887,'Zambia':894,'Zimbabwe':716,
+        // Caribbean specific
+        'Anguilla':660,'Aruba':533,'Bermuda':60,'Cayman Islands':136,
+        'Curacao':531,'Guadeloupe':312,'Martinique':474,'Montserrat':500,
+        'Puerto Rico':630,'Sint Maarten':534,'Turks and Caicos Islands':796,
+        'Virgin Islands':850
+    };
+
+    async function renderGeoMap(d) {
+        const viewerCountries = d.viewer_countries || [];
+        const countryChannels = d.country_top_channels || [];
+        const countryCats = d.country_top_categories || [];
+        const detailsEl = document.getElementById('geoCountryDetails');
+
+        // Build per-country channel lookup
+        const channelsByCountry = {};
+        countryChannels.forEach(r => {
+            if (!channelsByCountry[r.country]) channelsByCountry[r.country] = [];
+            channelsByCountry[r.country].push({ name: r.channel_name, watches: parseInt(r.watches) || 0 });
+        });
+
+        // Build per-country category lookup
+        const catsByCountry = {};
+        countryCats.forEach(r => {
+            if (!catsByCountry[r.country]) catsByCountry[r.country] = [];
+            catsByCountry[r.country].push({ name: r.category, watches: parseInt(r.watches) || 0 });
+        });
+
+        // Render country detail cards
+        if (viewerCountries.length === 0) {
+            detailsEl.innerHTML = '<p style="color:#475569;text-align:center;grid-column:1/-1;padding:20px">No viewer data yet. Viewing data will appear once subscribers start watching content.</p>';
+        } else {
+            let html = '';
+            viewerCountries.forEach(c => {
+                const viewers = parseInt(c.viewers) || 0;
+                const total = parseInt(c.total_watches) || 0;
+                const liveTv = parseInt(c.live_tv_watches) || 0;
+                const movies = parseInt(c.movie_watches) || 0;
+                const series = parseInt(c.series_watches) || 0;
+                const topChans = (channelsByCountry[c.country] || []).slice(0, 3);
+                const topCats = (catsByCountry[c.country] || []).slice(0, 3);
+
+                html += '<div class="country-detail-card">';
+                html += '<div class="country-header">';
+                html += '<span class="country-name">' + esc(c.country) + '</span>';
+                html += '<span class="country-viewers">' + viewers + ' viewer' + (viewers !== 1 ? 's' : '') + '</span>';
+                html += '</div>';
+                html += '<div class="country-stats">';
+                html += '<div class="stat-item"><div class="stat-value" style="color:#6366f1">' + liveTv + '</div><div class="stat-label">Live TV</div></div>';
+                html += '<div class="stat-item"><div class="stat-value" style="color:#8b5cf6">' + movies + '</div><div class="stat-label">Movies</div></div>';
+                html += '<div class="stat-item"><div class="stat-value" style="color:#a855f7">' + series + '</div><div class="stat-label">Series</div></div>';
+                html += '</div>';
+                if (topChans.length) {
+                    html += '<div class="country-breakdown">';
+                    html += '<div style="color:#94a3b8;font-weight:600;margin-bottom:4px">Top Channels</div>';
+                    topChans.forEach(ch => {
+                        html += '<div class="breakdown-row"><span>' + esc(ch.name) + '</span><span style="color:#6366f1">' + ch.watches + '</span></div>';
+                    });
+                    html += '</div>';
+                }
+                if (topCats.length) {
+                    html += '<div class="country-breakdown" style="border-top:1px solid rgba(99,102,241,0.1);padding-top:8px;margin-top:6px">';
+                    html += '<div style="color:#94a3b8;font-weight:600;margin-bottom:4px">Top Categories</div>';
+                    topCats.forEach(cat => {
+                        html += '<div class="breakdown-row"><span>' + esc(cat.name) + '</span><span style="color:#8b5cf6">' + cat.watches + '</span></div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+            });
+            detailsEl.innerHTML = html;
+        }
+
+        // Build country viewer lookup for choropleth
+        const viewersByCountry = {};
+        viewerCountries.forEach(c => {
+            viewersByCountry[c.country] = parseInt(c.viewers) || 0;
+        });
+
+        // Load world topojson and render choropleth
+        try {
+            const resp = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+            if (!resp.ok) throw new Error('Failed to load map data');
+            const topoData = await resp.json();
+            const countries = ChartGeo.topojson.feature(topoData, topoData.objects.countries).features;
+
+            // Build reverse lookup: numeric ID -> country name
+            const idToName = {};
+            Object.entries(COUNTRY_NAME_TO_ID).forEach(([name, id]) => {
+                if (!idToName[id]) idToName[id] = name;
+            });
+
+            // Map features to data points
+            const maxViewers = Math.max(1, ...Object.values(viewersByCountry));
+            const mapData = countries.map(f => {
+                const countryName = idToName[parseInt(f.id)] || f.properties.name || '';
+                const viewers = viewersByCountry[countryName] || 0;
+                return { feature: f, value: viewers, countryName: countryName };
+            });
+
+            const canvas = document.getElementById('geoMapCanvas');
+            if (!canvas) return;
+
+            if (geoMapInstance) geoMapInstance.destroy();
+            geoMapInstance = new Chart(canvas.getContext('2d'), {
+                type: 'choropleth',
+                data: {
+                    labels: mapData.map(d => d.countryName),
+                    datasets: [{
+                        label: 'Viewers',
+                        data: mapData,
+                        backgroundColor: (ctx) => {
+                            const v = ctx.raw?.value || 0;
+                            if (v === 0) return 'rgba(30,41,59,0.8)';
+                            const intensity = Math.max(0.2, v / maxViewers);
+                            return 'rgba(99,102,241,' + intensity + ')';
+                        },
+                        borderColor: 'rgba(51,65,85,0.5)',
+                        borderWidth: 0.5,
+                    }],
+                },
+                options: {
+                    showOutline: true,
+                    showGraticule: false,
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const v = ctx.raw?.value || 0;
+                                    const name = ctx.raw?.countryName || 'Unknown';
+                                    if (v === 0) return name + ': No viewers';
+                                    const cData = viewerCountries.find(c => c.country === name);
+                                    if (!cData) return name + ': ' + v + ' viewer(s)';
+                                    return [
+                                        name + ': ' + v + ' viewer(s)',
+                                        'Live TV: ' + (parseInt(cData.live_tv_watches) || 0) + ' | Movies: ' + (parseInt(cData.movie_watches) || 0) + ' | Series: ' + (parseInt(cData.series_watches) || 0)
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        projection: {
+                            axis: 'x',
+                            projection: 'equalEarth',
+                        },
+                        color: {
+                            display: false
+                        }
+                    },
+                },
+            });
+        } catch (e) {
+            console.error('[Analytics] Geo map failed:', e);
+            const canvas = document.getElementById('geoMapCanvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#475569';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Map visualization unavailable. Country data shown below.', canvas.width / 2, canvas.height / 2);
+            }
+        }
     }
 
     // ---- Tables ----
