@@ -343,20 +343,37 @@ class AnalyticsController
             []
         );
 
-        // Channel viewing data from watch history (progress tracking)
+        // Channel viewing data — combine events (session counts) with watch history (duration)
         $data['channel_views'] = $this->safeQuery(
             fn() => $this->db->fetchAll(
                 "SELECT ch.name as title,
-                        COUNT(DISTINCT wh.subscriber_id) as unique_viewers,
-                        COUNT(*) as total_sessions,
-                        SUM(wh.progress_seconds) as total_watch_seconds,
-                        ROUND(AVG(wh.progress_seconds)) as avg_watch_seconds,
-                        MAX(wh.progress_seconds) as max_watch_seconds,
-                        MAX(wh.last_watched_at) as last_watched
-                 FROM subscriber_watch_history wh
-                 JOIN channels ch ON wh.content_id = ch.id
-                 WHERE wh.content_type = 'channel'
-                 GROUP BY ch.id, ch.name
+                        COALESCE(ev.unique_viewers, wh.unique_viewers, 0) as unique_viewers,
+                        COALESCE(ev.total_sessions, wh.total_sessions, 0) as total_sessions,
+                        COALESCE(wh.total_watch_seconds, 0) as total_watch_seconds,
+                        COALESCE(wh.avg_watch_seconds, 0) as avg_watch_seconds,
+                        GREATEST(COALESCE(ev.last_event, '1970-01-01'), COALESCE(wh.last_watched, '1970-01-01')) as last_watched
+                 FROM channels ch
+                 LEFT JOIN (
+                     SELECT content_id,
+                            COUNT(DISTINCT subscriber_id) as unique_viewers,
+                            COUNT(*) as total_sessions,
+                            MAX(created_at) as last_event
+                     FROM subscriber_events
+                     WHERE content_type = 'channel' AND event_type = 'watch_start'
+                     GROUP BY content_id
+                 ) ev ON ev.content_id = ch.id
+                 LEFT JOIN (
+                     SELECT content_id,
+                            COUNT(DISTINCT subscriber_id) as unique_viewers,
+                            COUNT(*) as total_sessions,
+                            SUM(progress_seconds) as total_watch_seconds,
+                            ROUND(AVG(progress_seconds)) as avg_watch_seconds,
+                            MAX(last_watched_at) as last_watched
+                     FROM subscriber_watch_history
+                     WHERE content_type = 'channel'
+                     GROUP BY content_id
+                 ) wh ON wh.content_id = ch.id
+                 WHERE ev.content_id IS NOT NULL OR wh.content_id IS NOT NULL
                  ORDER BY total_sessions DESC
                  LIMIT 20"
             ),

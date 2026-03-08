@@ -2234,11 +2234,38 @@ const CariApp = (function() {
         const video = document.getElementById('liveVideo');
         const url = channel.stream_url || '';
 
+        // Clean up previous channel tracking
+        if (video._liveTrackingCleanup) {
+            video._liveTrackingCleanup();
+            video._liveTrackingCleanup = null;
+        }
+
         if (url && window.shaka) {
             await initShakaPlayer(video, url);
         } else if (url) {
             video.src = url;
             await autoplayWithFallback(video);
+        }
+
+        // Track live TV viewing — uses wall-clock elapsed time
+        if (url) {
+            const chId = channel.id;
+            const startedAt = Date.now();
+            let lastSaved = 0;
+            let watchStartTracked = false;
+            const handler = () => {
+                const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+                if (!watchStartTracked && elapsed > 2) {
+                    watchStartTracked = true;
+                    if (typeof CariTracker !== 'undefined') CariTracker.watchStart('channel', chId, { duration: 0 });
+                }
+                if (elapsed > 0 && elapsed - lastSaved >= 10) {
+                    lastSaved = elapsed;
+                    CariAPI.updateWatchProgress('channel', chId, elapsed, 0).catch(() => {});
+                }
+            };
+            video.addEventListener('timeupdate', handler);
+            video._liveTrackingCleanup = () => video.removeEventListener('timeupdate', handler);
         }
     }
 
