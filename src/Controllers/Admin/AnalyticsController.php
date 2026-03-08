@@ -374,7 +374,7 @@ class AnalyticsController
                      GROUP BY content_id
                  ) wh ON wh.content_id = ch.id
                  WHERE ev.content_id IS NOT NULL OR wh.content_id IS NOT NULL
-                 ORDER BY total_sessions DESC
+                 ORDER BY total_watch_seconds DESC, total_sessions DESC
                  LIMIT 20"
             ),
             []
