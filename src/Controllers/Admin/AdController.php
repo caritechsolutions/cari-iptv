@@ -1634,6 +1634,62 @@ class AdController
             $debug['fix_sql'] = "UPDATE ad_creatives SET status = 'active' WHERE status = 'draft';";
         }
 
+        // 6. Run the ACTUAL serve query to see what comes back
+        $serveSql = "
+            SELECT
+                ac.id, ac.name, ac.type, ac.status as creative_status,
+                ap.id as placement_id, ap.status as placement_status,
+                ap.start_date as placement_start, ap.end_date as placement_end,
+                az.slug as zone_slug, az.zone_type, az.is_active as zone_active,
+                camp.name as campaign_name, camp.status as campaign_status,
+                camp.start_date as camp_start, camp.end_date as camp_end,
+                camp.total_impressions, camp.total_impressions_cap
+            FROM ad_placements ap
+            JOIN ad_campaigns camp ON ap.campaign_id = camp.id
+            JOIN ad_creatives ac ON ap.creative_id = ac.id
+            JOIN ad_zones az ON ap.zone_id = az.id
+        ";
+        $debug['raw_join_all'] = $this->db->fetchAll($serveSql);
+
+        // 7. Run with filters (same as getAdsForContext)
+        $filterSql = $serveSql . "
+            WHERE camp.status = 'active'
+              AND ac.status = 'active'
+              AND ap.status = 'active'
+              AND az.is_active = 1
+              AND (camp.start_date IS NULL OR camp.start_date <= ?)
+              AND (camp.end_date IS NULL OR camp.end_date >= ?)
+              AND (ap.start_date IS NULL OR ap.start_date <= ?)
+              AND (ap.end_date IS NULL OR ap.end_date >= ?)
+              AND (camp.total_impressions_cap IS NULL OR camp.total_impressions < camp.total_impressions_cap)
+        ";
+        $params = [$now, $now, $now, $now];
+        if ($zoneType) {
+            $filterSql .= " AND az.zone_type = ?";
+            $params[] = $zoneType;
+        }
+        $debug['filtered_results'] = $this->db->fetchAll($filterSql, $params);
+
+        // 8. Test each condition individually to find the failing one
+        if (empty($debug['filtered_results']) && !empty($debug['raw_join_all'])) {
+            $row = $debug['raw_join_all'][0];
+            $debug['condition_check'] = [
+                'camp_status_active' => $row['campaign_status'] === 'active',
+                'creative_status_active' => $row['creative_status'] === 'active',
+                'placement_status_active' => $row['placement_status'] === 'active',
+                'zone_active' => (bool) $row['zone_active'],
+                'camp_start_ok' => $row['camp_start'] === null || $row['camp_start'] <= $now,
+                'camp_end_ok' => $row['camp_end'] === null || $row['camp_end'] >= $now,
+                'camp_start_raw' => $row['camp_start'],
+                'camp_end_raw' => $row['camp_end'],
+                'placement_start_ok' => $row['placement_start'] === null || $row['placement_start'] <= $now,
+                'placement_end_ok' => $row['placement_end'] === null || $row['placement_end'] >= $now,
+                'impressions_cap_ok' => $row['total_impressions_cap'] === null || (int) $row['total_impressions'] < (int) $row['total_impressions_cap'],
+                'zone_type_match' => $zoneType ? $row['zone_type'] === $zoneType : true,
+                'now' => $now,
+            ];
+        }
+
         Response::json(['success' => true, 'debug' => $debug, 'server_time' => $now]);
     }
 
