@@ -1,30 +1,28 @@
 <?php $pageTitle = 'A/B Tests'; ?>
 
 <style>
-    .test-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    .test-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
     .test-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    .test-header h4 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .test-header h4 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .test-meta { color: var(--text-muted); font-size: 0.8rem; font-weight: 400; }
     .variant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.75rem; }
     .variant-card { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.05); }
     .variant-card.winner { border-color: #22c55e; background: rgba(34,197,94,0.08); }
     .variant-card.control { border-color: var(--primary); }
-    .variant-name { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; }
+    .variant-name { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
     .variant-stat { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem; }
     .variant-stat strong { color: var(--text-secondary); }
     .confidence-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 0.75rem; overflow: hidden; }
     .confidence-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-    .badge-running { background: rgba(34,197,94,0.15); color: #22c55e; }
-    .badge-completed { background: rgba(99,102,241,0.15); color: #818cf8; }
-    .badge-draft { background: rgba(148,163,184,0.15); color: #94a3b8; }
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; }
-    .modal-overlay.active { display: flex; }
-    .modal-box { background: #1e293b; border: 1px solid #475569; border-radius: 12px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; }
-    .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-    .modal-body { padding: 1.25rem; }
-    .modal-footer { padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem; }
-    .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.25rem; }
+    .badge-running { background: rgba(34,197,94,0.15); color: #22c55e; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; }
+    .badge-completed { background: rgba(99,102,241,0.15); color: #818cf8; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; }
+    .badge-draft { background: rgba(148,163,184,0.15); color: #94a3b8; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; }
+    .badge-paused { background: rgba(245,158,11,0.15); color: #f59e0b; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; }
+    .badge-secondary { background: rgba(148,163,184,0.15); color: #94a3b8; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
     .empty-state i { font-size: 2.5rem; margin-bottom: 0.75rem; display: block; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-success:hover { background: #16a34a; }
 </style>
 
 <div class="page-header flex justify-between items-center">
@@ -38,20 +36,20 @@
 </div>
 
 <?php if (empty($tests)): ?>
-<div class="card"><div class="card-body empty-state">
+<div class="test-card empty-state">
     <i class="lucide-flask-conical"></i>
     <h3>No A/B Tests</h3>
     <p>Create A/B tests from the campaign edit page to compare creative variants and find the best performers.</p>
-</div></div>
+</div>
 <?php else: ?>
 <?php foreach ($tests as $test): ?>
-<div class="card"><div class="card-body test-card">
+<div class="test-card">
     <div class="test-header">
         <h4>
             <i class="lucide-flask-conical" style="color:var(--primary)"></i>
             <?= htmlspecialchars($test['name']) ?>
-            <span class="badge badge-<?= $test['status'] ?>"><?= ucfirst($test['status']) ?></span>
-            <span style="color:var(--text-muted);font-size:0.8rem;font-weight:400">
+            <span class="badge-<?= $test['status'] ?>"><?= ucfirst($test['status']) ?></span>
+            <span class="test-meta">
                 <?= htmlspecialchars($test['campaign_name']) ?> | Metric: <?= strtoupper(str_replace('_', ' ', $test['metric'])) ?> | Min: <?= number_format($test['min_impressions']) ?> impressions
             </span>
         </h4>
@@ -79,8 +77,8 @@
         <div class="variant-card <?= $isWinner ? 'winner' : '' ?> <?= $v['is_control'] ? 'control' : '' ?>">
             <div class="variant-name">
                 <span><?= htmlspecialchars($v['creative_name']) ?></span>
-                <?php if ($v['is_control']): ?><span class="badge badge-secondary" style="font-size:0.65rem">CONTROL</span><?php endif; ?>
-                <?php if ($isWinner): ?><span class="badge badge-success" style="font-size:0.65rem">WINNER</span><?php endif; ?>
+                <?php if ($v['is_control']): ?><span class="badge-secondary" style="font-size:0.65rem">CONTROL</span><?php endif; ?>
+                <?php if ($isWinner): ?><span class="badge-running" style="font-size:0.65rem">WINNER</span><?php endif; ?>
             </div>
             <div class="variant-stat"><span>Traffic</span><strong><?= $v['traffic_weight'] ?>%</strong></div>
             <div class="variant-stat"><span>Impressions</span><strong><?= number_format($v['impressions']) ?></strong></div>
@@ -102,7 +100,7 @@
         Completed: <?= date('M j, Y g:ia', strtotime($test['completed_at'])) ?>
     </div>
     <?php endif; ?>
-</div></div>
+</div>
 <?php endforeach; ?>
 <?php endif; ?>
 

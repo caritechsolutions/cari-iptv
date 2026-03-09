@@ -2,20 +2,26 @@
 
 <style>
     .forecast-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
-    .forecast-kpi { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; }
+    .forecast-kpi { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; }
     .forecast-kpi .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
     .forecast-kpi .value { font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem; }
-    .chart-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    .chart-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
     .chart-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
     .chart-card h3 i { color: var(--primary); }
     .forecast-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-    .forecast-table th { padding: 0.5rem; border-bottom: 1px solid var(--border-color); text-align: left; color: var(--text-secondary); font-weight: 600; }
-    .forecast-table td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-muted); }
-    .accuracy-good { color: #22c55e; }
-    .accuracy-ok { color: #f59e0b; }
-    .accuracy-poor { color: #ef4444; }
+    .forecast-table th { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border-color); text-align: left; color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; background: rgba(0,0,0,0.2); }
+    .forecast-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-muted); }
+    .forecast-table tr:hover td { background: var(--bg-hover); }
+    .accuracy-good { color: #22c55e; font-weight: 600; }
+    .accuracy-ok { color: #f59e0b; font-weight: 600; }
+    .accuracy-poor { color: #ef4444; font-weight: 600; }
     .ai-analysis { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; padding: 1rem; margin-top: 1rem; font-size: 0.85rem; line-height: 1.6; color: var(--text-secondary); }
-    @media (max-width: 768px) { .forecast-grid { grid-template-columns: 1fr 1fr; } }
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 768px) {
+        .forecast-grid { grid-template-columns: 1fr 1fr; }
+        .charts-grid { grid-template-columns: 1fr; }
+    }
 </style>
 
 <div class="page-header flex justify-between items-center">
@@ -32,39 +38,40 @@
 </div>
 
 <div class="forecast-grid">
-    <div class="forecast-kpi card"><div class="card-body">
+    <div class="forecast-kpi">
         <div class="label">Avg Daily Impressions</div>
         <div class="value" style="color:var(--primary)"><?= number_format($historical['avg_daily_impressions'] ?? 0) ?></div>
-    </div></div>
-    <div class="forecast-kpi card"><div class="card-body">
+    </div>
+    <div class="forecast-kpi">
         <div class="label">Avg Daily Revenue</div>
         <div class="value" style="color:#22c55e">$<?= number_format($historical['avg_daily_revenue'] ?? 0, 2) ?></div>
-    </div></div>
-    <div class="forecast-kpi card"><div class="card-body">
+    </div>
+    <div class="forecast-kpi">
         <div class="label">Active Campaigns</div>
         <div class="value" style="color:#f59e0b"><?= $historical['active_campaigns'] ?? 0 ?></div>
-    </div></div>
-    <div class="forecast-kpi card"><div class="card-body">
+    </div>
+    <div class="forecast-kpi">
         <div class="label">Data Points (90d)</div>
         <div class="value"><?= count($historical['daily'] ?? []) ?></div>
-    </div></div>
+    </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-    <div class="chart-card card"><div class="card-body">
+<div class="charts-grid">
+    <div class="chart-card">
         <h3><i class="lucide-trending-up"></i> Historical vs Forecast</h3>
         <canvas id="chartForecast" height="200"></canvas>
-    </div></div>
-    <div class="chart-card card"><div class="card-body">
+    </div>
+    <div class="chart-card">
         <h3><i class="lucide-bar-chart-3"></i> Revenue by Zone Type</h3>
         <canvas id="chartZones" height="200"></canvas>
-    </div></div>
+    </div>
 </div>
 
-<div class="chart-card card"><div class="card-body">
+<div class="chart-card">
     <h3><i class="lucide-calendar"></i> Forecast Details</h3>
     <div id="forecastAnalysis"></div>
     <?php if (!empty($forecasts)): ?>
+    <div class="table-container">
     <table class="forecast-table">
         <thead><tr>
             <th>Date</th><th>Predicted Impressions</th><th>Predicted Revenue</th><th>Fill Rate</th><th>Confidence</th>
@@ -94,12 +101,13 @@
         <?php endforeach; ?>
         </tbody>
     </table>
+    </div>
     <?php else: ?>
     <p style="text-align:center;padding:2rem;color:var(--text-muted)">
         No forecasts yet. Click <strong>"Generate Forecast"</strong> to create AI-powered predictions.
     </p>
     <?php endif; ?>
-</div></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>

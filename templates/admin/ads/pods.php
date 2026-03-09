@@ -2,19 +2,20 @@
 
 <style>
     .pod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1rem; }
-    .pod-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; }
+    .pod-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; }
     .pod-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
-    .pod-header h4 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .pod-header h4 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
     .pod-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
     .pod-stat { font-size: 0.8rem; color: var(--text-muted); }
     .pod-stat strong { color: var(--text-secondary); display: block; }
-    .badge-pre_roll { background: rgba(245,158,11,0.15); color: #f59e0b; }
-    .badge-mid_roll { background: rgba(239,68,68,0.15); color: #ef4444; }
-    .badge-post_roll { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .badge-pre_roll { background: rgba(245,158,11,0.15); color: #f59e0b; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; }
+    .badge-mid_roll { background: rgba(239,68,68,0.15); color: #ef4444; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; }
+    .badge-post_roll { background: rgba(99,102,241,0.15); color: #818cf8; padding: 0.25rem 0.625rem; border-radius: 6px; font-size: 0.75rem; }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; }
     .modal-overlay.active { display: flex; }
-    .modal-box { background: #1e293b; border: 1px solid #475569; border-radius: 12px; width: 90%; max-width: 540px; max-height: 90vh; overflow-y: auto; }
+    .modal-box { background: var(--bg-card); border: 1px solid #475569; border-radius: 12px; width: 90%; max-width: 540px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); }
     .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h3 { font-size: 1rem; font-weight: 600; }
     .modal-body { padding: 1.25rem; }
     .modal-footer { padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem; }
     .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.25rem; }
@@ -22,6 +23,7 @@
     .empty-state i { font-size: 2.5rem; margin-bottom: 0.75rem; display: block; }
     .info-callout { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; font-size: 0.85rem; color: var(--text-secondary); }
     .info-callout i { color: var(--primary); margin-right: 0.5rem; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 </style>
 
 <div class="page-header flex justify-between items-center">
@@ -42,22 +44,22 @@
 </div>
 
 <?php if (empty($pods)): ?>
-<div class="card"><div class="card-body empty-state">
+<div class="pod-card empty-state">
     <i class="lucide-layers"></i>
     <h3>No Ad Pods Configured</h3>
     <p>Create an ad pod to serve multiple ads in a single break, like a TV commercial break.</p>
     <button class="btn btn-primary" onclick="openPodModal()" style="margin-top:1rem"><i class="lucide-plus"></i> Create First Pod</button>
-</div></div>
+</div>
 <?php else: ?>
 <div class="pod-grid">
 <?php foreach ($pods as $pod): ?>
-<div class="card"><div class="card-body pod-card">
+<div class="pod-card">
     <div class="pod-header">
         <h4>
             <i class="lucide-layers" style="color:var(--primary)"></i>
             <?= htmlspecialchars($pod['name']) ?>
-            <span class="badge badge-<?= $pod['pod_type'] ?>"><?= ucfirst(str_replace('_', ' ', $pod['pod_type'])) ?></span>
-            <?php if (!$pod['is_active']): ?><span class="badge badge-secondary">Inactive</span><?php endif; ?>
+            <span class="badge-<?= $pod['pod_type'] ?>"><?= ucfirst(str_replace('_', ' ', $pod['pod_type'])) ?></span>
+            <?php if (!$pod['is_active']): ?><span class="badge badge-warning">Inactive</span><?php endif; ?>
         </h4>
         <div style="display:flex;gap:0.25rem">
             <button class="btn btn-sm btn-secondary" onclick='editPod(<?= json_encode($pod) ?>)'><i class="lucide-edit-2"></i></button>
@@ -74,7 +76,7 @@
         <div class="pod-stat"><strong><?= round($pod['min_content_duration'] / 60) ?>min</strong>Min Content Length</div>
         <?php endif; ?>
     </div>
-</div></div>
+</div>
 <?php endforeach; ?>
 </div>
 <?php endif; ?>
@@ -92,7 +94,7 @@
             <label class="form-label">Pod Name</label>
             <input type="text" class="form-input" id="podName" placeholder="e.g. Standard Pre-Roll Pod">
         </div>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Zone</label>
                 <select class="form-input" id="podZone">
@@ -110,7 +112,7 @@
                 </select>
             </div>
         </div>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Max Ads in Pod</label>
                 <input type="number" class="form-input" id="podMaxAds" value="3" min="1" max="10">
@@ -120,7 +122,7 @@
                 <input type="number" class="form-input" id="podMaxDuration" value="90" min="5" max="600">
             </div>
         </div>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Min Gap Between Pods (sec)</label>
                 <input type="number" class="form-input" id="podSeparation" value="300" min="0">
@@ -131,12 +133,12 @@
             </div>
         </div>
         <div class="form-group">
-            <label class="form-label d-flex align-items-center gap-2">
+            <label class="form-label" style="display:flex;align-items:center;gap:0.5rem;">
                 <input type="checkbox" id="podCompetitors"> Allow competing advertisers in same pod
             </label>
         </div>
         <div class="form-group">
-            <label class="form-label d-flex align-items-center gap-2">
+            <label class="form-label" style="display:flex;align-items:center;gap:0.5rem;">
                 <input type="checkbox" id="podActive" checked> Active
             </label>
         </div>

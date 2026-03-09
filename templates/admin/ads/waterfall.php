@@ -1,9 +1,9 @@
 <?php $pageTitle = 'Ad Waterfall Chains'; ?>
 
 <style>
-    .chain-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    .chain-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
     .chain-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    .chain-header h4 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .chain-header h4 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
     .chain-zone { font-size: 0.75rem; color: var(--text-muted); background: rgba(99,102,241,0.15); padding: 2px 8px; border-radius: 4px; }
     .step-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .step-row:last-child { border-bottom: none; }
@@ -17,13 +17,12 @@
     .step-timeout { font-size: 0.75rem; color: var(--text-muted); }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; }
     .modal-overlay.active { display: flex; }
-    .modal-box { background: #1e293b; border: 1px solid #475569; border-radius: 12px; width: 90%; max-width: 640px; max-height: 90vh; overflow-y: auto; }
+    .modal-box { background: var(--bg-card); border: 1px solid #475569; border-radius: 12px; width: 90%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); }
     .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
     .modal-header h3 { font-size: 1rem; font-weight: 600; }
     .modal-body { padding: 1.25rem; }
     .modal-footer { padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem; }
     .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.25rem; padding: 0.25rem; }
-    .step-builder { margin-top: 1rem; }
     .step-builder-row { display: grid; grid-template-columns: 120px 1fr 100px 80px 40px; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px; }
     .step-builder-row .form-input { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
@@ -42,21 +41,21 @@
 </div>
 
 <?php if (empty($chains)): ?>
-<div class="card"><div class="card-body empty-state">
+<div class="chain-card empty-state">
     <i class="lucide-git-branch"></i>
     <h3>No Waterfall Chains</h3>
     <p>Create a waterfall chain to define fallback ad sources when your direct-sold inventory doesn't fill.</p>
     <button class="btn btn-primary" onclick="openChainModal()" style="margin-top:1rem"><i class="lucide-plus"></i> Create First Chain</button>
-</div></div>
+</div>
 <?php else: ?>
 <?php foreach ($chains as $chain): ?>
-<div class="card"><div class="card-body chain-card">
+<div class="chain-card">
     <div class="chain-header">
         <h4>
             <i class="lucide-git-branch" style="color:var(--primary)"></i>
             <?= htmlspecialchars($chain['name']) ?>
             <span class="chain-zone"><?= htmlspecialchars($chain['zone_name']) ?> (<?= htmlspecialchars($chain['zone_type']) ?>)</span>
-            <?php if (!$chain['is_active']): ?><span class="badge badge-secondary">Inactive</span><?php endif; ?>
+            <?php if (!$chain['is_active']): ?><span class="badge badge-warning">Inactive</span><?php endif; ?>
         </h4>
         <div style="display:flex;gap:0.5rem">
             <button class="btn btn-sm btn-secondary" onclick="editChain(<?= $chain['id'] ?>)"><i class="lucide-edit-2"></i> Edit</button>
@@ -79,7 +78,7 @@
         </div>
         <?php endforeach; ?>
     <?php endif; ?>
-</div></div>
+</div>
 <?php endforeach; ?>
 <?php endif; ?>
 
@@ -106,7 +105,7 @@
             </select>
         </div>
         <div class="form-group">
-            <label class="form-label d-flex align-items-center gap-2">
+            <label class="form-label" style="display:flex;align-items:center;gap:0.5rem;">
                 <input type="checkbox" id="chainActive" checked> Active
             </label>
         </div>

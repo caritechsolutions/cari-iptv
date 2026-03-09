@@ -377,6 +377,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/ads/forecast/generate', [AdController::class, 'generateForecast'], ['auth']);
 
     // Advertising - Ad Serving API (Enhanced)
+    $router->get('/ads/api/debug', [AdController::class, 'serveDebug'], ['auth']);
     $router->get('/ads/api/serve', [AdController::class, 'serveEnhanced']);
     $router->get('/ads/api/serve-legacy', [AdController::class, 'serve']);
     $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);

@@ -1542,6 +1542,102 @@ class AdController
     }
 
     // =========================================
+    // Ad Serve Diagnostics
+    // =========================================
+
+    /**
+     * Diagnostic endpoint to debug why ads aren't serving.
+     * GET /admin/ads/api/debug?zone_type=text_scroller
+     */
+    public function serveDebug(): void
+    {
+        $zoneType = $_GET['zone_type'] ?? null;
+        $now = date('Y-m-d H:i:s');
+
+        $debug = [];
+
+        // 1. Check zones
+        $zones = $this->db->fetchAll(
+            "SELECT id, name, slug, zone_type, is_active FROM ad_zones" .
+            ($zoneType ? " WHERE zone_type = ?" : ""),
+            $zoneType ? [$zoneType] : []
+        );
+        $debug['zones'] = $zones;
+        $activeZones = array_filter($zones, fn($z) => $z['is_active']);
+        $debug['zones_active'] = count($activeZones);
+        if (empty($activeZones)) {
+            $debug['problem'] = 'No active zones found' . ($zoneType ? " for type '$zoneType'" : '');
+        }
+
+        // 2. Check campaigns
+        $campaigns = $this->db->fetchAll("SELECT id, name, status, start_date, end_date, total_impressions, total_impressions_cap FROM ad_campaigns");
+        $debug['campaigns_total'] = count($campaigns);
+        $activeCampaigns = array_filter($campaigns, function ($c) use ($now) {
+            return $c['status'] === 'active'
+                && ($c['start_date'] === null || $c['start_date'] <= $now)
+                && ($c['end_date'] === null || $c['end_date'] >= $now)
+                && ($c['total_impressions_cap'] === null || $c['total_impressions'] < $c['total_impressions_cap']);
+        });
+        $debug['campaigns_active_and_in_date'] = count($activeCampaigns);
+        foreach ($campaigns as $c) {
+            $issues = [];
+            if ($c['status'] !== 'active') $issues[] = "status is '{$c['status']}' (need 'active')";
+            if ($c['start_date'] && $c['start_date'] > $now) $issues[] = "start_date ({$c['start_date']}) is in the future";
+            if ($c['end_date'] && $c['end_date'] < $now) $issues[] = "end_date ({$c['end_date']}) is in the past";
+            if ($c['total_impressions_cap'] && $c['total_impressions'] >= $c['total_impressions_cap']) $issues[] = "impression cap reached ({$c['total_impressions']}/{$c['total_impressions_cap']})";
+            if ($issues) $debug['campaign_issues'][$c['name'] . " (#{$c['id']})"] = $issues;
+        }
+
+        // 3. Check creatives
+        $creatives = $this->db->fetchAll("SELECT id, campaign_id, name, type, status FROM ad_creatives");
+        $debug['creatives_total'] = count($creatives);
+        $activeCreatives = array_filter($creatives, fn($c) => $c['status'] === 'active');
+        $debug['creatives_active'] = count($activeCreatives);
+        $draftCreatives = array_filter($creatives, fn($c) => $c['status'] === 'draft');
+        if (count($draftCreatives) > 0) {
+            $debug['creatives_in_draft'] = count($draftCreatives);
+            $debug['draft_creative_names'] = array_map(fn($c) => $c['name'] . " (#{$c['id']}, type: {$c['type']})", array_values($draftCreatives));
+            if (empty($activeCreatives)) {
+                $debug['problem'] = 'All creatives are in DRAFT status. Change them to ACTIVE in the campaign editor.';
+            }
+        }
+
+        // 4. Check placements
+        $placements = $this->db->fetchAll(
+            "SELECT ap.id, ap.status, ap.campaign_id, ap.creative_id, ap.zone_id,
+                    camp.name as campaign_name, ac.name as creative_name, ac.status as creative_status,
+                    az.name as zone_name, az.zone_type, az.is_active as zone_active
+             FROM ad_placements ap
+             JOIN ad_campaigns camp ON ap.campaign_id = camp.id
+             JOIN ad_creatives ac ON ap.creative_id = ac.id
+             JOIN ad_zones az ON ap.zone_id = az.id"
+        );
+        $debug['placements_total'] = count($placements);
+        foreach ($placements as $p) {
+            $issues = [];
+            if ($p['status'] !== 'active') $issues[] = "placement status is '{$p['status']}'";
+            if ($p['creative_status'] !== 'active') $issues[] = "creative '{$p['creative_name']}' status is '{$p['creative_status']}' (need 'active')";
+            if (!$p['zone_active']) $issues[] = "zone '{$p['zone_name']}' is inactive";
+            if ($issues) {
+                $debug['placement_issues'][] = [
+                    'placement_id' => $p['id'],
+                    'campaign' => $p['campaign_name'],
+                    'creative' => $p['creative_name'],
+                    'zone' => $p['zone_name'] . " ({$p['zone_type']})",
+                    'issues' => $issues,
+                ];
+            }
+        }
+
+        // 5. Quick fix suggestion
+        if (!empty($draftCreatives)) {
+            $debug['fix_sql'] = "UPDATE ad_creatives SET status = 'active' WHERE status = 'draft';";
+        }
+
+        Response::json(['success' => true, 'debug' => $debug, 'server_time' => $now]);
+    }
+
+    // =========================================
     // Enhanced Serve (with waterfall, pods, dayparting)
     // =========================================
 
