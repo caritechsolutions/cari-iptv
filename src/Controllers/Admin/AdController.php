@@ -1725,7 +1725,39 @@ class AdController
             }
         }
 
-        // 10. Test actual serve result
+        // 10. Check targeting rules on all placements
+        $allPlacements = $this->db->fetchAll("SELECT ap.id, ap.campaign_id, ap.creative_id, ap.zone_id FROM ad_placements ap WHERE ap.status = 'active'");
+        $debug['targeting_rules'] = [];
+        foreach ($allPlacements as $pl) {
+            $rules = $this->db->fetchAll("SELECT * FROM ad_targeting_rules WHERE placement_id = ?", [$pl['id']]);
+            if (!empty($rules)) {
+                $debug['targeting_rules']['placement_' . $pl['id']] = $rules;
+            }
+        }
+        if (empty($debug['targeting_rules'])) {
+            $debug['targeting_rules'] = 'none (all placements have no targeting rules)';
+        }
+
+        // 11. Test getAdsForContext directly (basic, no daypart/AB)
+        try {
+            $basicAds = $this->adService->getAdsForContext([
+                'zone_type' => $zoneType,
+                'platform' => 'web',
+                'limit' => 5,
+            ]);
+            $debug['basic_serve_count'] = count($basicAds);
+            if (!empty($basicAds)) {
+                $debug['basic_serve_first'] = [
+                    'id' => $basicAds[0]['id'] ?? null,
+                    'type' => $basicAds[0]['type'] ?? null,
+                    'campaign_id' => $basicAds[0]['campaign_id'] ?? null,
+                ];
+            }
+        } catch (\Throwable $e) {
+            $debug['basic_serve_error'] = $e->getMessage();
+        }
+
+        // 12. Test enhanced serve result
         try {
             $serveResult = $this->adService->serveAdsEnhanced([
                 'zone_type' => $zoneType,
