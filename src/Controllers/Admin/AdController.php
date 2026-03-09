@@ -1690,6 +1690,54 @@ class AdController
             ];
         }
 
+        // 9. Check daypart schedules (these can silently block all ads)
+        $campaignIds = array_unique(array_column($campaigns, 'id'));
+        foreach ($campaignIds as $cid) {
+            try {
+                $daypartSchedules = $this->db->fetchAll(
+                    "SELECT * FROM ad_daypart_schedules WHERE campaign_id = ? AND is_active = 1",
+                    [$cid]
+                );
+                if (!empty($daypartSchedules)) {
+                    $dayMap = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+                    $dow = $dayMap[(int) date('N') - 1];
+                    $hour = (int) date('G');
+                    $debug['daypart_check'] = [
+                        'campaign_id' => $cid,
+                        'schedules_found' => count($daypartSchedules),
+                        'current_day' => $dow,
+                        'current_hour' => $hour,
+                        'blocked' => true,
+                    ];
+                    foreach ($daypartSchedules as $sched) {
+                        $grid = json_decode($sched['schedule_grid'], true);
+                        if ($grid && isset($grid[$dow][$hour]) && $grid[$dow][$hour]) {
+                            $debug['daypart_check']['blocked'] = false;
+                            break;
+                        }
+                    }
+                    if ($debug['daypart_check']['blocked']) {
+                        $debug['problem'] = "Daypart schedule is BLOCKING ads for campaign #$cid at $dow hour $hour. Delete or edit the daypart schedule.";
+                    }
+                }
+            } catch (\Throwable $e) {
+                $debug['daypart_error'] = $e->getMessage();
+            }
+        }
+
+        // 10. Test actual serve result
+        try {
+            $serveResult = $this->adService->serveAdsEnhanced([
+                'zone_type' => $zoneType,
+                'platform' => 'web',
+                'limit' => 5,
+            ]);
+            $debug['serve_result_count'] = count($serveResult['ads'] ?? []);
+            $debug['serve_source'] = $serveResult['source'] ?? 'unknown';
+        } catch (\Throwable $e) {
+            $debug['serve_error'] = $e->getMessage();
+        }
+
         Response::json(['success' => true, 'debug' => $debug, 'server_time' => $now]);
     }
 

@@ -1995,8 +1995,13 @@ class AdService
             $zone = $this->db->fetch("SELECT * FROM ad_zones WHERE zone_type = ? AND is_active = 1 LIMIT 1", [$zoneType]);
         }
 
-        // Try direct fill first
-        $ads = $this->getAdsForContextEnhanced($context);
+        // Try direct fill first (with fallback to basic query if enhanced fails)
+        try {
+            $ads = $this->getAdsForContextEnhanced($context);
+        } catch (\Throwable $e) {
+            // Fallback to basic query without dayparting/AB
+            $ads = $this->getAdsForContext($context);
+        }
 
         // Check floor price
         if ($zone && !empty($zone['floor_cpm'])) {
@@ -2053,34 +2058,44 @@ class AdService
     {
         $ads = $this->getAdsForContext($context);
 
-        // Apply dayparting filter
+        if (empty($ads)) {
+            return [];
+        }
+
+        // Apply dayparting filter (fault-tolerant)
         $filtered = [];
         foreach ($ads as $ad) {
-            $daypart = $this->checkDaypartSchedule((int) $ad['campaign_id']);
-            if ($daypart === null) continue; // Blocked by daypart
-
-            // Apply priority multiplier
-            $ad['effective_priority'] = (int) $ad['campaign_priority'] * $daypart['priority_multiplier'];
+            try {
+                $daypart = $this->checkDaypartSchedule((int) $ad['campaign_id']);
+                if ($daypart === null) continue; // Blocked by daypart
+                $ad['effective_priority'] = (int) ($ad['campaign_priority'] ?? 5) * $daypart['priority_multiplier'];
+            } catch (\Throwable $e) {
+                // If daypart check fails, allow the ad through with default priority
+                $ad['effective_priority'] = (int) ($ad['campaign_priority'] ?? 5);
+            }
             $filtered[] = $ad;
         }
 
         // Re-sort by effective priority
         usort($filtered, fn($a, $b) => ($a['effective_priority'] ?? 99) <=> ($b['effective_priority'] ?? 99));
 
-        // Apply A/B test variant selection
+        // Apply A/B test variant selection (fault-tolerant)
         foreach ($filtered as &$ad) {
             if (!empty($ad['ab_test_id'])) {
-                $variant = $this->pickAbTestVariant((int) $ad['ab_test_id']);
-                if ($variant) {
-                    $ad['ab_variant_id'] = $variant['id'];
-                    // Swap creative if variant selects a different one
-                    if ($variant['creative_id'] != $ad['id']) {
-                        $altCreative = $this->getCreative((int) $variant['creative_id']);
-                        if ($altCreative) {
-                            $ad = array_merge($ad, $altCreative);
-                            $ad['ab_variant_id'] = $variant['id'];
+                try {
+                    $variant = $this->pickAbTestVariant((int) $ad['ab_test_id']);
+                    if ($variant) {
+                        $ad['ab_variant_id'] = $variant['id'];
+                        if ($variant['creative_id'] != $ad['id']) {
+                            $altCreative = $this->getCreative((int) $variant['creative_id']);
+                            if ($altCreative) {
+                                $ad = array_merge($ad, $altCreative);
+                                $ad['ab_variant_id'] = $variant['id'];
+                            }
                         }
                     }
+                } catch (\Throwable $e) {
+                    // A/B test lookup failed, serve original creative
                 }
             }
         }
