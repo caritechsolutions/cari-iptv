@@ -79,6 +79,7 @@ class AdController
             'targetingTypes' => AdService::getTargetingTypes(),
             'channels' => $this->adService->getChannels(),
             'categories' => $this->adService->getCategories(),
+            'packages' => $this->adService->getPackages(),
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -148,6 +149,7 @@ class AdController
             'targetingTypes' => AdService::getTargetingTypes(),
             'channels' => $this->adService->getChannels(),
             'categories' => $this->adService->getCategories(),
+            'packages' => $this->adService->getPackages(),
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');

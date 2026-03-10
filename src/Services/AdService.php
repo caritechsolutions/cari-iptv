@@ -646,35 +646,38 @@ class AdService
             $isInclude = $rule['rule_operator'] === 'include';
             $matches = false;
 
+            // Normalize values to strings for consistent comparison
+            $values = array_map('strval', $values);
+
             switch ($rule['rule_type']) {
                 case 'package':
                     $packageId = $context['package_id'] ?? null;
-                    $matches = $packageId && in_array($packageId, $values);
+                    $matches = $packageId !== null && in_array((string) $packageId, $values, true);
                     break;
 
                 case 'channel':
                     $channelId = $context['channel_id'] ?? null;
-                    $matches = $channelId && in_array($channelId, $values);
+                    $matches = $channelId !== null && in_array((string) $channelId, $values, true);
                     break;
 
                 case 'category':
                     $categoryId = $context['category_id'] ?? null;
-                    $matches = $categoryId && in_array($categoryId, $values);
+                    $matches = $categoryId !== null && in_array((string) $categoryId, $values, true);
                     break;
 
                 case 'content_type':
                     $contentType = $context['content_type'] ?? null;
-                    $matches = $contentType && in_array($contentType, $values);
+                    $matches = $contentType !== null && in_array((string) $contentType, $values, true);
                     break;
 
                 case 'platform':
                     $platform = $context['platform'] ?? null;
-                    $matches = $platform && in_array($platform, $values);
+                    $matches = $platform !== null && in_array((string) $platform, $values, true);
                     break;
 
                 case 'geo':
                     $geo = $context['geo'] ?? null;
-                    $matches = $geo && in_array($geo, $values);
+                    $matches = $geo !== null && in_array((string) $geo, $values, true);
                     break;
 
                 case 'schedule':
@@ -990,6 +993,16 @@ class AdService
     {
         return $this->db->fetchAll(
             "SELECT id, name, type FROM categories WHERE is_active = 1 ORDER BY type, name"
+        );
+    }
+
+    /**
+     * Get packages for targeting picker
+     */
+    public function getPackages(): array
+    {
+        return $this->db->fetchAll(
+            "SELECT id, name FROM packages WHERE is_active = 1 ORDER BY sort_order, name"
         );
     }
 

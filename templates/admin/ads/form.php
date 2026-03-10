@@ -13,8 +13,11 @@ $isEdit = !empty($campaign);
     .creative-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
     .creative-type-label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 500; }
     .placement-card { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
-    .targeting-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .targeting-row { display: flex; gap: 0.5rem; align-items: flex-start; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .targeting-row select, .targeting-row input { font-size: 0.8rem; padding: 0.375rem 0.5rem; }
+    .rule-multi-dropdown.show { display: block !important; }
+    .rule-multi-toggle { user-select: none; }
+    .rule-value-container { position: relative; }
     .tab-nav { display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem; gap: 0; }
     .tab-btn { padding: 0.75rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; color: var(--text-muted); font-size: 0.875rem; font-weight: 500; transition: all 0.2s; }
     .tab-btn:hover { color: var(--text-primary); }
@@ -610,6 +613,7 @@ const csrf = '<?= $csrf ?>';
 const campaignId = <?= $campaign['id'] ?? 'null' ?>;
 const channels = <?= json_encode($channels ?? []) ?>;
 const categories = <?= json_encode($categories ?? []) ?>;
+const packages = <?= json_encode($packages ?? []) ?>;
 
 function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -950,11 +954,6 @@ function addTargetingRule(type, operator, values) {
     row.className = 'targeting-row';
     row.id = 'targeting-rule-' + idx;
 
-    let valuesStr = '';
-    if (values && Array.isArray(values)) {
-        valuesStr = values.join(',');
-    }
-
     row.innerHTML = `
         <select class="form-input rule-type" onchange="updateRuleValueOptions(${idx}, this.value)" style="width:150px;">
             <option value="">Select type...</option>
@@ -969,12 +968,125 @@ function addTargetingRule(type, operator, values) {
             <option value="include" ${operator === 'include' || !operator ? 'selected' : ''}>Include</option>
             <option value="exclude" ${operator === 'exclude' ? 'selected' : ''}>Exclude</option>
         </select>
-        <input type="text" class="form-input rule-value" placeholder="Values (comma-separated)" value="${valuesStr}" style="flex:1;min-width:150px;">
+        <div class="rule-value-container" style="flex:1;min-width:150px;"></div>
         <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('targeting-rule-${idx}').remove()">Remove</button>
     `;
 
     container.appendChild(row);
+
+    // Build the value input/select for the chosen type
+    updateRuleValueOptions(idx, type || '', values);
 }
+
+function updateRuleValueOptions(idx, ruleType, preselected) {
+    const row = document.getElementById('targeting-rule-' + idx);
+    if (!row) return;
+    const container = row.querySelector('.rule-value-container');
+    if (!container) return;
+
+    // Normalize preselected to an array of strings
+    if (preselected && !Array.isArray(preselected)) {
+        preselected = String(preselected).split(',').map(v => v.trim()).filter(v => v);
+    }
+    const selected = (preselected || []).map(String);
+
+    // Determine options based on rule type
+    let options = null;
+    let placeholder = 'Values (comma-separated)';
+
+    switch (ruleType) {
+        case 'channel':
+            options = channels.map(c => ({ value: String(c.id), label: c.name }));
+            break;
+        case 'category':
+            options = categories.map(c => ({ value: String(c.id), label: c.name + (c.type ? ' (' + c.type + ')' : '') }));
+            break;
+        case 'package':
+            options = packages.map(p => ({ value: String(p.id), label: p.name }));
+            break;
+        case 'content_type':
+            options = [
+                { value: 'live', label: 'Live TV' },
+                { value: 'vod', label: 'VOD / Movies' },
+                { value: 'series', label: 'Series' }
+            ];
+            break;
+        case 'platform':
+            options = [
+                { value: 'web', label: 'Web' },
+                { value: 'mobile', label: 'Mobile' },
+                { value: 'tv', label: 'Smart TV' },
+                { value: 'stb', label: 'Set-Top Box' }
+            ];
+            break;
+        case 'schedule':
+            placeholder = 'Time ranges (e.g. 06:00-12:00, 18:00-23:59)';
+            break;
+    }
+
+    if (options) {
+        // Render a multi-select checkbox dropdown
+        const selectedStr = selected.join(',');
+        let html = `<div class="rule-multi-select" data-values="${selectedStr}">`;
+        html += `<div class="rule-multi-toggle form-input" onclick="this.nextElementSibling.classList.toggle('show')" style="cursor:pointer;min-height:36px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">`;
+        html += `<span class="rule-multi-placeholder" style="color:#94a3b8;">Select...</span>`;
+        html += `</div>`;
+        html += `<div class="rule-multi-dropdown" style="display:none;position:absolute;z-index:100;background:var(--card-bg, #1e293b);border:1px solid rgba(255,255,255,0.1);border-radius:6px;max-height:200px;overflow-y:auto;width:100%;margin-top:2px;">`;
+        options.forEach(opt => {
+            const checked = selected.includes(opt.value) ? 'checked' : '';
+            html += `<label style="display:flex;align-items:center;padding:6px 10px;cursor:pointer;gap:8px;font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">`;
+            html += `<input type="checkbox" value="${opt.value}" ${checked} onchange="updateMultiSelectDisplay(${idx})" style="accent-color:var(--primary, #6366f1);"> ${opt.label}`;
+            html += `</label>`;
+        });
+        html += `</div></div>`;
+        container.innerHTML = html;
+        container.style.position = 'relative';
+
+        // Update display with preselected values
+        updateMultiSelectDisplay(idx);
+    } else {
+        // Fallback to text input (schedule, geo, or unknown type)
+        const valuesStr = selected.join(', ');
+        container.innerHTML = `<input type="text" class="form-input rule-value" placeholder="${placeholder}" value="${valuesStr}" style="width:100%;">`;
+        container.style.position = '';
+    }
+}
+
+function updateMultiSelectDisplay(idx) {
+    const row = document.getElementById('targeting-rule-' + idx);
+    if (!row) return;
+    const multiSelect = row.querySelector('.rule-multi-select');
+    if (!multiSelect) return;
+
+    const toggle = multiSelect.querySelector('.rule-multi-toggle');
+    const checkboxes = multiSelect.querySelectorAll('input[type="checkbox"]');
+    const selectedValues = [];
+    const selectedLabels = [];
+
+    checkboxes.forEach(cb => {
+        if (cb.checked) {
+            selectedValues.push(cb.value);
+            selectedLabels.push(cb.parentElement.textContent.trim());
+        }
+    });
+
+    multiSelect.dataset.values = selectedValues.join(',');
+
+    if (selectedLabels.length === 0) {
+        toggle.innerHTML = '<span class="rule-multi-placeholder" style="color:#94a3b8;">Select...</span>';
+    } else {
+        toggle.innerHTML = selectedLabels.map(l =>
+            `<span style="background:var(--primary, #6366f1);color:white;padding:2px 8px;border-radius:4px;font-size:0.75rem;">${l}</span>`
+        ).join('');
+    }
+}
+
+// Close multi-select dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.rule-multi-select')) {
+        document.querySelectorAll('.rule-multi-dropdown.show').forEach(d => d.classList.remove('show'));
+    }
+});
 
 function savePlacement() {
     const id = document.getElementById('placementId').value;
@@ -984,12 +1096,24 @@ function savePlacement() {
     document.querySelectorAll('.targeting-row').forEach(row => {
         const type = row.querySelector('.rule-type').value;
         const operator = row.querySelector('.rule-operator').value;
-        const valueStr = row.querySelector('.rule-value').value;
-        if (type && valueStr) {
+
+        let values = [];
+        const multiSelect = row.querySelector('.rule-multi-select');
+        const textInput = row.querySelector('.rule-value');
+        if (multiSelect) {
+            // Multi-select dropdown: read checked values
+            const dataValues = multiSelect.dataset.values || '';
+            values = dataValues.split(',').filter(v => v);
+        } else if (textInput) {
+            // Text input fallback (schedule, geo)
+            values = textInput.value.split(',').map(v => v.trim()).filter(v => v);
+        }
+
+        if (type && values.length > 0) {
             rules.push({
                 rule_type: type,
                 rule_operator: operator,
-                rule_value: valueStr.split(',').map(v => v.trim()).filter(v => v)
+                rule_value: values
             });
         }
     });
