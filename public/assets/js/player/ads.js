@@ -402,14 +402,24 @@ const CariAdManager = (function() {
     function showOverlayBanner(ad) {
         if (!_playerContainer) return;
 
+        // Remove any existing banner overlay before showing a new one
+        var existingBanners = _playerContainer.querySelectorAll('.cari-ad-banner-overlay');
+        existingBanners.forEach(function(el) { el.remove(); });
+
         var banner = document.createElement('div');
         banner.className = 'cari-ad-banner-overlay cari-ad-banner-' + (ad.banner_position || 'overlay_bottom');
-        banner.innerHTML = '<img src="' + ad.image_url + '" alt="' + (ad.alt_text || 'Ad') + '">' +
+        banner.innerHTML = '<img src="' + (ad.image_url || '') + '" alt="' + (ad.alt_text || 'Ad') + '">' +
             '<button class="cari-ad-close" onclick="this.parentNode.remove()">&times;</button>';
 
+        var img = banner.querySelector('img');
+        img.onerror = function() {
+            console.warn('[CariAds] Banner image failed to load:', ad.image_url);
+            banner.remove();
+        };
+
         if (ad.click_url) {
-            banner.querySelector('img').style.cursor = 'pointer';
-            banner.querySelector('img').onclick = function() {
+            img.style.cursor = 'pointer';
+            img.onclick = function() {
                 trackEvent(ad, 'click');
                 window.open(ad.click_url, ad.click_target || '_blank');
             };
@@ -418,11 +428,15 @@ const CariAdManager = (function() {
         trackImpression(ad);
         _playerContainer.appendChild(banner);
         _activeOverlays.push(banner);
+        console.log('[CariAds] Banner overlay appended to DOM, image:', ad.image_url, 'position:', ad.banner_position || 'overlay_bottom', 'container children:', _playerContainer.children.length);
 
         // Auto-dismiss after configured display duration
         var displayDuration = (_overlaySettings.banner_display_duration || 15) * 1000;
         setTimeout(function() {
-            if (banner.parentNode) banner.remove();
+            if (banner.parentNode) {
+                banner.remove();
+                console.log('[CariAds] Banner overlay auto-dismissed after ' + (displayDuration / 1000) + 's');
+            }
         }, displayDuration);
     }
 
@@ -432,6 +446,10 @@ const CariAdManager = (function() {
 
     function showTextScroller(ad) {
         if (!_playerContainer) return;
+
+        // Remove any existing scroller before showing a new one
+        var existingScrollers = _playerContainer.querySelectorAll('.cari-ad-scroller');
+        existingScrollers.forEach(function(el) { el.remove(); });
 
         var scroller = document.createElement('div');
         scroller.className = 'cari-ad-scroller';
