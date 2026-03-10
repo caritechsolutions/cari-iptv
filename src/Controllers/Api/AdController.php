@@ -65,6 +65,7 @@ class AdController extends BaseApiController
                 'text_color' => $ad['text_color'] ?? null,
                 'bg_color' => $ad['bg_color'] ?? null,
                 'bg_opacity' => $ad['bg_opacity'] ?? null,
+                'font_size' => $ad['font_size'] ?? 'medium',
                 'image_url' => $ad['image_url'] ?? null,
                 'image_width' => $ad['image_width'] ?? null,
                 'image_height' => $ad['image_height'] ?? null,

@@ -427,9 +427,13 @@ const CariAdManager = (function() {
         scroller.style.opacity = ad.bg_opacity || 0.8;
         scroller.style.color = ad.text_color || '#fff';
 
+        // Font size mapping
+        var fontSizeMap = { small: '0.75rem', medium: '0.85rem', large: '1.15rem', xlarge: '1.4rem' };
+        var fontSize = fontSizeMap[ad.font_size] || fontSizeMap.medium;
+
         var speed = ad.scroll_speed === 'slow' ? 25 : (ad.scroll_speed === 'fast' ? 12 : 18);
         var text = ad.scroll_text || '';
-        scroller.innerHTML = '<div class="cari-scroller-text" style="animation: scrollText ' + speed + 's linear infinite">' + escapeHtml(text) + '</div>';
+        scroller.innerHTML = '<div class="cari-scroller-text" style="font-size:' + fontSize + ';animation: scrollText ' + speed + 's linear infinite">' + escapeHtml(text) + '</div>';
 
         trackImpression(ad);
         _playerContainer.appendChild(scroller);

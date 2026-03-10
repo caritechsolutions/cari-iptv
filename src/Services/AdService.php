@@ -234,12 +234,12 @@ class AdService
     {
         $this->db->execute(
             "INSERT INTO ad_creatives (campaign_id, name, type, status,
-             scroll_text, scroll_speed, text_color, bg_color, bg_opacity,
+             scroll_text, scroll_speed, text_color, bg_color, bg_opacity, font_size,
              image_url, image_width, image_height, banner_position, click_url, click_target,
              video_url, vast_tag_url, video_duration, skip_after, companion_banner_url,
              midroll_offset_type, midroll_offset_value,
              alt_text, weight)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 $campaignId,
                 $data['name'],
@@ -250,6 +250,7 @@ class AdService
                 $data['text_color'] ?? '#FFFFFF',
                 $data['bg_color'] ?? '#000000',
                 $data['bg_opacity'] ?? 0.80,
+                $data['font_size'] ?? 'medium',
                 $data['image_url'] ?? null,
                 $data['image_width'] ?: null,
                 $data['image_height'] ?: null,
@@ -281,7 +282,7 @@ class AdService
 
         $updatable = [
             'name', 'type', 'status',
-            'scroll_text', 'scroll_speed', 'text_color', 'bg_color', 'bg_opacity',
+            'scroll_text', 'scroll_speed', 'text_color', 'bg_color', 'bg_opacity', 'font_size',
             'image_url', 'image_width', 'image_height', 'banner_position', 'click_url', 'click_target',
             'video_url', 'vast_tag_url', 'video_duration', 'skip_after', 'companion_banner_url',
             'midroll_offset_type', 'midroll_offset_value',

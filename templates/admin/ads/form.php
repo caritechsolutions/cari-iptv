@@ -349,17 +349,28 @@ $isEdit = !empty($campaign);
                         </select>
                     </div>
                     <div class="form-group">
+                        <label class="form-label">Font Size</label>
+                        <select id="fontSize" class="form-input">
+                            <option value="small">Small (12px)</option>
+                            <option value="medium" selected>Medium (16px)</option>
+                            <option value="large">Large (20px)</option>
+                            <option value="xlarge">Extra Large (24px)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">Text Color</label>
                         <input type="color" id="textColor" class="form-input" value="#FFFFFF" style="height:38px;">
                     </div>
+                </div>
+                <div class="form-grid-3">
                     <div class="form-group">
                         <label class="form-label">Background Color</label>
                         <input type="color" id="bgColor" class="form-input" value="#000000" style="height:38px;">
                     </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Background Opacity (0-1)</label>
-                    <input type="number" id="bgOpacity" class="form-input" value="0.80" min="0" max="1" step="0.05">
+                    <div class="form-group">
+                        <label class="form-label">Background Opacity (0-1)</label>
+                        <input type="number" id="bgOpacity" class="form-input" value="0.80" min="0" max="1" step="0.05">
+                    </div>
                 </div>
             </div>
 
@@ -663,6 +674,7 @@ function editCreative(creative) {
     if (creative.type === 'text_scroller') {
         document.getElementById('scrollText').value = creative.scroll_text || '';
         document.getElementById('scrollSpeed').value = creative.scroll_speed || 'normal';
+        document.getElementById('fontSize').value = creative.font_size || 'medium';
         document.getElementById('textColor').value = creative.text_color || '#FFFFFF';
         document.getElementById('bgColor').value = creative.bg_color || '#000000';
         document.getElementById('bgOpacity').value = creative.bg_opacity || '0.80';
@@ -858,6 +870,7 @@ function saveCreative() {
     if (type === 'text_scroller') {
         data.append('scroll_text', document.getElementById('scrollText').value);
         data.append('scroll_speed', document.getElementById('scrollSpeed').value);
+        data.append('font_size', document.getElementById('fontSize').value);
         data.append('text_color', document.getElementById('textColor').value);
         data.append('bg_color', document.getElementById('bgColor').value);
         data.append('bg_opacity', document.getElementById('bgOpacity').value);

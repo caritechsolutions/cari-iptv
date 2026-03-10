@@ -120,7 +120,8 @@
     bottom: 50px;
     left: 0;
     right: 0;
-    height: 36px;
+    min-height: 36px;
+    padding: 6px 0;
     overflow: hidden;
     z-index: 500;
     display: flex;

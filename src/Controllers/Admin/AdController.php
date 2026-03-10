@@ -1184,6 +1184,8 @@ class AdController
         $data['text_color'] = $post['text_color'] ?? '#FFFFFF';
         $data['bg_color'] = $post['bg_color'] ?? '#000000';
         $data['bg_opacity'] = isset($post['bg_opacity']) ? max(0, min(1, (float) $post['bg_opacity'])) : 0.80;
+        $data['font_size'] = in_array($post['font_size'] ?? '', ['small', 'medium', 'large', 'xlarge'])
+            ? $post['font_size'] : 'medium';
 
         $data['image_url'] = trim($post['image_url'] ?? '') ?: null;
         $data['image_width'] = !empty($post['image_width']) ? (int) $post['image_width'] : null;
@@ -1823,6 +1825,7 @@ class AdController
                 'text_color' => $ad['text_color'] ?? null,
                 'bg_color' => $ad['bg_color'] ?? null,
                 'bg_opacity' => $ad['bg_opacity'] ?? null,
+                'font_size' => $ad['font_size'] ?? 'medium',
                 'image_url' => $ad['image_url'] ?? null,
                 'image_width' => $ad['image_width'] ?? null,
                 'image_height' => $ad['image_height'] ?? null,
