@@ -2240,11 +2240,33 @@ const CariApp = (function() {
             video._liveTrackingCleanup = null;
         }
 
+        // Clean up previous ad overlays and re-initialize for new channel
+        if (typeof CariAdManager !== 'undefined') {
+            CariAdManager.destroy();
+            CariAdManager.init({
+                video: video,
+                container: document.getElementById('livePlayerContainer'),
+                platform: 'web',
+                packageId: CariAPI.getUser()?.package_id || null,
+                userId: CariAPI.getUser()?.id || null,
+                contentType: 'live',
+                channelId: channel.id,
+                categoryId: channel.category_id || null,
+                onAdStart: function() {},
+                onAdEnd: function() {},
+            });
+        }
+
         if (url && window.shaka) {
             await initShakaPlayer(video, url);
         } else if (url) {
             video.src = url;
             await autoplayWithFallback(video);
+        }
+
+        // Load overlay ads (text scrollers, banners) for live TV
+        if (typeof CariAdManager !== 'undefined') {
+            CariAdManager.loadOverlayAds();
         }
 
         // Track live TV viewing — uses wall-clock elapsed time
