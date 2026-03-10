@@ -20,6 +20,9 @@
     <button class="settings-tab" data-tab="image">
         <i class="lucide-image"></i> Images
     </button>
+    <button class="settings-tab" data-tab="ads">
+        <i class="lucide-megaphone"></i> Advertising
+    </button>
 </div>
 
 <!-- General Tab -->
@@ -821,6 +824,109 @@
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
                             <i class="lucide-save"></i> Save Image Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Advertising Tab -->
+<div class="settings-tab-content" id="tab-ads">
+    <div class="settings-grid">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="lucide-image"></i>
+                    Banner Overlay Settings
+                </h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">Configure how banner overlay ads appear during live TV and VOD playback.</p>
+
+                <form action="/admin/settings/ads" method="POST">
+                    <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+                    <div class="form-group">
+                        <label class="form-label" for="banner_initial_delay">Initial Delay (seconds)</label>
+                        <input type="number" id="banner_initial_delay" name="banner_initial_delay" class="form-control"
+                               min="0" max="600" step="5"
+                               value="<?= htmlspecialchars($settings['ads']['banner_initial_delay'] ?? '30') ?>">
+                        <small class="form-help">How long to wait after playback starts before showing the first banner ad. (Default: 30s)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="banner_display_duration">Display Duration (seconds)</label>
+                        <input type="number" id="banner_display_duration" name="banner_display_duration" class="form-control"
+                               min="5" max="120" step="5"
+                               value="<?= htmlspecialchars($settings['ads']['banner_display_duration'] ?? '15') ?>">
+                        <small class="form-help">How long the banner stays visible before auto-dismissing. (Default: 15s)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="banner_repeat_interval">Repeat Interval (seconds)</label>
+                        <input type="number" id="banner_repeat_interval" name="banner_repeat_interval" class="form-control"
+                               min="0" max="3600" step="30"
+                               value="<?= htmlspecialchars($settings['ads']['banner_repeat_interval'] ?? '300') ?>">
+                        <small class="form-help">Time between banner appearances. Set to 0 to show only once. (Default: 300s / 5 minutes)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="banner_enabled" value="1"
+                                   <?= ($settings['ads']['banner_enabled'] ?? '1') ? 'checked' : '' ?>>
+                            <span class="checkbox-text">
+                                <strong>Enable Banner Overlays</strong>
+                                <small>Show banner overlay ads during playback</small>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="form-divider"></div>
+
+                    <h4 style="margin: 1rem 0 0.5rem; color: var(--text-primary);">
+                        <i class="lucide-type"></i> Text Scroller Settings
+                    </h4>
+
+                    <div class="form-group">
+                        <label class="form-label" for="scroller_initial_delay">Initial Delay (seconds)</label>
+                        <input type="number" id="scroller_initial_delay" name="scroller_initial_delay" class="form-control"
+                               min="0" max="600" step="5"
+                               value="<?= htmlspecialchars($settings['ads']['scroller_initial_delay'] ?? '15') ?>">
+                        <small class="form-help">How long to wait before showing the first text scroller. (Default: 15s)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="scroller_repeat_interval">Repeat Interval (seconds)</label>
+                        <input type="number" id="scroller_repeat_interval" name="scroller_repeat_interval" class="form-control"
+                               min="0" max="3600" step="30"
+                               value="<?= htmlspecialchars($settings['ads']['scroller_repeat_interval'] ?? '300') ?>">
+                        <small class="form-help">Time between text scroller appearances. Set to 0 to show only once. (Default: 300s / 5 minutes)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="scroller_enabled" value="1"
+                                   <?= ($settings['ads']['scroller_enabled'] ?? '1') ? 'checked' : '' ?>>
+                            <span class="checkbox-text">
+                                <strong>Enable Text Scrollers</strong>
+                                <small>Show text scroller ads during playback</small>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="info-box">
+                        <i class="lucide-info"></i>
+                        <div>
+                            <strong>How Ad Rotation Works</strong>
+                            <p style="margin: 0.25rem 0 0;">After the initial delay, the ad is shown for the display duration, then hidden. After the repeat interval passes, a fresh ad is fetched and shown again. This continues as long as the viewer is watching. Setting the repeat interval to 0 means the ad shows only once per session.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="lucide-save"></i> Save Advertising Settings
                         </button>
                     </div>
                 </form>

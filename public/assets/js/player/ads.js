@@ -17,6 +17,17 @@ const CariAdManager = (function() {
     let _onAdEnd = null;
     let _adPlaying = false;
     let _companionBanners = [];
+    let _bannerTimer = null;
+    let _scrollerTimer = null;
+    let _overlaySettings = {
+        banner_enabled: true,
+        banner_initial_delay: 30,
+        banner_display_duration: 15,
+        banner_repeat_interval: 300,
+        scroller_enabled: true,
+        scroller_initial_delay: 15,
+        scroller_repeat_interval: 300,
+    };
 
     // =========================================
     // Init & Config
@@ -408,10 +419,11 @@ const CariAdManager = (function() {
         _playerContainer.appendChild(banner);
         _activeOverlays.push(banner);
 
-        // Auto-dismiss after 15 seconds
+        // Auto-dismiss after configured display duration
+        var displayDuration = (_overlaySettings.banner_display_duration || 15) * 1000;
         setTimeout(function() {
             if (banner.parentNode) banner.remove();
-        }, 15000);
+        }, displayDuration);
     }
 
     // =========================================
@@ -482,28 +494,81 @@ const CariAdManager = (function() {
     function loadOverlayAds() {
         console.log('[CariAds] loadOverlayAds called, container:', _playerContainer ? 'found' : 'MISSING');
 
-        // Fetch banner ads
-        fetchAds('banner').then(function(result) {
-            var ads = result.ads || [];
-            console.log('[CariAds] Banner ads received:', ads.length);
-            if (ads.length > 0) {
-                setTimeout(function() {
-                    showOverlayBanner(ads[0]);
-                }, 30000);
-            }
-        });
+        // Fetch overlay settings from backend, then start overlay rotation
+        fetch(AD_API_BASE + '/overlay-settings')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success && data.settings) {
+                    _overlaySettings = data.settings;
+                    console.log('[CariAds] Overlay settings loaded:', JSON.stringify(_overlaySettings));
+                }
+                startOverlayRotation();
+            })
+            .catch(function() {
+                console.log('[CariAds] Could not load overlay settings, using defaults');
+                startOverlayRotation();
+            });
+    }
 
-        // Fetch text scroller ads
-        fetchAds('text_scroller').then(function(result) {
-            var ads = result.ads || [];
-            console.log('[CariAds] Text scroller ads received:', ads.length);
-            if (ads.length > 0) {
-                setTimeout(function() {
+    function startOverlayRotation() {
+        // Clear any existing timers
+        if (_bannerTimer) { clearTimeout(_bannerTimer); _bannerTimer = null; }
+        if (_scrollerTimer) { clearTimeout(_scrollerTimer); _scrollerTimer = null; }
+
+        // Start banner rotation
+        if (_overlaySettings.banner_enabled) {
+            scheduleBanner(_overlaySettings.banner_initial_delay * 1000);
+        } else {
+            console.log('[CariAds] Banner overlays disabled');
+        }
+
+        // Start scroller rotation
+        if (_overlaySettings.scroller_enabled) {
+            scheduleScroller(_overlaySettings.scroller_initial_delay * 1000);
+        } else {
+            console.log('[CariAds] Text scrollers disabled');
+        }
+    }
+
+    function scheduleBanner(delay) {
+        console.log('[CariAds] Next banner in ' + (delay / 1000) + 's');
+        _bannerTimer = setTimeout(function() {
+            fetchAds('banner').then(function(result) {
+                var ads = result.ads || [];
+                console.log('[CariAds] Banner ads received:', ads.length);
+                if (ads.length > 0) {
+                    showOverlayBanner(ads[0]);
+                }
+                // Schedule next banner after display duration + repeat interval
+                var repeatInterval = _overlaySettings.banner_repeat_interval;
+                if (repeatInterval > 0) {
+                    var nextDelay = (_overlaySettings.banner_display_duration + repeatInterval) * 1000;
+                    scheduleBanner(nextDelay);
+                }
+            });
+        }, delay);
+    }
+
+    function scheduleScroller(delay) {
+        console.log('[CariAds] Next scroller in ' + (delay / 1000) + 's');
+        _scrollerTimer = setTimeout(function() {
+            fetchAds('text_scroller').then(function(result) {
+                var ads = result.ads || [];
+                console.log('[CariAds] Text scroller ads received:', ads.length);
+                if (ads.length > 0) {
                     console.log('[CariAds] Showing text scroller now');
                     showTextScroller(ads[0]);
-                }, 15000);
-            }
-        });
+                }
+                // Schedule next scroller after repeat interval
+                var repeatInterval = _overlaySettings.scroller_repeat_interval;
+                if (repeatInterval > 0) {
+                    // Estimate scroller display time based on speed
+                    var scrollDuration = 40000; // ~40s for 2 scroll cycles
+                    var nextDelay = scrollDuration + (repeatInterval * 1000);
+                    scheduleScroller(nextDelay);
+                }
+            });
+        }, delay);
     }
 
     // =========================================
@@ -579,6 +644,10 @@ const CariAdManager = (function() {
         _activeOverlays.forEach(function(el) { if (el.parentNode) el.remove(); });
         _activeOverlays = [];
         removeCompanionBanners();
+
+        // Clear overlay rotation timers
+        if (_bannerTimer) { clearTimeout(_bannerTimer); _bannerTimer = null; }
+        if (_scrollerTimer) { clearTimeout(_scrollerTimer); _scrollerTimer = null; }
 
         // Remove cue point markers
         document.querySelectorAll('.cari-ad-cue-marker').forEach(function(m) { m.remove(); });

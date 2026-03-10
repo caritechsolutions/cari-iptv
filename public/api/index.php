@@ -167,6 +167,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/ads/impression', [AdController::class, 'recordImpression']);
     $router->post('/ads/event', [AdController::class, 'recordEvent']);
     $router->get('/ads/breaks', [AdController::class, 'adBreakSchedule']);
+    $router->get('/ads/overlay-settings', [AdController::class, 'overlaySettings']);
 
     // ----- Analytics & Recommendations -----
     $router->post('/analytics/event', [RecommendationController::class, 'recordEvent'], ['api_auth']);

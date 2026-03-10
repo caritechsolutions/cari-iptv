@@ -141,6 +141,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/youtube', [SettingsController::class, 'updateYoutube']);
     $router->post('/settings/test-youtube', [SettingsController::class, 'testYoutube']);
     $router->post('/settings/subtitles', [SettingsController::class, 'updateSubtitles']);
+    $router->post('/settings/ads', [SettingsController::class, 'updateAds']);
     $router->post('/settings/test-opensubtitles', [SettingsController::class, 'testOpenSubtitles']);
 
     // Channel Management

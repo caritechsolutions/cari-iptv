@@ -7,6 +7,7 @@
 namespace CariIPTV\Controllers\Api;
 
 use CariIPTV\Services\AdService;
+use CariIPTV\Services\SettingsService;
 
 class AdController extends BaseApiController
 {
@@ -188,6 +189,29 @@ class AdController extends BaseApiController
             'content_id' => $contentId,
             'breaks' => $breaks,
             'count' => count($breaks),
+        ]);
+    }
+
+    /**
+     * Get overlay ad settings (timing, rotation config)
+     * GET /api/v1/ads/overlay-settings
+     */
+    public function overlaySettings(): void
+    {
+        $settingsService = new SettingsService();
+        $adSettings = $settingsService->getGroup('ads');
+
+        $this->json([
+            'success' => true,
+            'settings' => [
+                'banner_enabled' => (bool) ($adSettings['banner_enabled'] ?? true),
+                'banner_initial_delay' => (int) ($adSettings['banner_initial_delay'] ?? 30),
+                'banner_display_duration' => (int) ($adSettings['banner_display_duration'] ?? 15),
+                'banner_repeat_interval' => (int) ($adSettings['banner_repeat_interval'] ?? 300),
+                'scroller_enabled' => (bool) ($adSettings['scroller_enabled'] ?? true),
+                'scroller_initial_delay' => (int) ($adSettings['scroller_initial_delay'] ?? 15),
+                'scroller_repeat_interval' => (int) ($adSettings['scroller_repeat_interval'] ?? 300),
+            ],
         ]);
     }
 }

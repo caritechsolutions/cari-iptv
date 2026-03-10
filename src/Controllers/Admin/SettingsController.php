@@ -598,6 +598,34 @@ class SettingsController
     }
 
     /**
+     * Update Advertising overlay settings
+     */
+    public function updateAds(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        $this->settings->setMany([
+            'banner_enabled' => isset($_POST['banner_enabled']) ? '1' : '0',
+            'banner_initial_delay' => max(0, min(600, (int) ($_POST['banner_initial_delay'] ?? 30))),
+            'banner_display_duration' => max(5, min(120, (int) ($_POST['banner_display_duration'] ?? 15))),
+            'banner_repeat_interval' => max(0, min(3600, (int) ($_POST['banner_repeat_interval'] ?? 300))),
+            'scroller_enabled' => isset($_POST['scroller_enabled']) ? '1' : '0',
+            'scroller_initial_delay' => max(0, min(600, (int) ($_POST['scroller_initial_delay'] ?? 15))),
+            'scroller_repeat_interval' => max(0, min(3600, (int) ($_POST['scroller_repeat_interval'] ?? 300))),
+        ], 'ads');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'ads']);
+
+        Session::flash('success', 'Advertising settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
+    /**
      * Test OpenSubtitles API connection
      */
     public function testOpenSubtitles(): void
