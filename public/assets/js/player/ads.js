@@ -6,7 +6,7 @@
 const CariAdManager = (function() {
     'use strict';
 
-    const AD_API_BASE = '/admin/ads/api';
+    const AD_API_BASE = '/api/v1/ads';
     let _context = {};
     let _adBreaks = [];
     let _playedBreaks = {};

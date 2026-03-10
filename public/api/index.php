@@ -64,6 +64,7 @@ use CariIPTV\Controllers\Api\AppController;
 use CariIPTV\Controllers\Api\EpgController;
 use CariIPTV\Controllers\Api\AuthController;
 use CariIPTV\Controllers\Api\RecommendationController;
+use CariIPTV\Controllers\Api\AdController;
 use CariIPTV\Middleware\ApiAuthMiddleware;
 
 // Handle CORS preflight
@@ -160,6 +161,12 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/app/layout/{platform}', [AppController::class, 'layout'], ['api_auth']);
     $router->get('/app/navigation/{platform}', [AppController::class, 'navigation'], ['api_auth']);
     $router->get('/app/pages/{platform}', [AppController::class, 'pages'], ['api_auth']);
+
+    // ----- Ad Serving (public — no auth required for ad delivery) -----
+    $router->get('/ads/serve', [AdController::class, 'serve']);
+    $router->post('/ads/impression', [AdController::class, 'recordImpression']);
+    $router->post('/ads/event', [AdController::class, 'recordEvent']);
+    $router->get('/ads/breaks', [AdController::class, 'adBreakSchedule']);
 
     // ----- Analytics & Recommendations -----
     $router->post('/analytics/event', [RecommendationController::class, 'recordEvent'], ['api_auth']);

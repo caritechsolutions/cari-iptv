@@ -1839,8 +1839,8 @@ class AdController
                 'alt_text' => $ad['alt_text'] ?? null,
                 'ab_variant_id' => $ad['ab_variant_id'] ?? null,
                 'tracking' => [
-                    'impression_url' => '/admin/ads/api/impression',
-                    'event_url' => '/admin/ads/api/event',
+                    'impression_url' => '/api/v1/ads/impression',
+                    'event_url' => '/api/v1/ads/event',
                 ],
             ];
 
