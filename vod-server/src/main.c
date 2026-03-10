@@ -59,8 +59,14 @@ static void setup_signals(void)
     /* Ignore SIGPIPE (broken pipe from HTTP connections) */
     signal(SIGPIPE, SIG_IGN);
 
-    /* Auto-reap child processes (forked curl for job callbacks) */
-    signal(SIGCHLD, SIG_IGN);
+    /* NOTE: Do NOT set signal(SIGCHLD, SIG_IGN) here.
+     * SIG_IGN causes the kernel to auto-reap children, which breaks
+     * pclose() — it can't waitpid() on the child, so pclose() returns -1
+     * and WIFEXITED() is false, making ffprobe/ffmpeg popen() calls fail.
+     * Instead, fire-and-forget children (curl callbacks) use double-fork
+     * so the grandchild is reparented to init and the immediate child
+     * is reaped by waitpid() right away. */
+    signal(SIGCHLD, SIG_DFL);
 }
 
 static int write_pidfile(const char *path)
@@ -246,6 +252,9 @@ int main(int argc, char *argv[])
 
     /* Load ACME settings from DB (overrides INI if saved via GUI) */
     config_load_db_acme(&g_config);
+
+    /* Load subtitle settings from DB (overrides INI if saved via GUI) */
+    config_load_db_subtitles(&g_config);
 
     /* Initialize DRM module (creates drm_keys table) */
     if (drm_init() != 0) {

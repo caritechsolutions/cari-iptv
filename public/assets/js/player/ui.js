@@ -113,6 +113,7 @@ const CariUI = (function() {
         const year = item.year || item.release_year || '';
         const rating = item.rating || item.vote_average || '';
         const locked = isLocked === true;
+        const matchBadge = item._matchBadge || '';
 
         const el = document.createElement('div');
         el.className = 'card-poster' + (locked ? ' card-locked' : '');
@@ -120,6 +121,7 @@ const CariUI = (function() {
             <img class="card-poster-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderImg}'">
             ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
+            ${matchBadge ? '<div class="card-match-badge">' + esc(matchBadge) + '</div>' : ''}
             ${progressBarHtml(item)}
             <div class="card-poster-title">${esc(title)}</div>
             <div class="card-poster-meta">${esc(year)}${rating ? ' &middot; ' + esc(String(rating)) : ''}</div>
@@ -133,6 +135,7 @@ const CariUI = (function() {
         const title = item.title || item.name || '';
         const meta = item.year || '';
         const locked = isLocked === true;
+        const matchBadge = item._matchBadge || '';
 
         const el = document.createElement('div');
         el.className = 'card-backdrop' + (locked ? ' card-locked' : '');
@@ -140,6 +143,7 @@ const CariUI = (function() {
             <img class="card-backdrop-img" src="${esc(img)}" alt="${esc(title)}" loading="lazy"
                  onerror="this.src='${placeholderBackdrop}'">
             ${locked ? '<div class="card-lock-overlay"><i class="lucide-lock"></i></div>' : ''}
+            ${matchBadge ? '<div class="card-match-badge">' + esc(matchBadge) + '</div>' : ''}
             ${progressBarHtml(item)}
             <div class="card-backdrop-title">${esc(title)}</div>
             <div class="card-backdrop-meta">${esc(meta)}</div>
@@ -375,6 +379,7 @@ const CariUI = (function() {
                     <button class="btn btn-secondary" id="detailTrailer" style="display:none"><i class="lucide-clapperboard"></i> Trailer</button>
                     <button class="btn btn-icon" id="detailWatchlist" title="Add to Watchlist"><i class="lucide-plus"></i></button>
                 </div>
+                <div class="detail-rating" id="detailRating"></div>
                 <div class="trailer-embed" id="trailerEmbed" style="display:none"></div>
                 <div class="detail-cast" id="detailCast"></div>
             </div>
@@ -402,6 +407,16 @@ const CariUI = (function() {
                 btn.className = res?.data?.in_watchlist ? 'lucide-check' : 'lucide-plus';
             } catch {}
         });
+
+        // Track detail view
+        if (item.id && typeof CariTracker !== 'undefined') {
+            CariTracker.detailView(type || 'movie', item.id);
+        }
+
+        // Star rating widget (movies only, not channels)
+        if (item.id && type === 'movie') {
+            renderStarRating(modal.querySelector('#detailRating'), 'movie', item.id);
+        }
 
         // Fetch full details for trailers + cast (async, non-blocking)
         // Only fetch for movie items — channels don't have trailers/cast
@@ -544,10 +559,73 @@ const CariUI = (function() {
     function getCastNavSource() { return _castNavSource; }
     function clearCastNavSource() { _castNavSource = null; }
 
+    /**
+     * Render an interactive star rating widget into a container.
+     * @param {HTMLElement} container - Element to render into
+     * @param {string} contentType - 'movie' or 'series'
+     * @param {number} contentId - The content ID
+     */
+    function renderStarRating(container, contentType, contentId) {
+        if (!container || !contentId) return;
+
+        container.innerHTML = `<div class="star-rating-widget" data-content-type="${esc(contentType)}" data-content-id="${contentId}">
+            <div class="star-rating-stars">
+                ${[1,2,3,4,5].map(n => `<button class="star-btn" data-star="${n}" title="${n} star${n>1?'s':''}"><i class="lucide-star"></i></button>`).join('')}
+            </div>
+            <span class="star-rating-label">Rate this</span>
+        </div>`;
+
+        const widget = container.querySelector('.star-rating-widget');
+        const stars = widget.querySelectorAll('.star-btn');
+        const label = widget.querySelector('.star-rating-label');
+        let userRating = 0;
+
+        function highlightStars(count, cls) {
+            stars.forEach((s, i) => {
+                s.classList.toggle(cls || 'hovered', i < count);
+            });
+        }
+
+        stars.forEach(btn => {
+            btn.addEventListener('mouseenter', () => highlightStars(parseInt(btn.dataset.star), 'hovered'));
+            btn.addEventListener('mouseleave', () => highlightStars(0, 'hovered'));
+            btn.addEventListener('click', async () => {
+                const val = parseInt(btn.dataset.star);
+                try {
+                    const res = await CariAPI.rateContent(contentType, contentId, val);
+                    if (res?.data) {
+                        userRating = val;
+                        highlightStars(val, 'rated');
+                        const avg = res.data.community_rating;
+                        const count = res.data.rating_count;
+                        label.textContent = avg ? avg + '/5 (' + count + ' rating' + (count !== 1 ? 's' : '') + ')' : 'Rated!';
+                    }
+                } catch(e) {
+                    console.error('Rating failed:', e);
+                }
+            });
+        });
+
+        // Fetch existing rating
+        CariAPI.getRating(contentType, contentId).then(res => {
+            if (res?.data) {
+                if (res.data.user_rating) {
+                    userRating = res.data.user_rating;
+                    highlightStars(userRating, 'rated');
+                }
+                const avg = res.data.community_rating;
+                const count = res.data.rating_count;
+                if (avg) {
+                    label.textContent = avg + '/5 (' + count + ' rating' + (count !== 1 ? 's' : '') + ')';
+                }
+            }
+        }).catch(() => {});
+    }
+
     return {
         esc, posterCard, backdropCard, channelCard, categoryCard,
         renderHero, renderContentRow, renderBanner, renderTextDivider,
-        showDetail, hideDetail, renderCastRow, loading, emptyState, skeletonRow,
+        showDetail, hideDetail, renderCastRow, renderStarRating, loading, emptyState, skeletonRow,
         wrapWithScrollNav, getCastNavSource, clearCastNavSource,
     };
 })();

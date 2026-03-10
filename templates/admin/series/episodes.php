@@ -2084,18 +2084,36 @@ function epVodSubmit() {
 
             document.getElementById('ep-vod-upload-text').textContent = 'Submitting transcode job...';
 
-            // Step 2: Submit job via IPTV backend (small JSON request, no file)
-            const jobForm = new FormData();
-            jobForm.append('csrf_token', csrfToken);
-            jobForm.append('server_id', serverId);
-            jobForm.append('content_id', contentId);
-            jobForm.append('upload_path', uploadPath);
-            jobForm.append('title', title);
-            jobForm.append('profile', profile);
-            jobForm.append('entity_type', 'episode');
-            jobForm.append('entity_id', episodeId);
+            // Refresh CSRF token — the original may have expired during the long upload
+            fetch('/admin/csrf-token').then(r => r.json()).then(function(tokenData) {
+                const freshToken = (tokenData && tokenData.token) ? tokenData.token : csrfToken;
 
-            fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm })
+                // Step 2: Submit job via IPTV backend (small JSON request, no file)
+                const jobForm = new FormData();
+                jobForm.append('csrf_token', freshToken);
+                jobForm.append('server_id', serverId);
+                jobForm.append('content_id', contentId);
+                jobForm.append('upload_path', uploadPath);
+                jobForm.append('title', title);
+                jobForm.append('profile', profile);
+                jobForm.append('entity_type', 'episode');
+                jobForm.append('entity_id', episodeId);
+
+                return fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm });
+            }).catch(function() {
+                // Token refresh failed — try with original token anyway
+                const jobForm = new FormData();
+                jobForm.append('csrf_token', csrfToken);
+                jobForm.append('server_id', serverId);
+                jobForm.append('content_id', contentId);
+                jobForm.append('upload_path', uploadPath);
+                jobForm.append('title', title);
+                jobForm.append('profile', profile);
+                jobForm.append('entity_type', 'episode');
+                jobForm.append('entity_id', episodeId);
+
+                return fetch('/admin/vod-server/submit-direct-job', { method: 'POST', body: jobForm });
+            })
                 .then(r => r.json())
                 .then(data => {
                     document.getElementById('ep-vod-upload-progress').style.display = 'none';

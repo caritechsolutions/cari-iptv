@@ -63,6 +63,8 @@ use CariIPTV\Controllers\Api\ContentController;
 use CariIPTV\Controllers\Api\AppController;
 use CariIPTV\Controllers\Api\EpgController;
 use CariIPTV\Controllers\Api\AuthController;
+use CariIPTV\Controllers\Api\RecommendationController;
+use CariIPTV\Controllers\Api\AdController;
 use CariIPTV\Middleware\ApiAuthMiddleware;
 
 // Handle CORS preflight
@@ -107,6 +109,8 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/auth/subscribe', [AuthController::class, 'subscribe'], ['api_auth']);
     $router->post('/auth/unsubscribe', [AuthController::class, 'unsubscribe'], ['api_auth']);
     $router->post('/auth/update-profile', [AuthController::class, 'updateProfile'], ['api_auth']);
+    $router->post('/auth/rate', [AuthController::class, 'rateContent'], ['api_auth']);
+    $router->get('/auth/rating', [AuthController::class, 'getRating'], ['api_auth']);
 
     // ----- Content (protected — requires Bearer token) -----
 
@@ -157,6 +161,22 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/app/layout/{platform}', [AppController::class, 'layout'], ['api_auth']);
     $router->get('/app/navigation/{platform}', [AppController::class, 'navigation'], ['api_auth']);
     $router->get('/app/pages/{platform}', [AppController::class, 'pages'], ['api_auth']);
+
+    // ----- Ad Serving (public — no auth required for ad delivery) -----
+    $router->get('/ads/serve', [AdController::class, 'serve']);
+    $router->post('/ads/impression', [AdController::class, 'recordImpression']);
+    $router->post('/ads/event', [AdController::class, 'recordEvent']);
+    $router->get('/ads/breaks', [AdController::class, 'adBreakSchedule']);
+    $router->get('/ads/overlay-settings', [AdController::class, 'overlaySettings']);
+
+    // ----- Analytics & Recommendations -----
+    $router->post('/analytics/event', [RecommendationController::class, 'recordEvent'], ['api_auth']);
+    $router->post('/analytics/batch', [RecommendationController::class, 'recordBatch'], ['api_auth']);
+    $router->post('/analytics/qoe', [RecommendationController::class, 'recordQoeBatch'], ['api_auth']);
+    $router->post('/analytics/impressions', [RecommendationController::class, 'recordImpressions'], ['api_auth']);
+    $router->post('/analytics/share', [RecommendationController::class, 'recordShare'], ['api_auth']);
+    $router->get('/recommendations', [RecommendationController::class, 'getRecommendations'], ['api_auth']);
+    $router->get('/recommendations/profile', [RecommendationController::class, 'getProfile'], ['api_auth']);
 });
 
 // Custom 404 for API

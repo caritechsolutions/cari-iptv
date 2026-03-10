@@ -671,7 +671,7 @@
                         <i class="lucide-layout-dashboard"></i>
                         <span>Dashboard</span>
                     </a>
-                    <a href="/admin/analytics" class="nav-item">
+                    <a href="/admin/analytics" class="nav-item <?= ($pageTitle ?? '') === 'Analytics' ? 'active' : '' ?>">
                         <i class="lucide-bar-chart-2"></i>
                         <span>Analytics</span>
                     </a>
@@ -722,6 +722,22 @@
                     <a href="/admin/ads/reports" class="nav-item <?= ($pageTitle ?? '') === 'Ad Reports' ? 'active' : '' ?>">
                         <i class="lucide-bar-chart-2"></i>
                         <span>Ad Reports</span>
+                    </a>
+                    <a href="/admin/ads/pods" class="nav-item <?= ($pageTitle ?? '') === 'Ad Pods & Breaks' ? 'active' : '' ?>">
+                        <i class="lucide-layers"></i>
+                        <span>Ad Pods</span>
+                    </a>
+                    <a href="/admin/ads/waterfall" class="nav-item <?= ($pageTitle ?? '') === 'Ad Waterfall Chains' ? 'active' : '' ?>">
+                        <i class="lucide-git-branch"></i>
+                        <span>Waterfall</span>
+                    </a>
+                    <a href="/admin/ads/ab-tests" class="nav-item <?= ($pageTitle ?? '') === 'A/B Tests' ? 'active' : '' ?>">
+                        <i class="lucide-flask-conical"></i>
+                        <span>A/B Tests</span>
+                    </a>
+                    <a href="/admin/ads/forecast" class="nav-item <?= ($pageTitle ?? '') === 'Revenue Forecast' ? 'active' : '' ?>">
+                        <i class="lucide-trending-up"></i>
+                        <span>Forecast</span>
                     </a>
                 </div>
 

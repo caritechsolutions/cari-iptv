@@ -708,3 +708,78 @@ int config_load_db_acme(vod_config_t *config)
     }
     return result;
 }
+
+/* ================================================================
+ * Subtitle settings persistence (SQLite settings table)
+ * ================================================================ */
+
+int config_save_db_subtitles(const vod_config_t *config)
+{
+    if (!config) return -1;
+
+    sqlite3 *db = db_handle();
+    if (!db) return -1;
+
+    cJSON *obj = cJSON_CreateObject();
+    cJSON_AddBoolToObject(obj, "enabled", config->subtitles_enabled);
+    cJSON_AddBoolToObject(obj, "auto_extract", config->subtitles_auto_extract);
+
+    char *json_str = cJSON_PrintUnformatted(obj);
+    cJSON_Delete(obj);
+    if (!json_str) return -1;
+
+    sqlite3_stmt *stmt;
+    const char *sql = "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                      "VALUES ('subtitle_settings', ?, CURRENT_TIMESTAMP)";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        free(json_str);
+        return -1;
+    }
+    sqlite3_bind_text(stmt, 1, json_str, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    free(json_str);
+
+    return (rc == SQLITE_DONE) ? 0 : -1;
+}
+
+int config_load_db_subtitles(vod_config_t *config)
+{
+    if (!config) return -1;
+
+    sqlite3 *db = db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT value FROM settings WHERE key = 'subtitle_settings'";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+
+    int result = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *json_str = (const char *)sqlite3_column_text(stmt, 0);
+        if (json_str) {
+            cJSON *obj = cJSON_Parse(json_str);
+            if (cJSON_IsObject(obj)) {
+                cJSON *enabled = cJSON_GetObjectItemCaseSensitive(obj, "enabled");
+                if (cJSON_IsBool(enabled)) config->subtitles_enabled = cJSON_IsTrue(enabled);
+
+                cJSON *auto_extract = cJSON_GetObjectItemCaseSensitive(obj, "auto_extract");
+                if (cJSON_IsBool(auto_extract)) config->subtitles_auto_extract = cJSON_IsTrue(auto_extract);
+
+                result = 0;
+            }
+            cJSON_Delete(obj);
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    if (result == 0) {
+        log_info("Subtitle settings loaded from database (enabled=%s, auto_extract=%s)",
+                 config->subtitles_enabled ? "yes" : "no",
+                 config->subtitles_auto_extract ? "yes" : "no");
+    }
+    return result;
+}

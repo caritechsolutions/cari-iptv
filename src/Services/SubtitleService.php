@@ -107,10 +107,17 @@ class SubtitleService
     public function testConnection(): bool
     {
         if (!$this->isConfigured()) {
+            $this->lastApiError = 'OpenSubtitles API key not configured.';
             return false;
         }
 
-        // Try to get info about our API consumer
+        // Try to search as a lightweight connectivity test (no auth required)
+        $response = $this->apiRequest('GET', '/subtitles', ['query' => 'test', 'languages' => 'en']);
+        if ($response !== null) {
+            return true;
+        }
+
+        // Fallback: try user info endpoint (requires auth)
         $response = $this->apiRequest('GET', '/infos/user');
         return $response !== null && isset($response['data']);
     }
@@ -420,7 +427,7 @@ class SubtitleService
         $response = $this->apiRequest('GET', '/subtitles', $params);
 
         if ($response === null) {
-            return ['success' => false, 'error' => 'Failed to connect to OpenSubtitles API.'];
+            return ['success' => false, 'error' => $this->lastApiError ?? 'Failed to connect to OpenSubtitles API.'];
         }
 
         if (empty($response['data'])) {
@@ -459,7 +466,7 @@ class SubtitleService
         $response = $this->apiRequest('POST', '/download', ['file_id' => $fileId]);
 
         if ($response === null || empty($response['link'])) {
-            return ['success' => false, 'error' => 'Failed to get download link from OpenSubtitles.'];
+            return ['success' => false, 'error' => $this->lastApiError ?? 'Failed to get download link from OpenSubtitles.'];
         }
 
         $downloadUrl = $response['link'];
@@ -670,7 +677,7 @@ class SubtitleService
         $response = $this->apiRequest('GET', '/subtitles', $params);
 
         if ($response === null) {
-            return ['success' => false, 'error' => 'Failed to connect to OpenSubtitles API.'];
+            return ['success' => false, 'error' => $this->lastApiError ?? 'Failed to connect to OpenSubtitles API.'];
         }
 
         if (empty($response['data'])) {
@@ -711,7 +718,7 @@ class SubtitleService
         $response = $this->apiRequest('POST', '/download', ['file_id' => $fileId]);
 
         if ($response === null || empty($response['link'])) {
-            return ['success' => false, 'error' => 'Failed to get download link from OpenSubtitles.'];
+            return ['success' => false, 'error' => $this->lastApiError ?? 'Failed to get download link from OpenSubtitles.'];
         }
 
         $downloadUrl = $response['link'];
@@ -899,12 +906,26 @@ class SubtitleService
     // OpenSubtitles API Internals
     // -------------------------------------------------------------------------
 
+    /** @var string|null Last API error message for callers to retrieve */
+    private ?string $lastApiError = null;
+
+    /**
+     * Get the last API error message (for more specific error reporting)
+     */
+    public function getLastApiError(): ?string
+    {
+        return $this->lastApiError;
+    }
+
     /**
      * Make an authenticated API request to OpenSubtitles
      */
     private function apiRequest(string $method, string $endpoint, ?array $params = null): ?array
     {
+        $this->lastApiError = null;
+
         if (!$this->isConfigured()) {
+            $this->lastApiError = 'OpenSubtitles API key not configured.';
             return null;
         }
 
@@ -917,12 +938,14 @@ class SubtitleService
 
         // For GET requests, append params as query string
         if ($method === 'GET' && !empty($params)) {
-            $url .= '?' . http_build_query($params);
+            // Use str_replace to preserve raw commas (OpenSubtitles expects languages=en,es not en%2Ces)
+            $url .= '?' . str_replace('%2C', ',', http_build_query($params));
         }
 
         $ch = curl_init($url);
 
         $headers = [
+            'Accept: application/json',
             'Content-Type: application/json',
             'Api-Key: ' . $this->config['api_key'],
             'User-Agent: ' . self::OS_USER_AGENT,
@@ -938,6 +961,7 @@ class SubtitleService
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_FOLLOWLOCATION => true,
         ]);
 
         if ($method === 'POST') {
@@ -948,8 +972,17 @@ class SubtitleService
         }
 
         $response = curl_exec($ch);
+        $curlErrno = curl_errno($ch);
+        $curlError = curl_error($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+
+        // Check for curl/network errors
+        if ($response === false || $curlErrno !== 0) {
+            $this->lastApiError = 'Connection error: ' . ($curlError ?: 'Unknown network error');
+            error_log("[SubtitleService] curl error on {$method} {$endpoint}: [{$curlErrno}] {$curlError}");
+            return null;
+        }
 
         if ($httpCode === 401) {
             // Token expired, clear and retry once
@@ -958,14 +991,35 @@ class SubtitleService
                 $this->ensureToken();
                 return $this->apiRequestOnce($method, $url, $params);
             }
+            $this->lastApiError = 'Authentication failed. Check your API key and credentials.';
+            error_log("[SubtitleService] 401 Unauthorized on {$method} {$endpoint}");
             return null;
         }
 
         if ($httpCode >= 400) {
+            $decoded = json_decode($response, true);
+            $apiMsg = $decoded['message'] ?? ($decoded['status'] ?? '');
+            if ($httpCode === 429) {
+                $this->lastApiError = 'Rate limit exceeded. OpenSubtitles free tier allows 5 requests per second. Please wait and try again.';
+            } elseif ($httpCode === 403) {
+                $this->lastApiError = 'Access denied. Your API key may be invalid or suspended.';
+            } elseif ($httpCode === 406) {
+                $this->lastApiError = 'Request not acceptable. The API rejected the request format.';
+            } else {
+                $this->lastApiError = "OpenSubtitles API error (HTTP {$httpCode})" . ($apiMsg ? ": {$apiMsg}" : '.');
+            }
+            error_log("[SubtitleService] HTTP {$httpCode} on {$method} {$endpoint}: " . substr($response, 0, 500));
             return null;
         }
 
-        return json_decode($response, true);
+        $decoded = json_decode($response, true);
+        if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+            $this->lastApiError = 'Invalid response from OpenSubtitles API.';
+            error_log("[SubtitleService] JSON decode error on {$method} {$endpoint}: " . json_last_error_msg());
+            return null;
+        }
+
+        return $decoded;
     }
 
     /**
@@ -976,16 +1030,22 @@ class SubtitleService
         $ch = curl_init($url);
 
         $headers = [
+            'Accept: application/json',
             'Content-Type: application/json',
             'Api-Key: ' . $this->config['api_key'],
             'User-Agent: ' . self::OS_USER_AGENT,
-            'Authorization: Bearer ' . ($this->config['token'] ?? ''),
         ];
+
+        $token = $this->config['token'] ?? '';
+        if (!empty($token)) {
+            $headers[] = 'Authorization: Bearer ' . $token;
+        }
 
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_FOLLOWLOCATION => true,
         ]);
 
         if ($method === 'POST') {
@@ -996,14 +1056,38 @@ class SubtitleService
         }
 
         $response = curl_exec($ch);
+        $curlErrno = curl_errno($ch);
+        $curlError = curl_error($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($httpCode >= 400) {
+        if ($response === false || $curlErrno !== 0) {
+            $this->lastApiError = 'Connection error: ' . ($curlError ?: 'Unknown network error');
+            error_log("[SubtitleService] curl error on retry {$method} {$url}: [{$curlErrno}] {$curlError}");
             return null;
         }
 
-        return json_decode($response, true);
+        if ($httpCode >= 400) {
+            $decoded = json_decode($response, true);
+            $apiMsg = $decoded['message'] ?? ($decoded['status'] ?? '');
+            if ($httpCode === 429) {
+                $this->lastApiError = 'Rate limit exceeded. Please wait and try again.';
+            } elseif ($httpCode === 401) {
+                $this->lastApiError = 'Authentication failed after token refresh. Check your credentials in Settings > Integrations.';
+            } else {
+                $this->lastApiError = "OpenSubtitles API error (HTTP {$httpCode})" . ($apiMsg ? ": {$apiMsg}" : '.');
+            }
+            error_log("[SubtitleService] HTTP {$httpCode} on retry {$method} {$url}: " . substr($response, 0, 500));
+            return null;
+        }
+
+        $decoded = json_decode($response, true);
+        if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+            $this->lastApiError = 'Invalid response from OpenSubtitles API.';
+            return null;
+        }
+
+        return $decoded;
     }
 
     /**

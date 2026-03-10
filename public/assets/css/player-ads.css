@@ -1,0 +1,189 @@
+/* CARI-IPTV Player Ad Styles */
+
+/* Ad Overlay (fullscreen during video ads) */
+.cari-ad-overlay {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.cari-ad-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.cari-ad-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+.cari-ad-label {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.cari-ad-counter {
+    opacity: 0.7;
+    font-weight: 400;
+}
+.cari-ad-skip {
+    position: absolute;
+    bottom: 60px;
+    right: 20px;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 10;
+    transition: background 0.2s;
+    backdrop-filter: blur(4px);
+}
+.cari-ad-skip:hover {
+    background: rgba(255,255,255,0.25);
+}
+.cari-ad-click-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    cursor: pointer;
+    display: none;
+}
+
+/* Banner Overlays (during playback) */
+.cari-ad-banner-overlay {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 500;
+    animation: adSlideIn 0.3s ease;
+}
+.cari-ad-banner-overlay_bottom,
+.cari-ad-banner-bottom {
+    bottom: 60px;
+}
+.cari-ad-banner-overlay_top,
+.cari-ad-banner-top {
+    top: 12px;
+}
+.cari-ad-banner-overlay img {
+    max-width: 728px;
+    max-height: 90px;
+    width: auto;
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.cari-ad-close {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.8);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.cari-ad-close:hover {
+    background: #ef4444;
+}
+
+/* Text Scroller */
+.cari-ad-scroller {
+    position: absolute;
+    bottom: 50px;
+    left: 0;
+    right: 0;
+    min-height: 36px;
+    padding: 6px 0;
+    overflow: hidden;
+    z-index: 500;
+    display: flex;
+    align-items: center;
+}
+.cari-scroller-text {
+    white-space: nowrap;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0 20px;
+}
+.cari-scroller-fade {
+    opacity: 0;
+    transition: opacity 0.5s;
+}
+@keyframes scrollText {
+    from { transform: translateX(100vw); }
+    to { transform: translateX(-100%); }
+}
+
+/* Companion Banner (alongside video ad) */
+.cari-ad-companion-banner {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    z-index: 1001;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+}
+.cari-ad-companion-banner img {
+    max-width: 300px;
+    max-height: 250px;
+    display: block;
+}
+
+/* Cue Point Markers on Progress Bar */
+.cari-ad-cue-marker {
+    position: absolute;
+    top: 0;
+    width: 4px;
+    height: 100%;
+    background: #f59e0b;
+    border-radius: 2px;
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0.9;
+}
+
+/* Slide-in animation */
+@keyframes adSlideIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Ad in pod — banner display */
+.cari-ad-banner {
+    text-align: center;
+    padding: 2rem;
+}
+.cari-ad-banner img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+}

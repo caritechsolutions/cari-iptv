@@ -118,6 +118,29 @@ var settingsPage = {
                     <button class="btn btn-primary btn-sm mt-2" onclick="settingsPage.saveThumbnails()">Save Thumbnail Settings</button>
                 </div>
 
+                <!-- Subtitles -->
+                <div class="card">
+                    <div class="card-header"><h3>Subtitles</h3></div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="set-sub-enabled"> Enable subtitle extraction
+                        </label>
+                        <small class="text-muted" style="display:block;margin-top:4px">
+                            Extract embedded subtitle tracks from source files during transcoding.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="set-sub-auto-extract"> Auto-extract during transcode
+                        </label>
+                        <small class="text-muted" style="display:block;margin-top:4px">
+                            When enabled, subtitles are automatically extracted when a transcode job completes.
+                            When disabled, you can still extract manually via the API.
+                        </small>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" onclick="settingsPage.saveSubtitles()">Save Subtitle Settings</button>
+                </div>
+
                 <!-- ACME / Let's Encrypt -->
                 <div class="card">
                     <div class="card-header"><h3>ACME / Let's Encrypt</h3></div>
@@ -223,6 +246,11 @@ var settingsPage = {
             document.getElementById('set-thumb-interval').value = th.interval || 10;
             document.getElementById('set-thumb-w').value = th.width || 160;
             document.getElementById('set-thumb-h').value = th.height || 90;
+
+            /* Subtitles */
+            const sub = config.subtitles || {};
+            document.getElementById('set-sub-enabled').checked = sub.enabled !== false;
+            document.getElementById('set-sub-auto-extract').checked = sub.auto_extract !== false;
 
             /* ACME */
             const acme = config.acme || {};
@@ -628,6 +656,18 @@ var settingsPage = {
                 thumb_height: parseInt(document.getElementById('set-thumb-h').value)
             });
             App.toast('Thumbnail settings saved', 'success');
+        } catch (err) {
+            App.toast('Failed to save: ' + err.message, 'error');
+        }
+    },
+
+    async saveSubtitles() {
+        try {
+            await App.post('/config', {
+                subtitles_enabled: document.getElementById('set-sub-enabled').checked,
+                subtitles_auto_extract: document.getElementById('set-sub-auto-extract').checked
+            });
+            App.toast('Subtitle settings saved', 'success');
         } catch (err) {
             App.toast('Failed to save: ' + err.message, 'error');
         }

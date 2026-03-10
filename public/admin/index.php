@@ -64,6 +64,7 @@ use CariIPTV\Controllers\Admin\AdController;
 use CariIPTV\Controllers\Admin\SubscriberController;
 use CariIPTV\Controllers\Admin\PackageController;
 use CariIPTV\Controllers\Admin\VodServerController;
+use CariIPTV\Controllers\Admin\AnalyticsController;
 
 // Initialize session
 Session::start();
@@ -95,8 +96,18 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/dashboard/widgets/reorder', [DashboardController::class, 'reorderWidgets']);
     $router->get('/dashboard/widgets/data', [DashboardController::class, 'widgetData']);
 
+    // Analytics (AI-powered business intelligence)
+    $router->get('/analytics', [AnalyticsController::class, 'index']);
+    $router->get('/analytics/data', [AnalyticsController::class, 'getData']);
+    $router->post('/analytics/report', [AnalyticsController::class, 'generateReport']);
+    $router->post('/analytics/chat', [AnalyticsController::class, 'chat']);
+    $router->post('/analytics/chat/reset', [AnalyticsController::class, 'resetChat']);
+
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
+
+    // CSRF token refresh (for long-running uploads where the token may expire)
+    $router->get('/csrf-token', [AuthController::class, 'csrfToken']);
 
     // Profile
     $router->get('/profile', [ProfileController::class, 'index']);
@@ -130,6 +141,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/youtube', [SettingsController::class, 'updateYoutube']);
     $router->post('/settings/test-youtube', [SettingsController::class, 'testYoutube']);
     $router->post('/settings/subtitles', [SettingsController::class, 'updateSubtitles']);
+    $router->post('/settings/ads', [SettingsController::class, 'updateAds']);
     $router->post('/settings/test-opensubtitles', [SettingsController::class, 'testOpenSubtitles']);
 
     // Channel Management
@@ -328,11 +340,52 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/ads/upload/image', [AdController::class, 'uploadAdImage']);
     $router->post('/ads/upload/video', [AdController::class, 'uploadAdVideo']);
 
-    // Advertising - Ad Serving API
-    $router->get('/ads/api/serve', [AdController::class, 'serve']);
+    // Advertising - Waterfall Chains
+    $router->get('/ads/waterfall', [AdController::class, 'waterfallIndex'], ['auth']);
+    $router->post('/ads/waterfall/store', [AdController::class, 'waterfallStore'], ['auth']);
+    $router->post('/ads/waterfall/{id}/update', [AdController::class, 'waterfallUpdate'], ['auth']);
+    $router->post('/ads/waterfall/{id}/delete', [AdController::class, 'waterfallDelete'], ['auth']);
+
+    // Advertising - A/B Tests
+    $router->get('/ads/ab-tests', [AdController::class, 'abTestIndex'], ['auth']);
+    $router->post('/ads/{id}/ab-tests/store', [AdController::class, 'abTestStore'], ['auth']);
+    $router->post('/ads/ab-tests/{id}/update', [AdController::class, 'abTestUpdate'], ['auth']);
+    $router->post('/ads/ab-tests/{id}/delete', [AdController::class, 'abTestDelete'], ['auth']);
+    $router->get('/ads/ab-tests/{id}/evaluate', [AdController::class, 'abTestEvaluate'], ['auth']);
+
+    // Advertising - Ad Pods
+    $router->get('/ads/pods', [AdController::class, 'podIndex'], ['auth']);
+    $router->post('/ads/pods/store', [AdController::class, 'podStore'], ['auth']);
+    $router->post('/ads/pods/{id}/update', [AdController::class, 'podUpdate'], ['auth']);
+    $router->post('/ads/pods/{id}/delete', [AdController::class, 'podDelete'], ['auth']);
+
+    // Advertising - Conversion Goals
+    $router->post('/ads/{id}/conversions/store', [AdController::class, 'conversionGoalStore'], ['auth']);
+    $router->post('/ads/{id}/conversions/{gid}/update', [AdController::class, 'conversionGoalUpdate'], ['auth']);
+    $router->post('/ads/{id}/conversions/{gid}/delete', [AdController::class, 'conversionGoalDelete'], ['auth']);
+    $router->get('/ads/{id}/conversions/stats', [AdController::class, 'conversionStats'], ['auth']);
+
+    // Advertising - Daypart Schedules
+    $router->post('/ads/{id}/dayparts/store', [AdController::class, 'daypartStore'], ['auth']);
+    $router->post('/ads/{id}/dayparts/{sid}/update', [AdController::class, 'daypartUpdate'], ['auth']);
+    $router->post('/ads/{id}/dayparts/{sid}/delete', [AdController::class, 'daypartDelete'], ['auth']);
+
+    // Advertising - Floor Prices
+    $router->post('/ads/zones/{id}/floor-price', [AdController::class, 'updateFloorPrice'], ['auth']);
+
+    // Advertising - Revenue Forecast
+    $router->get('/ads/forecast', [AdController::class, 'forecastIndex'], ['auth']);
+    $router->post('/ads/forecast/generate', [AdController::class, 'generateForecast'], ['auth']);
+
+    // Advertising - Ad Serving API (Enhanced)
+    $router->get('/ads/api/debug', [AdController::class, 'serveDebug'], ['auth']);
+    $router->get('/ads/api/serve', [AdController::class, 'serveEnhanced']);
+    $router->get('/ads/api/serve-legacy', [AdController::class, 'serve']);
     $router->post('/ads/api/impression', [AdController::class, 'recordImpression']);
     $router->post('/ads/api/event', [AdController::class, 'recordEvent']);
+    $router->post('/ads/api/conversion', [AdController::class, 'trackConversion']);
     $router->get('/ads/api/vast', [AdController::class, 'vastXml']);
+    $router->get('/ads/api/breaks', [AdController::class, 'adBreakSchedule']);
 
     // Subscriber Management
     $router->get('/subscribers', [SubscriberController::class, 'index']);

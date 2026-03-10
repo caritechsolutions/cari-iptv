@@ -204,13 +204,48 @@ const CariAPI = (function() {
         return get('/auth/watch-progress/batch?content_type=' + encodeURIComponent(contentType) + '&ids=' + encodeURIComponent(ids.join(',')));
     }
 
-    function getContinueWatching() { return get('/auth/continue-watching'); }
+    function getContinueWatching(type) { return get('/auth/continue-watching' + (type ? '?type=' + encodeURIComponent(type) : '')); }
     function toggleWatchlist(contentType, contentId) { return post('/auth/watchlist/toggle', { content_type: contentType, content_id: contentId }); }
     function getWatchlist() { return get('/auth/watchlist'); }
     function getEntitlements() { return request('GET', '/auth/entitlements?_t=' + Date.now()); }
     function subscribeTo(packageId) { return post('/auth/subscribe', { package_id: packageId }); }
     function unsubscribeFrom(packageId) { return post('/auth/unsubscribe', { package_id: packageId }); }
     function updateProfile(data) { return post('/auth/update-profile', data); }
+
+    // Ratings
+    function rateContent(contentType, contentId, rating) {
+        return post('/auth/rate', { content_type: contentType, content_id: contentId, rating: rating });
+    }
+    function getRating(contentType, contentId) {
+        return get('/auth/rating?content_type=' + encodeURIComponent(contentType) + '&content_id=' + encodeURIComponent(contentId));
+    }
+
+    // Analytics
+    function trackEvent(eventType, data) {
+        return post('/analytics/event', Object.assign({ event_type: eventType }, data || {}));
+    }
+    function trackEventBatch(events, sessionId, platform) {
+        return post('/analytics/batch', { events: events, session_id: sessionId, platform: platform });
+    }
+    function trackQoeBatch(events, sessionId, platform) {
+        return post('/analytics/qoe', { events: events, session_id: sessionId, platform: platform });
+    }
+    function trackImpressions(impressions, sessionId, platform) {
+        return post('/analytics/impressions', { impressions: impressions, session_id: sessionId, platform: platform });
+    }
+    function trackShare(contentType, contentId, shareMethod) {
+        return post('/analytics/share', { content_type: contentType, content_id: contentId, share_method: shareMethod });
+    }
+
+    // Recommendations
+    function getRecommendations(filterType) {
+        var url = '/recommendations';
+        if (filterType) url += '?type=' + encodeURIComponent(filterType);
+        return get(url);
+    }
+    function getRecommendationProfile() {
+        return get('/recommendations/profile');
+    }
 
     return {
         isAuthenticated, getUser, clearAuth, logout, refreshToken,
@@ -219,6 +254,10 @@ const CariAPI = (function() {
         getCategories, getPerson, search, getEpg, getProgrammeInfo,
         updateWatchProgress, getWatchProgress, getBatchWatchProgress, getContinueWatching, toggleWatchlist, getWatchlist, getEntitlements,
         subscribeTo, unsubscribeFrom, updateProfile,
+        rateContent, getRating,
+        trackEvent, trackEventBatch, trackQoeBatch, trackImpressions, trackShare,
+        getRecommendations, getRecommendationProfile,
+        post,
         bustAllCaches, clearCacheBust,
     };
 })();

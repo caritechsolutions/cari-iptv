@@ -24,6 +24,7 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <errno.h>
 
 /* Maximum concurrent jobs we can track */
@@ -702,29 +703,38 @@ static void fire_callback(const active_job_t *job, const char *status, const cha
         error_msg ? escaped_error : "",
         error_msg ? "\"" : "");
 
-    /* Fork a child to run curl so we don't block the processor thread */
+    /* Double-fork so the curl child is reparented to init/systemd and
+     * the intermediate child is reaped immediately by waitpid().
+     * This avoids zombies without needing signal(SIGCHLD, SIG_IGN),
+     * which would break pclose() throughout the codebase. */
     pid_t pid = fork();
     if (pid == 0) {
-        /* Child process — fire and forget */
-        /* Retry up to 3 times with 2s delay between */
-        execlp("curl", "curl",
-               "-s",                       /* silent */
-               "-X", "POST",
-               "-H", "Content-Type: application/json",
-               "-d", payload,
-               "--connect-timeout", "10",
-               "--max-time", "30",
-               "--retry", "3",
-               "--retry-delay", "2",
-               "-k",                       /* allow self-signed certs */
-               job->callback_url,
-               (char *)NULL);
-        /* If exec fails, just exit */
-        _exit(1);
-    } else if (pid < 0) {
+        /* Intermediate child — fork again and exit immediately */
+        pid_t grandchild = fork();
+        if (grandchild == 0) {
+            /* Grandchild — runs curl, reparented to init when intermediate exits */
+            execlp("curl", "curl",
+                   "-s",                       /* silent */
+                   "-X", "POST",
+                   "-H", "Content-Type: application/json",
+                   "-d", payload,
+                   "--connect-timeout", "10",
+                   "--max-time", "30",
+                   "--retry", "3",
+                   "--retry-delay", "2",
+                   "-k",                       /* allow self-signed certs */
+                   job->callback_url,
+                   (char *)NULL);
+            _exit(1);
+        }
+        /* Intermediate child exits immediately so parent's waitpid returns fast */
+        _exit(0);
+    } else if (pid > 0) {
+        /* Parent — reap the intermediate child (exits immediately, non-blocking) */
+        waitpid(pid, NULL, 0);
+    } else {
         log_error("Job %d: Failed to fork for callback: %s", job_id, strerror(errno));
     }
-    /* Parent continues immediately — don't waitpid, let child be reaped by init */
 }
 
 /* ------------------------------------------------------------------ */
@@ -901,6 +911,15 @@ static void pick_up_new_jobs(void)
         char local_source[MAX_PATH_LEN + 256];
         const char *actual_source = source;
 
+        /* If source_path is a bare filename (no /), resolve against uploads dir.
+         * This can happen if the path was stored without the directory prefix. */
+        if (source[0] != '/' && !is_http_url(source)) {
+            snprintf(local_source, sizeof(local_source), "%s/uploads/%s",
+                     g_config->temp_path, source);
+            actual_source = local_source;
+            log_info("Job %d: Resolved relative source to: %s", job_id, actual_source);
+        }
+
         if ((source_type && strcmp(source_type, "http") == 0) || is_http_url(source)) {
             log_info("Job %d: Source is HTTP, downloading first", job_id);
 
@@ -936,19 +955,58 @@ static void pick_up_new_jobs(void)
         media_info_t info;
         memset(&info, 0, sizeof(info));
 
+        /* Pre-probe diagnostic: check file exists and is readable */
+        {
+            struct stat probe_st;
+            if (stat(actual_source, &probe_st) != 0) {
+                log_error("Job %d: Source file does not exist: %s (errno=%d: %s)",
+                          job_id, actual_source, errno, strerror(errno));
+            } else {
+                log_info("Job %d: Source file found: %s (size=%lld bytes, mode=%o)",
+                         job_id, actual_source, (long long)probe_st.st_size,
+                         (unsigned)probe_st.st_mode & 0777);
+                if (probe_st.st_size == 0) {
+                    log_error("Job %d: Source file is EMPTY (0 bytes): %s",
+                              job_id, actual_source);
+                }
+            }
+        }
+
         if (transcoder_probe(actual_source, &info) != 0) {
             log_error("Job %d: Failed to probe source file: %s", job_id, actual_source);
+
+            /* Build a more descriptive error message */
+            char err_detail[512];
+            struct stat err_st;
+            if (stat(actual_source, &err_st) != 0) {
+                snprintf(err_detail, sizeof(err_detail),
+                         "Source file not found: %s (%s)", actual_source, strerror(errno));
+            } else if (err_st.st_size == 0) {
+                snprintf(err_detail, sizeof(err_detail),
+                         "Source file is empty (0 bytes): %s", actual_source);
+            } else if (access(actual_source, R_OK) != 0) {
+                snprintf(err_detail, sizeof(err_detail),
+                         "Source file not readable (permission denied): %s", actual_source);
+            } else {
+                snprintf(err_detail, sizeof(err_detail),
+                         "ffprobe failed on source file (%lld bytes). "
+                         "Check server log (journalctl -u vod-server) for ffprobe error. "
+                         "Common causes: wrong ffprobe version, unsupported codec, "
+                         "or truncated upload. Path: %s",
+                         (long long)err_st.st_size, actual_source);
+            }
 
             /* Mark job as failed in DB */
             sqlite3_stmt *fail_stmt = NULL;
             rc = sqlite3_prepare_v2(db,
                 "UPDATE jobs SET status = 'failed', "
-                "error_msg = 'Failed to probe source file - file may be missing or corrupted', "
+                "error_msg = ?, "
                 "current_step = 'Failed', completed_at = CURRENT_TIMESTAMP "
                 "WHERE id = ?",
                 -1, &fail_stmt, NULL);
             if (rc == SQLITE_OK) {
-                sqlite3_bind_int(fail_stmt, 1, job_id);
+                sqlite3_bind_text(fail_stmt, 1, err_detail, -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int(fail_stmt, 2, job_id);
                 sqlite3_step(fail_stmt);
                 sqlite3_finalize(fail_stmt);
             }

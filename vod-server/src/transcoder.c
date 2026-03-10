@@ -71,10 +71,10 @@ int transcoder_probe(const char *source_path, media_info_t *info)
         }
     }
 
-    /* Build ffprobe command */
+    /* Build ffprobe command — capture stderr alongside JSON stdout */
     char cmd[MAX_PATH_LEN * 2 + 256];
     snprintf(cmd, sizeof(cmd),
-             "%s -v quiet -print_format json -show_format -show_streams \"%s\"",
+             "%s -v error -print_format json -show_format -show_streams \"%s\" 2>&1",
              g_config->ffprobe_path, source_path);
 
     log_debug("Running: %s", cmd);
@@ -109,8 +109,32 @@ int transcoder_probe(const char *source_path, media_info_t *info)
     }
 
     int ret = pclose(fp);
-    if (ret != 0) {
-        log_error("ffprobe exited with code %d for: %s", WEXITSTATUS(ret), source_path);
+    int exit_code;
+
+    if (ret == -1) {
+        /* pclose() itself failed — e.g. waitpid() got ECHILD because
+         * SIGCHLD was SIG_IGN, or interrupted by a signal.  If we got
+         * output that looks like JSON, continue anyway. */
+        log_warn("pclose() returned -1 (errno=%d: %s) for ffprobe on: %s",
+                 errno, strerror(errno), source_path);
+        exit_code = (json_buf && json_len > 0 && json_buf[0] == '{') ? 0 : -1;
+    } else {
+        exit_code = WIFEXITED(ret) ? WEXITSTATUS(ret) : -1;
+    }
+
+    if (exit_code != 0) {
+        /* Null-terminate whatever we captured (may include stderr error messages) */
+        if (json_buf && json_len > 0) {
+            char *t = realloc(json_buf, json_len + 1);
+            if (t) { json_buf = t; json_buf[json_len] = '\0'; }
+            /* Truncate to first 500 chars for log readability */
+            if (json_len > 500) json_buf[500] = '\0';
+            log_error("ffprobe exited with code %d for: %s\n  Output: %s",
+                      exit_code, source_path, json_buf);
+        } else {
+            log_error("ffprobe exited with code %d (no output) for: %s",
+                      exit_code, source_path);
+        }
         free(json_buf);
         return -1;
     }
@@ -172,6 +196,14 @@ int transcoder_probe(const char *source_path, media_info_t *info)
             if (!codec_type || !cJSON_IsString(codec_type)) continue;
 
             if (strcmp(codec_type->valuestring, "video") == 0 && !info->has_video) {
+                /* Skip attached pictures (e.g. cover art in MKV files) */
+                cJSON *disposition = cJSON_GetObjectItemCaseSensitive(stream, "disposition");
+                if (disposition) {
+                    cJSON *attached_pic = cJSON_GetObjectItemCaseSensitive(disposition, "attached_pic");
+                    if (attached_pic && cJSON_IsNumber(attached_pic) && attached_pic->valueint == 1) {
+                        continue;
+                    }
+                }
                 info->has_video = true;
 
                 cJSON *codec_name = cJSON_GetObjectItemCaseSensitive(stream, "codec_name");

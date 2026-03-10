@@ -89,6 +89,7 @@ class PlayerController
             BASE_PATH . '/public/assets/css/player.css',
             BASE_PATH . '/public/assets/js/player/api.js',
             BASE_PATH . '/public/assets/js/player/ui.js',
+            BASE_PATH . '/public/assets/js/player/tracker.js',
             BASE_PATH . '/public/assets/js/player/router.js',
             BASE_PATH . '/public/assets/js/player/app.js',
         ];

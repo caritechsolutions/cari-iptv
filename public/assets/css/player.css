@@ -861,6 +861,7 @@ img { max-width: 100%; display: block; }
     width: 170px;
     cursor: pointer;
     transition: transform var(--p-transition);
+    position: relative;
 }
 
 .card-poster:hover { transform: translateY(-4px); }
@@ -892,6 +893,7 @@ img { max-width: 100%; display: block; }
     width: 300px;
     cursor: pointer;
     transition: transform var(--p-transition);
+    position: relative;
 }
 
 .card-backdrop:hover { transform: translateY(-4px); }
@@ -1406,6 +1408,97 @@ img { max-width: 100%; display: block; }
     font-size: 0.8125rem;
     font-weight: 700;
     letter-spacing: 0.5px;
+}
+
+/* ---- Subtitle Language Menu ---- */
+.subtitle-menu {
+    position: absolute;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 4px 0;
+    min-width: 140px;
+    max-height: 240px;
+    overflow-y: auto;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.subtitle-menu-item {
+    padding: 8px 16px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.subtitle-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.subtitle-menu-item.active {
+    color: var(--p-primary, #6366f1);
+    font-weight: 600;
+}
+
+.subtitle-menu-item.active::before {
+    content: '\2713\00a0';
+}
+
+.subtitle-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 4px 0;
+}
+
+.subtitle-sync-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+}
+
+.subtitle-sync-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin-right: auto;
+}
+
+.subtitle-sync-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    padding: 0;
+    line-height: 1;
+}
+
+.subtitle-sync-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.subtitle-sync-reset {
+    font-size: 0.6875rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.subtitle-sync-value {
+    font-size: 0.75rem;
+    color: var(--p-primary, #6366f1);
+    min-width: 36px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ---- Volume ---- */
@@ -2630,6 +2723,11 @@ img { max-width: 100%; display: block; }
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: none;
+}
+.player-container:fullscreen.controls-visible,
+.player-container:-webkit-full-screen.controls-visible {
+    cursor: default;
 }
 .player-container:fullscreen video,
 .player-container:-webkit-full-screen video {
@@ -4687,6 +4785,242 @@ img { max-width: 100%; display: block; }
 }
 
 /* =========================================================================
+   Pause Info Overlay — Cinematic fullscreen info when paused
+   ========================================================================= */
+
+.pause-info-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.pause-info-overlay.visible {
+    opacity: 1;
+}
+
+.pause-backdrop {
+    position: absolute;
+    inset: -20px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(20px) brightness(0.5) saturate(1.3);
+    transform: scale(1.1);
+    opacity: 0.45;
+}
+
+.pause-gradient {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.05) 100%),
+        linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 40%);
+}
+
+.pause-content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4rem 5%;
+    gap: 3rem;
+}
+
+.pause-content-inner {
+    flex: 1;
+    max-width: 55%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    animation: pauseSlideIn 0.5s ease-out 0.15s both;
+}
+
+@keyframes pauseSlideIn {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.pause-logo {
+    max-width: 340px;
+    max-height: 100px;
+    object-fit: contain;
+    object-position: left center;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+    margin-bottom: 0.25rem;
+}
+
+.pause-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    line-height: 1.15;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+    letter-spacing: -0.02em;
+}
+
+.pause-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.7);
+}
+
+.pause-meta-tag {
+    background: var(--p-primary, #6366f1);
+    color: #fff;
+    padding: 0.15rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.pause-meta-item {
+    position: relative;
+    padding-left: 0.75rem;
+}
+
+.pause-meta-item::before {
+    content: '\00B7';
+    position: absolute;
+    left: 0;
+    color: rgba(255,255,255,0.35);
+    font-weight: bold;
+}
+
+.pause-meta-item:first-child::before,
+.pause-meta-tag + .pause-meta-item::before {
+    content: none;
+    padding-left: 0;
+}
+
+.pause-meta-rating {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #fbbf24;
+    font-weight: 600;
+}
+
+.pause-meta-rating i {
+    font-size: 0.75rem;
+}
+
+.pause-desc {
+    color: rgba(255,255,255,0.6);
+    font-size: 0.88rem;
+    line-height: 1.55;
+    margin: 0.25rem 0 0;
+    max-width: 500px;
+}
+
+.pause-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    animation: pauseStatusPulse 2.5s ease-in-out infinite;
+}
+
+.pause-status i {
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+@keyframes pauseStatusPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* Fullscreen overrides */
+.player-container:fullscreen .pause-info-overlay,
+.player-container:-webkit-full-screen .pause-info-overlay {
+    position: fixed;
+    z-index: 2147483646;
+}
+
+/* Mobile / small screens */
+@media (max-width: 768px) {
+    .pause-content {
+        padding: 2rem 1.5rem;
+    }
+    .pause-content-inner {
+        max-width: 100%;
+    }
+    .pause-title {
+        font-size: 1.4rem;
+    }
+    .pause-desc {
+        display: none;
+    }
+}
+
+/* ---- Top Title Bar (shows on mouse move alongside controls) ---- */
+
+.vod-top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+    padding: 1rem 1.25rem 2rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.vod-top-bar.visible {
+    opacity: 1;
+}
+
+.vod-top-bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.vod-top-title {
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.vod-top-meta {
+    color: rgba(255,255,255,0.6);
+    font-size: 1rem;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Fullscreen overrides for top bar */
+.player-container:fullscreen .vod-top-bar,
+.player-container:-webkit-full-screen .vod-top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2147483647;
+}
+
+/* =========================================================================
    Skip Intro Button
    ========================================================================= */
 
@@ -4939,4 +5273,74 @@ img { max-width: 100%; display: block; }
     .vod-volume-wrap .vod-volume-slider {
         display: none;
     }
+}
+
+/* ============================================
+   Star Rating Widget
+   ============================================ */
+
+.star-rating-widget {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.star-rating-stars {
+    display: flex;
+    gap: 0.125rem;
+}
+
+.star-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.125rem;
+    font-size: 1.25rem;
+    color: rgba(255,255,255,0.25);
+    transition: color 0.15s, transform 0.15s;
+}
+
+.star-btn:hover {
+    transform: scale(1.15);
+}
+
+.star-btn.hovered {
+    color: #fbbf24;
+}
+
+.star-btn.rated {
+    color: #fbbf24;
+}
+
+.star-rating-label {
+    font-size: 0.8125rem;
+    color: rgba(255,255,255,0.5);
+}
+
+/* Episode nav buttons in player controls */
+.vod-ep-nav {
+    opacity: 0.85;
+}
+
+.vod-ep-nav:hover {
+    opacity: 1;
+}
+
+/* ============================================
+   Recommendation Match Badge
+   ============================================ */
+
+.card-match-badge {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    background: rgba(34, 197, 94, 0.9);
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    z-index: 2;
+    letter-spacing: 0.02em;
 }
