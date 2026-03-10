@@ -39,6 +39,7 @@ const CariAdManager = (function() {
         _adBreaks = [];
         _playedBreaks = {};
         _adPlaying = false;
+        console.log('[CariAds] Initialized with context:', JSON.stringify(_context), 'container:', _playerContainer ? _playerContainer.id || 'found' : 'MISSING');
     }
 
     // =========================================
@@ -58,10 +59,18 @@ const CariAdManager = (function() {
         if (extra) {
             Object.keys(extra).forEach(function(k) { params.set(k, extra[k]); });
         }
-        return fetch(AD_API_BASE + '/serve?' + params.toString())
+        var url = AD_API_BASE + '/serve?' + params.toString();
+        console.log('[CariAds] Fetching ads:', url);
+        return fetch(url)
             .then(function(r) { return r.json(); })
-            .then(function(d) { return d.success ? d : { ads: [], source: 'none' }; })
-            .catch(function() { return { ads: [], source: 'none' }; });
+            .then(function(d) {
+                console.log('[CariAds] Response for ' + zoneType + ':', d.success ? (d.ads || []).length + ' ads' : 'failed', d);
+                return d.success ? d : { ads: [], source: 'none' };
+            })
+            .catch(function(err) {
+                console.error('[CariAds] Fetch error for ' + zoneType + ':', err);
+                return { ads: [], source: 'none' };
+            });
     }
 
     function fetchAdBreakSchedule(contentType, contentId, duration) {
@@ -467,11 +476,13 @@ const CariAdManager = (function() {
     // =========================================
 
     function loadOverlayAds() {
+        console.log('[CariAds] loadOverlayAds called, container:', _playerContainer ? 'found' : 'MISSING');
+
         // Fetch banner ads
         fetchAds('banner').then(function(result) {
             var ads = result.ads || [];
+            console.log('[CariAds] Banner ads received:', ads.length);
             if (ads.length > 0) {
-                // Show first banner after 30 seconds
                 setTimeout(function() {
                     showOverlayBanner(ads[0]);
                 }, 30000);
@@ -481,9 +492,10 @@ const CariAdManager = (function() {
         // Fetch text scroller ads
         fetchAds('text_scroller').then(function(result) {
             var ads = result.ads || [];
+            console.log('[CariAds] Text scroller ads received:', ads.length);
             if (ads.length > 0) {
-                // Show text scroller after 15 seconds
                 setTimeout(function() {
+                    console.log('[CariAds] Showing text scroller now');
                     showTextScroller(ads[0]);
                 }, 15000);
             }
