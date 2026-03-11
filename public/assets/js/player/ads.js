@@ -453,9 +453,7 @@ const CariAdManager = (function() {
 
         var scroller = document.createElement('div');
         scroller.className = 'cari-ad-scroller';
-        scroller.style.backgroundColor = ad.bg_color || '#000';
-        scroller.style.opacity = ad.bg_opacity || 0.8;
-        scroller.style.color = ad.text_color || '#fff';
+        scroller.style.cssText = 'background-color:' + (ad.bg_color || '#000') + ';opacity:' + (ad.bg_opacity || 0.8) + ';color:' + (ad.text_color || '#fff') + ';';
 
         // Font size mapping
         var fontSizeMap = { small: '0.75rem', medium: '0.85rem', large: '1.15rem', xlarge: '1.4rem' };
@@ -468,12 +466,19 @@ const CariAdManager = (function() {
         trackImpression(ad);
         _playerContainer.appendChild(scroller);
         _activeOverlays.push(scroller);
+        console.log('[CariAds] Text scroller appended to DOM, text:', text.substring(0, 50), 'speed:', speed, 'container children:', _playerContainer.children.length);
 
         // Auto-dismiss after 2 full scrolls
         setTimeout(function() {
             if (scroller.parentNode) {
-                scroller.classList.add('cari-scroller-fade');
-                setTimeout(function() { if (scroller.parentNode) scroller.remove(); }, 500);
+                scroller.style.opacity = '0';
+                scroller.style.transition = 'opacity 0.5s';
+                setTimeout(function() {
+                    if (scroller.parentNode) {
+                        scroller.remove();
+                        console.log('[CariAds] Text scroller auto-dismissed');
+                    }
+                }, 500);
             }
         }, speed * 2 * 1000);
     }
