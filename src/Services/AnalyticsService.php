@@ -22,6 +22,7 @@ class AnalyticsService
             'watch_resume',     // Resumed playback
             'watch_seek',       // Seeked within content
             'watch_rewind',     // Rewound (replayed a section)
+            'watch_heartbeat',  // Periodic heartbeat while actively watching (every 60s)
             'binge_session',    // Watched multiple episodes consecutively
             'episode_nav',      // Episode navigation (auto_play / manual_next / episode_select)
         ],
@@ -1019,28 +1020,53 @@ class AnalyticsService
     // =========================================================================
 
     /**
-     * Get current concurrent viewers (viewers active in last 5 minutes)
+     * Get current concurrent viewers (viewers with a watch_start or heartbeat in last 2 minutes)
      */
     public function getConcurrentViewers(): array
     {
         $total = $this->db->fetch(
             "SELECT COUNT(DISTINCT subscriber_id) as concurrent
              FROM subscriber_events
-             WHERE event_type = 'watch_start'
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+             WHERE event_type IN ('watch_start', 'watch_heartbeat')
+               AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)"
         );
 
         $byType = $this->db->fetchAll(
             "SELECT content_type, COUNT(DISTINCT subscriber_id) as concurrent
              FROM subscriber_events
-             WHERE event_type = 'watch_start'
-               AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+             WHERE event_type IN ('watch_start', 'watch_heartbeat')
+               AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
              GROUP BY content_type"
         );
 
         return [
             'total' => (int) ($total['concurrent'] ?? 0),
             'by_type' => $byType,
+        ];
+    }
+
+    /**
+     * Get current online users (any event activity in the last 5 minutes)
+     */
+    public function getOnlineUsers(): array
+    {
+        $total = $this->db->fetch(
+            "SELECT COUNT(DISTINCT subscriber_id) as online
+             FROM subscriber_events
+             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+        );
+
+        $byPlatform = $this->db->fetchAll(
+            "SELECT platform, COUNT(DISTINCT subscriber_id) as online
+             FROM subscriber_events
+             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+               AND platform IS NOT NULL
+             GROUP BY platform"
+        );
+
+        return [
+            'total' => (int) ($total['online'] ?? 0),
+            'by_platform' => $byPlatform,
         ];
     }
 

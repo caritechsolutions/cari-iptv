@@ -606,6 +606,11 @@
         <div class="kpi-label">Searches (30d)</div>
         <div class="kpi-sub" id="kpiSearchSub"></div>
     </div>
+    <div class="kpi-card" style="border-color:rgba(99,102,241,0.3)">
+        <div class="kpi-value" id="kpiOnline" style="color:#6366f1">--</div>
+        <div class="kpi-label">Online Now</div>
+        <div class="kpi-sub" id="kpiOnlineSub"></div>
+    </div>
     <div class="kpi-card" style="border-color:rgba(34,197,94,0.3)">
         <div class="kpi-value" id="kpiConcurrent" style="color:#22c55e">--</div>
         <div class="kpi-label">Watching Now</div>
@@ -894,7 +899,13 @@
         const failedPct = pct(parseInt(wa.failed_searches || 0), parseInt(wa.searches) + parseInt(wa.failed_searches || 0));
         document.getElementById('kpiSearchSub').textContent = failedPct + ' returned no results';
 
-        // New KPIs
+        // Online users
+        const online = d.online_users || {};
+        document.getElementById('kpiOnline').textContent = fmt(online.total);
+        const byPlatform = (online.by_platform || []).map(p => p.platform + ': ' + p.online).join(', ');
+        document.getElementById('kpiOnlineSub').textContent = byPlatform || 'No users online';
+
+        // Concurrent viewers
         const conc = d.concurrent || {};
         document.getElementById('kpiConcurrent').textContent = fmt(conc.total);
         const byType = (conc.by_type || []).map(t => t.content_type + ': ' + t.concurrent).join(', ');

@@ -667,6 +667,12 @@ class AnalyticsController
             'by_type' => [],
         ]);
 
+        // Online users (any activity in last 5 minutes)
+        $data['online_users'] = $this->safeQuery(fn() => $analyticsService->getOnlineUsers(), [
+            'total' => 0,
+            'by_platform' => [],
+        ]);
+
         // Share stats
         $data['shares'] = $this->safeQuery(fn() => $analyticsService->getShareStats(), [
             'by_method' => [],
