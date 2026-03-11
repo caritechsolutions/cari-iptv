@@ -1228,7 +1228,9 @@ class AdController
             'chains' => $chains,
             'zones' => $zones,
             'campaigns' => $campaigns,
-        ]);
+            'user' => $this->auth->user(),
+            'csrf' => Session::csrf(),
+        ], 'admin');
     }
 
     public function waterfallStore(): void
@@ -1294,7 +1296,9 @@ class AdController
         Response::view('admin/ads/ab-tests', [
             'pageTitle' => 'A/B Tests',
             'tests' => $tests,
-        ]);
+            'user' => $this->auth->user(),
+            'csrf' => Session::csrf(),
+        ], 'admin');
     }
 
     public function abTestStore(int $campaignId): void
@@ -1369,7 +1373,9 @@ class AdController
             'pageTitle' => 'Ad Pods & Breaks',
             'pods' => $pods,
             'zones' => $zones,
-        ]);
+            'user' => $this->auth->user(),
+            'csrf' => Session::csrf(),
+        ], 'admin');
     }
 
     public function podStore(): void
@@ -1907,7 +1913,9 @@ class AdController
             'pageTitle' => 'Revenue Forecast',
             'forecasts' => $forecasts,
             'historical' => $historical,
-        ]);
+            'user' => $this->auth->user(),
+            'csrf' => Session::csrf(),
+        ], 'admin');
     }
 
     public function generateForecast(): void
@@ -1942,7 +1950,13 @@ class AdController
 
         try {
             $aiService = new \CariIPTV\Services\AIService();
-            $response = $aiService->chat($prompt);
+            $response = $aiService->complete($prompt);
+
+            if (!$response) {
+                $error = $aiService->getLastError() ?: 'No response from AI service';
+                Response::json(['success' => false, 'message' => $error]);
+                return;
+            }
 
             // Parse JSON from AI response
             $jsonMatch = [];

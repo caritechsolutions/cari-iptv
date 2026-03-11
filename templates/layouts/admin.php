@@ -25,6 +25,13 @@
             --danger: #ef4444;
             --info: #3b82f6;
 
+            --primary-rgb: 99, 102, 241;
+            --success-rgb: 34, 197, 94;
+            --warning-rgb: 245, 158, 11;
+            --danger-rgb: 239, 68, 68;
+            --info-rgb: 59, 130, 246;
+            --secondary-rgb: 100, 116, 139;
+
             --bg-dark: #0f172a;
             --bg-card: #1e293b;
             --bg-hover: #334155;
