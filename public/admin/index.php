@@ -102,6 +102,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/analytics/report', [AnalyticsController::class, 'generateReport']);
     $router->post('/analytics/chat', [AnalyticsController::class, 'chat']);
     $router->post('/analytics/chat/reset', [AnalyticsController::class, 'resetChat']);
+    $router->post('/analytics/ai-test', [AnalyticsController::class, 'aiTest']);
 
     // Logout (no CSRF for GET logout is intentional for simplicity)
     $router->get('/logout', [AuthController::class, 'logout']);
@@ -376,6 +377,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     // Advertising - Revenue Forecast
     $router->get('/ads/forecast', [AdController::class, 'forecastIndex'], ['auth']);
     $router->post('/ads/forecast/generate', [AdController::class, 'generateForecast'], ['auth']);
+    $router->post('/ads/forecast/ai-test', [AdController::class, 'forecastAiTest'], ['auth']);
 
     // Advertising - Ad Serving API (Enhanced)
     $router->get('/ads/api/debug', [AdController::class, 'serveDebug'], ['auth']);

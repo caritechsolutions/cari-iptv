@@ -1996,4 +1996,70 @@ class AdController
             Response::json(['success' => false, 'message' => 'AI service error: ' . $e->getMessage()]);
         }
     }
+
+    /**
+     * AI diagnostic: test basic connectivity, then dump the actual forecast prompt with stats
+     */
+    public function forecastAiTest(): void
+    {
+        Session::validateCsrf($_POST['csrf_token'] ?? '');
+
+        $aiService = new \CariIPTV\Services\AIService();
+        $result = [
+            'provider' => $aiService->getProvider(),
+            'provider_name' => $aiService->getProviderName(),
+            'model' => $aiService->getCurrentModel(),
+            'available' => $aiService->isAvailable(),
+        ];
+
+        // Step 1: Simple ping — send a tiny prompt
+        $start = microtime(true);
+        $ping = $aiService->complete('Say "hello" in one word.', [
+            'max_tokens' => 10,
+            'temperature' => 0.1,
+            'timeout' => 15,
+        ]);
+        $pingTime = round(microtime(true) - $start, 2);
+
+        $result['ping'] = [
+            'response' => $ping,
+            'error' => $aiService->getLastError(),
+            'time_seconds' => $pingTime,
+        ];
+
+        // Step 2: Build the actual forecast prompt and return stats (don't send it)
+        $historical = $this->adService->getHistoricalPerformance(90);
+
+        $prompt = "You are an ad revenue forecasting analyst for CARI-IPTV.\n\n";
+        $prompt .= "Historical Performance (last 90 days):\n";
+        $prompt .= "- Active campaigns: {$historical['active_campaigns']}\n";
+        $prompt .= "- Avg daily impressions: {$historical['avg_daily_impressions']}\n";
+        $prompt .= "- Avg daily revenue: \${$historical['avg_daily_revenue']}\n\n";
+
+        if (!empty($historical['daily'])) {
+            $prompt .= "Daily data (last 30 entries):\n";
+            foreach (array_slice($historical['daily'], -30) as $d) {
+                $prompt .= "  {$d['date']}: {$d['impressions']} impressions, \${$d['revenue']} revenue\n";
+            }
+        }
+
+        if (!empty($historical['by_zone_type'])) {
+            $prompt .= "\nBy zone type:\n";
+            foreach ($historical['by_zone_type'] as $z) {
+                $prompt .= "  {$z['zone_type']}: {$z['impressions']} impressions, \${$z['revenue']} revenue\n";
+            }
+        }
+
+        $prompt .= "\nGenerate a 14-day revenue forecast. Return ONLY valid JSON:\n";
+        $prompt .= '{"forecasts":[{"date":"YYYY-MM-DD","impressions":N,"revenue":N.NN,"fill_rate":N.N,"confidence":N.N}],"analysis":"Brief narrative analysis"}';
+
+        $result['prompt'] = [
+            'length_chars' => strlen($prompt),
+            'length_words' => str_word_count($prompt),
+            'length_lines' => substr_count($prompt, "\n") + 1,
+            'text' => $prompt,
+        ];
+
+        Response::json(['success' => true, 'diagnostics' => $result]);
+    }
 }

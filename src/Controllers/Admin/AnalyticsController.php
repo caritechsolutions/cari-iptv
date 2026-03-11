@@ -1033,4 +1033,49 @@ class AnalyticsController
         $prompt .= "Continue the conversation. Use markdown formatting. If asked for charts or data breakdowns, present the data in a structured way that can be visualized. Be specific and actionable.\n\n[ASSISTANT]\n";
         return $prompt;
     }
+
+    /**
+     * AI diagnostic: test basic connectivity, then dump the actual report prompt with stats
+     */
+    public function aiTest(): void
+    {
+        Session::validateCsrf($_POST['_token'] ?? '');
+
+        $aiService = new AIService();
+        $result = [
+            'provider' => $aiService->getProvider(),
+            'provider_name' => $aiService->getProviderName(),
+            'model' => $aiService->getCurrentModel(),
+            'available' => $aiService->isAvailable(),
+        ];
+
+        // Step 1: Simple ping — send a tiny prompt
+        $start = microtime(true);
+        $ping = $aiService->complete('Say "hello" in one word.', [
+            'max_tokens' => 10,
+            'temperature' => 0.1,
+            'timeout' => 15,
+        ]);
+        $pingTime = round(microtime(true) - $start, 2);
+
+        $result['ping'] = [
+            'response' => $ping,
+            'error' => $aiService->getLastError(),
+            'time_seconds' => $pingTime,
+        ];
+
+        // Step 2: Build the actual report prompt and return stats (don't send it)
+        $data = $this->gatherPlatformData();
+        $focusArea = trim($_POST['focus'] ?? 'general');
+        $prompt = $this->buildReportPrompt($data, $focusArea);
+
+        $result['prompt'] = [
+            'length_chars' => strlen($prompt),
+            'length_words' => str_word_count($prompt),
+            'length_lines' => substr_count($prompt, "\n") + 1,
+            'text' => $prompt, // Full prompt so user can test at CLI
+        ];
+
+        Response::json(['success' => true, 'diagnostics' => $result]);
+    }
 }
