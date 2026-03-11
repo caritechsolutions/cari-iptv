@@ -1949,8 +1949,15 @@ class AdController
         $prompt .= '{"forecasts":[{"date":"YYYY-MM-DD","impressions":N,"revenue":N.NN,"fill_rate":N.N,"confidence":N.N}],"analysis":"Brief narrative analysis"}';
 
         try {
+            // Extend PHP execution time — Ollama can be slow with large prompts
+            set_time_limit(180);
+
             $aiService = new \CariIPTV\Services\AIService();
-            $response = $aiService->complete($prompt);
+            $response = $aiService->complete($prompt, [
+                'max_tokens' => 2000,
+                'temperature' => 0.6,
+                'timeout' => 120,
+            ]);
 
             if (!$response) {
                 $error = $aiService->getLastError() ?: 'No response from AI service';
