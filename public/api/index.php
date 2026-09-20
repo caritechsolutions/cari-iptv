@@ -96,6 +96,9 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/auth/login', [AuthController::class, 'login']);
     $router->post('/auth/refresh', [AuthController::class, 'refresh']);
     $router->post('/auth/logout', [AuthController::class, 'logout']);
+    $router->post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+    $router->get('/auth/reset-password/{token}', [AuthController::class, 'checkResetToken']);
+    $router->post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
     // ----- Authenticated user endpoints -----
     $router->get('/auth/me', [AuthController::class, 'me'], ['api_auth']);
@@ -109,6 +112,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->post('/auth/subscribe', [AuthController::class, 'subscribe'], ['api_auth']);
     $router->post('/auth/unsubscribe', [AuthController::class, 'unsubscribe'], ['api_auth']);
     $router->post('/auth/update-profile', [AuthController::class, 'updateProfile'], ['api_auth']);
+    $router->post('/auth/delete-account', [AuthController::class, 'deleteAccount'], ['api_auth']);
     $router->post('/auth/rate', [AuthController::class, 'rateContent'], ['api_auth']);
     $router->get('/auth/rating', [AuthController::class, 'getRating'], ['api_auth']);
 

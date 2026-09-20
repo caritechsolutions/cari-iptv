@@ -89,6 +89,24 @@ if (preg_match('#^/verify-email/([a-f0-9]+)$#', $uri, $matches)) {
     exit;
 }
 
+// Password reset page (link target from the reset email)
+if (preg_match('#^/reset-password/([a-f0-9]+)$#', $uri, $matches)) {
+    $controller->resetPassword($matches[1]);
+    exit;
+}
+
+// Public account deletion request page (store compliance)
+if ($uri === '/delete-account') {
+    $controller->deleteAccount();
+    exit;
+}
+
+// Public privacy policy (placeholder text — replace in templates/player/privacy.php)
+if ($uri === '/privacy' || $uri === '/privacy-policy') {
+    $controller->privacy();
+    exit;
+}
+
 // All other paths serve the SPA app shell.
 // Client-side JavaScript handles routing for:
 //   /  /movies  /series  /live  /search  /my-list  /watch/:type/:id  /categories

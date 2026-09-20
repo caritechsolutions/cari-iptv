@@ -66,6 +66,50 @@ class PlayerController
     }
 
     /**
+     * Serve the password reset page (target of the emailed reset link)
+     */
+    public function resetPassword(string $token): void
+    {
+        [$siteName, $siteLogo] = $this->siteBranding();
+        include BASE_PATH . '/templates/player/reset-password.php';
+    }
+
+    /**
+     * Serve the public account deletion request page
+     */
+    public function deleteAccount(): void
+    {
+        [$siteName, $siteLogo] = $this->siteBranding();
+        include BASE_PATH . '/templates/player/delete-account.php';
+    }
+
+    /**
+     * Serve the public privacy policy page
+     */
+    public function privacy(): void
+    {
+        [$siteName, $siteLogo] = $this->siteBranding();
+        include BASE_PATH . '/templates/player/privacy.php';
+    }
+
+    /**
+     * Site name + logo from settings, with defaults
+     */
+    private function siteBranding(): array
+    {
+        $siteName = 'CARI-IPTV';
+        $siteLogo = '';
+        try {
+            $settings = new \CariIPTV\Services\SettingsService();
+            $siteName = $settings->get('site_name', 'CARI-IPTV', 'general');
+            $siteLogo = $settings->get('site_logo', '', 'general');
+        } catch (\Throwable $e) {
+            // Use defaults
+        }
+        return [$siteName, $siteLogo];
+    }
+
+    /**
      * Serve the main SPA app shell
      * All client-side routing happens in JavaScript
      */

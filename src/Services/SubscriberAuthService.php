@@ -805,6 +805,285 @@ class SubscriberAuthService
         );
     }
 
+    // =========================================================================
+    // PASSWORD RESET (subscriber self-service)
+    // =========================================================================
+
+    /**
+     * Request a password reset email.
+     * Always returns success (no email enumeration). Token is valid for 1 hour,
+     * single-use, and any previous unused tokens for the subscriber are invalidated.
+     */
+    public function requestPasswordReset(string $email): array
+    {
+        $generic = [
+            'success' => true,
+            'message' => 'If an account exists with that email, password reset instructions have been sent.',
+        ];
+
+        $email = trim($email);
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $generic;
+        }
+
+        $subscriber = $this->db->fetch(
+            "SELECT id, email, first_name, username FROM subscribers
+             WHERE email = ? AND status = 'active' AND is_disabled = 0 AND deleted_at IS NULL",
+            [$email]
+        );
+
+        if (!$subscriber) {
+            return $generic;
+        }
+
+        $token = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $token);
+        $expiresAt = date('Y-m-d H:i:s', time() + 3600);
+
+        // Invalidate any outstanding tokens for this subscriber
+        $this->db->execute(
+            "UPDATE subscriber_password_resets SET used_at = NOW()
+             WHERE subscriber_id = ? AND used_at IS NULL",
+            [$subscriber['id']]
+        );
+
+        $this->db->insert('subscriber_password_resets', [
+            'subscriber_id' => $subscriber['id'],
+            'token_hash'    => $tokenHash,
+            'expires_at'    => $expiresAt,
+            'requested_ip'  => substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45) ?: null,
+        ]);
+
+        $resetUrl = $this->siteUrl() . '/reset-password/' . $token;
+        $name = $subscriber['first_name'] ?: $subscriber['username'];
+
+        $emailService = new EmailService();
+        if ($emailService->isConfigured()) {
+            if (!$emailService->sendPasswordReset($subscriber['email'], $name, $resetUrl)) {
+                error_log('Subscriber password reset email failed: ' . ($emailService->getLastError() ?? 'unknown'));
+            }
+        } else {
+            error_log('Subscriber password reset requested but SMTP is not configured (subscriber ' . $subscriber['id'] . ')');
+        }
+
+        return $generic;
+    }
+
+    /**
+     * Check whether a reset token is currently valid (unused, not expired).
+     */
+    public function isPasswordResetTokenValid(string $token): bool
+    {
+        if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return false;
+        }
+
+        $row = $this->db->fetch(
+            "SELECT r.id FROM subscriber_password_resets r
+             INNER JOIN subscribers s ON s.id = r.subscriber_id
+             WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > NOW()
+               AND s.status = 'active' AND s.is_disabled = 0 AND s.deleted_at IS NULL",
+            [hash('sha256', $token)]
+        );
+
+        return (bool) $row;
+    }
+
+    /**
+     * Complete a password reset with a token from the email link.
+     * Revokes all refresh tokens so every device must sign in again.
+     */
+    public function resetPassword(string $token, string $password, string $passwordConfirm): array
+    {
+        if (strlen($password) < 8) {
+            return ['success' => false, 'error' => 'Password must be at least 8 characters'];
+        }
+        if ($password !== $passwordConfirm) {
+            return ['success' => false, 'error' => 'Passwords do not match'];
+        }
+        if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return ['success' => false, 'error' => 'Invalid or expired reset link. Please request a new one.', 'code' => 'INVALID_TOKEN'];
+        }
+
+        $reset = $this->db->fetch(
+            "SELECT r.id, r.subscriber_id FROM subscriber_password_resets r
+             INNER JOIN subscribers s ON s.id = r.subscriber_id
+             WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > NOW()
+               AND s.status = 'active' AND s.is_disabled = 0 AND s.deleted_at IS NULL",
+            [hash('sha256', $token)]
+        );
+
+        if (!$reset) {
+            return ['success' => false, 'error' => 'Invalid or expired reset link. Please request a new one.', 'code' => 'INVALID_TOKEN'];
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $this->db->execute(
+                "UPDATE subscribers SET password = ? WHERE id = ?",
+                [password_hash($password, PASSWORD_BCRYPT), $reset['subscriber_id']]
+            );
+            $this->db->execute(
+                "UPDATE subscriber_password_resets SET used_at = NOW() WHERE id = ?",
+                [$reset['id']]
+            );
+            // Sign out every device
+            $this->db->execute(
+                "UPDATE subscriber_tokens SET revoked_at = NOW() WHERE subscriber_id = ? AND revoked_at IS NULL",
+                [$reset['subscriber_id']]
+            );
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollback();
+            error_log('Subscriber password reset failed: ' . $e->getMessage());
+            return ['success' => false, 'error' => 'Password reset failed. Please try again.'];
+        }
+
+        return ['success' => true, 'message' => 'Your password has been reset. Please sign in with your new password.'];
+    }
+
+    // =========================================================================
+    // ACCOUNT DELETION (subscriber self-service, store compliance)
+    // =========================================================================
+
+    /**
+     * Delete a subscriber's account after password re-entry.
+     *
+     * DELETED (hard delete):
+     *   subscriber_tokens, subscriber_password_resets, subscriber_watch_history,
+     *   subscriber_watchlist, subscriber_ratings, subscriber_events,
+     *   subscriber_profiles, recommendation_sets (+items via FK cascade),
+     *   subscriber_qoe_events, subscriber_sessions, content_impressions,
+     *   subscriber_engagement_scores, binge_sessions, content_shares,
+     *   subscriber_group_members.
+     *
+     * ANONYMISED (row kept, personal data removed):
+     *   subscribers — username becomes "deleted_{id}", email/password/names/phone/
+     *   avatar/birthday/address/notes/external_id/parental_pin/verification token
+     *   are cleared, status='inactive', is_disabled=1, deleted_at=NOW().
+     *   ad_impressions / ad_events / ad_conversions — user_id set to NULL.
+     *
+     * RETAINED and why:
+     *   - The anonymised subscribers row: keeps the primary key so that historical
+     *     aggregate counts (retention cohorts, dashboard totals) and advertiser
+     *     reporting rows that reference it stay valid. It contains no personal data.
+     *   - subscriber_subscriptions rows: billing/entitlement history tied to the
+     *     anonymised id, kept for accounting and dispute resolution. They hold no
+     *     personal data beyond the (now anonymised) subscriber id.
+     *   - Aggregate tables with no per-user key (trending_content, retention_cohorts
+     *     counts, movies.community_rating) are recomputed where cheap (community
+     *     ratings) or left as statistics.
+     *
+     * Community ratings for content the subscriber rated are recalculated.
+     */
+    public function deleteAccount(int $subscriberId, string $password): array
+    {
+        $subscriber = $this->db->fetch(
+            "SELECT id, password FROM subscribers WHERE id = ? AND deleted_at IS NULL",
+            [$subscriberId]
+        );
+
+        if (!$subscriber) {
+            return ['success' => false, 'error' => 'Account not found', 'code' => 'NOT_FOUND'];
+        }
+
+        if (empty($password) || empty($subscriber['password']) || !password_verify($password, $subscriber['password'])) {
+            return ['success' => false, 'error' => 'Incorrect password', 'code' => 'AUTH_FAILED'];
+        }
+
+        // Content the subscriber rated (recalculate community ratings afterwards)
+        $rated = $this->db->fetchAll(
+            "SELECT content_type, content_id FROM subscriber_ratings WHERE subscriber_id = ?",
+            [$subscriberId]
+        );
+
+        $hardDeleteTables = [
+            'subscriber_tokens',
+            'subscriber_password_resets',
+            'subscriber_watch_history',
+            'subscriber_watchlist',
+            'subscriber_ratings',
+            'subscriber_events',
+            'subscriber_profiles',
+            'recommendation_sets',
+            'subscriber_qoe_events',
+            'subscriber_sessions',
+            'content_impressions',
+            'subscriber_engagement_scores',
+            'binge_sessions',
+            'content_shares',
+            'subscriber_group_members',
+        ];
+
+        $anonymiseUserIdTables = ['ad_impressions', 'ad_events', 'ad_conversions'];
+
+        $this->db->beginTransaction();
+        try {
+            foreach ($hardDeleteTables as $table) {
+                try {
+                    $this->db->execute("DELETE FROM `{$table}` WHERE subscriber_id = ?", [$subscriberId]);
+                } catch (\Throwable $e) {
+                    // Table may not exist on installs missing optional migrations
+                    if (!str_contains($e->getMessage(), "doesn't exist")) {
+                        throw $e;
+                    }
+                }
+            }
+
+            foreach ($anonymiseUserIdTables as $table) {
+                try {
+                    $this->db->execute("UPDATE `{$table}` SET user_id = NULL WHERE user_id = ?", [$subscriberId]);
+                } catch (\Throwable $e) {
+                    if (!str_contains($e->getMessage(), "doesn't exist")) {
+                        throw $e;
+                    }
+                }
+            }
+
+            $this->db->execute(
+                "UPDATE subscribers SET
+                    username = ?, email = NULL, password = NULL,
+                    first_name = NULL, last_name = NULL, phone = NULL, avatar = NULL,
+                    birthday = NULL, country = NULL, city = NULL, address = NULL, zip_code = NULL,
+                    external_id = NULL, notes = NULL, parental_pin = NULL,
+                    email_verification_token = NULL, email_verified = 0,
+                    status = 'inactive', is_disabled = 1, deleted_at = NOW()
+                 WHERE id = ?",
+                ['deleted_' . $subscriberId, $subscriberId]
+            );
+
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollback();
+            error_log('Account deletion failed for subscriber ' . $subscriberId . ': ' . $e->getMessage());
+            return ['success' => false, 'error' => 'Account deletion failed. Please try again.'];
+        }
+
+        foreach ($rated as $row) {
+            try {
+                $this->recalculateCommunityRating($row['content_type'], (int) $row['content_id']);
+            } catch (\Throwable $e) {
+                // non-fatal
+            }
+        }
+
+        return ['success' => true, 'message' => 'Your account has been deleted.'];
+    }
+
+    /**
+     * Public site URL (admin setting, falling back to the current host)
+     */
+    private function siteUrl(): string
+    {
+        $settings = new SettingsService();
+        $siteUrl = $settings->get('site_url', '', 'general');
+        if (empty($siteUrl)) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $siteUrl = "{$protocol}://" . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        }
+        return rtrim($siteUrl, '/');
+    }
+
     private function detectDeviceName(): string
     {
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';

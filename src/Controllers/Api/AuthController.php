@@ -528,6 +528,108 @@ class AuthController extends BaseApiController
     }
 
     // =========================================================================
+    // PASSWORD RESET
+    // =========================================================================
+
+    /**
+     * POST /api/v1/auth/forgot-password
+     * Body: { email }
+     * Always returns 200 (no email enumeration). Sends a time-limited, single-use link.
+     */
+    public function forgotPassword(): void
+    {
+        $input = $this->getJsonInput();
+        $email = trim($input['email'] ?? '');
+
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->error('A valid email address is required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->requestPasswordReset($email);
+
+        header('Cache-Control: no-store');
+        $this->json(['data' => ['message' => $result['message']]], 200);
+    }
+
+    /**
+     * GET /api/v1/auth/reset-password/{token}
+     * Checks whether a reset token is still valid (used by the reset web page / app deep link).
+     */
+    public function checkResetToken(string $token): void
+    {
+        header('Cache-Control: no-store');
+        $this->json(['data' => ['valid' => $this->auth->isPasswordResetTokenValid($token)]], 200);
+    }
+
+    /**
+     * POST /api/v1/auth/reset-password
+     * Body: { token, password, password_confirm }
+     */
+    public function resetPassword(): void
+    {
+        $input = $this->getJsonInput();
+        $token = trim($input['token'] ?? '');
+        $password = $input['password'] ?? '';
+        $confirm = $input['password_confirm'] ?? '';
+
+        if (empty($token) || empty($password)) {
+            $this->error('Token and password are required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->resetPassword($token, $password, $confirm);
+
+        if (!$result['success']) {
+            $code = ($result['code'] ?? '') === 'INVALID_TOKEN' ? 'INVALID_TOKEN' : 'VALIDATION_ERROR';
+            $this->error($result['error'], $code === 'INVALID_TOKEN' ? 400 : 422, $code);
+            return;
+        }
+
+        header('Cache-Control: no-store');
+        $this->json(['data' => ['message' => $result['message']]], 200);
+    }
+
+    // =========================================================================
+    // ACCOUNT DELETION
+    // =========================================================================
+
+    /**
+     * POST /api/v1/auth/delete-account
+     * Body: { password }
+     * Requires Bearer token and password re-entry. See SubscriberAuthService::deleteAccount
+     * for exactly what is deleted, anonymised and retained.
+     */
+    public function deleteAccount(): void
+    {
+        $subscriberId = $this->auth->validateRequest();
+        if (!$subscriberId) {
+            $this->error('Unauthorized', 401, 'UNAUTHORIZED');
+            return;
+        }
+
+        $input = $this->getJsonInput();
+        $password = $input['password'] ?? '';
+
+        if (empty($password)) {
+            $this->error('Password is required to delete your account', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $result = $this->auth->deleteAccount($subscriberId, $password);
+
+        if (!$result['success']) {
+            $code = $result['code'] ?? 'DELETE_FAILED';
+            $status = $code === 'AUTH_FAILED' ? 403 : ($code === 'NOT_FOUND' ? 404 : 500);
+            $this->error($result['error'], $status, $code);
+            return;
+        }
+
+        header('Cache-Control: no-store');
+        $this->json(['data' => ['deleted' => true, 'message' => $result['message']]], 200);
+    }
+
+    // =========================================================================
     // HELPERS
     // =========================================================================
 
