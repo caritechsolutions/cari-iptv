@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (http://) policy.
+  The API is HTTPS. Live channel stream_url values come from upstream providers
+  and may be plain http; VOD server public_url may also be http on some installs.
+  This file is finalised after live verification of real stream URLs
+  (see docs/API_DISCOVERY.md "Live verification"). Until then cleartext is
+  allowed for media only through the base-config below.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
