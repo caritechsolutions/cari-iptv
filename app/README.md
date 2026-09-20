@@ -10,6 +10,7 @@ Flutter client for the CARI-IPTV platform (`/api/v1`). Android first; the `ios/`
 | `docs/PLAN.md` | Phased build plan with progress |
 | `docs/STORE_READINESS.md` | Everything the stores need that code cannot supply |
 | `docs/IOS_NEXT_STEPS.md` | What is needed to ship iOS |
+| `docs/WHITE_LABEL.md` | How to add and build a brand |
 
 ## 1. Requirements
 
@@ -26,36 +27,26 @@ flutter pub get
 flutter doctor            # Android toolchain must be green; Chrome/desktop are not needed
 ```
 
-## 3. Configuration and whitelabelling
+## 3. Brands (white-label)
 
-Everything brand- and environment-specific lives in **one file**: `lib/config/app_config.dart`.
-
-| Field | Meaning |
-|---|---|
-| `apiBaseUrl` | Site origin, e.g. `https://player.caritech.net` (the API is at `/api/v1`). Dev and prod currently point at the same host; change `prod` when a production host exists. |
-| `appName` | In-app display name |
-| `primaryColor`, `accentColor`, `backgroundColor`, `surfaceColor` | Theme colours |
-| `logoAsset` | Logo shown on the login screen and splash |
-| `privacyUrl`, `termsUrl`, `deleteAccountUrl` | Public legal pages served by the backend |
-| `platformTag` | `mobile` (prod) / `mobile-dev` (dev), sent on analytics and ad calls so test traffic can be filtered |
-
-Images: replace the files in `assets/branding/` (`logo.png` 512², `icon.png` 1024², `icon_foreground.png` 1024² with transparent background, `splash.png` 512²), then regenerate launcher icons and splash:
+The app is brand-agnostic. A brand is one folder `brands/<brand>/` holding `brand.json` (application id, name, colours, API base URLs, legal URLs, analytics tag, cleartext hosts) and four PNGs (logo, icon, adaptive foreground, splash). No code is edited to add a brand. `caritv` is the development placeholder; `islandtv` is a worked example. Full guide: **`docs/WHITE_LABEL.md`**.
 
 ```bash
-dart run flutter_launcher_icons
-dart run flutter_native_splash:create
+./tool/build_brand.sh <brand> apk dev --debug     # debug APK for a device
+./tool/build_brand.sh <brand> appbundle prod      # release AAB for Google Play
+./tool/build_brand.sh <brand> run dev             # flutter run with the brand applied
 ```
 
-The launcher label per flavour is set in `android/app/build.gradle.kts` (`resValue "app_name"`). The application id is `net.caritech.caritv` (`.dev` suffix for the dev flavour) — **it cannot change after the app is published on Google Play**, so confirm it before the first upload.
+The script runs `dart run tool/apply_brand.dart <brand>` (copies assets, writes `android/brand.properties`, generates `network_security_config.xml`, regenerates icons/splash, sets the iOS display name) and then `flutter build … --dart-define-from-file=brands/<brand>/brand.json`. Plain `flutter run` without a brand uses the caritv defaults compiled into `lib/config/app_config.dart`.
 
-## 4. Flavours
+## 4. Flavours (environments)
 
 | Flavour | Entry point | Application id | Platform tag |
 |---|---|---|---|
-| dev | `lib/main_dev.dart` | `net.caritech.caritv.dev` | `mobile-dev` |
-| prod | `lib/main_prod.dart` | `net.caritech.caritv` | `mobile` |
+| dev | `lib/main_dev.dart` | `<APPLICATION_ID>.dev`, label "<APP_NAME> Dev" | `<PLATFORM_TAG_PROD>-dev` (e.g. `mobile-dev`) |
+| prod | `lib/main_prod.dart` | `<APPLICATION_ID>` | `<PLATFORM_TAG_PROD>` (e.g. `mobile`) |
 
-Both flavours can be installed side by side.
+Both flavours of a brand can be installed side by side. Dev builds use `API_BASE_URL_DEV`, prod builds `API_BASE_URL_PROD`.
 
 ## 5. Build and run
 
@@ -71,31 +62,27 @@ flutter run --flavor dev -t lib/main_dev.dart
 flutter build apk --debug --flavor dev -t lib/main_dev.dart
 #   → build/app/outputs/flutter-apk/app-dev-debug.apk
 
-# Release APK / App Bundle (needs signing, see §6)
-flutter build apk --release --flavor prod -t lib/main_prod.dart
-flutter build appbundle --release --flavor prod -t lib/main_prod.dart
+# Release APK / App Bundle for a brand (signing per brand, see §6)
+./tool/build_brand.sh <brand> apk prod
+./tool/build_brand.sh <brand> appbundle prod
 #   → build/app/outputs/bundle/prodRelease/app-prod-release.aab
 ```
 
+Running `flutter build` directly (without `tool/build_brand.sh`) builds whatever brand was last applied, with the caritv defaults if none was.
+
 Target SDK is 36 (Google Play requirement for new apps and updates from 31 August 2026). Release builds use R8 minification and resource shrinking.
 
-## 6. Release signing
+## 6. Release signing — one key per brand
 
-Signing material is **never committed** (`android/key.properties`, `*.jks`, `*.keystore` are gitignored).
+Signing material is **never committed** (`brands/*/key.properties`, `brands/*/*.jks`, `*.keystore` are gitignored). Each brand has its own upload keystore in its folder:
 
-1. Create an upload keystore (once; keep it safe and backed up — losing it means you cannot update the app unless Play App Signing is enabled, which is recommended):
-   ```bash
-   keytool -genkey -v -keystore android/app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-   ```
-2. Create `android/key.properties`:
-   ```properties
-   storePassword=<store password>
-   keyPassword=<key password>
-   keyAlias=upload
-   storeFile=upload-keystore.jks
-   ```
-   (`storeFile` is relative to `android/app/`.)
-3. Build with `flutter build appbundle --release --flavor prod -t lib/main_prod.dart`. When `key.properties` is absent the release build falls back to the debug key so local release builds still work; Play will reject such a bundle.
+```bash
+cd brands/<brand>
+keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+printf 'storePassword=…\nkeyPassword=…\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n' > key.properties
+```
+
+`tool/apply_brand.dart` passes the brand's `key.properties` path to Gradle. Without it the release build is signed with the debug key so local release builds still work; the stores reject such uploads. Enable Play App Signing per listing and back each keystore up outside the repo.
 
 ## 7. Install on a device
 
@@ -107,22 +94,24 @@ Or copy the APK to the phone and open it (allow "install from unknown sources").
 
 ## 8. Permissions
 
-Only `INTERNET` and `WAKE_LOCK` (keeps the screen on during playback). Nothing else is requested.
+`INTERNET`, `WAKE_LOCK` (screen stays on during playback) and `ACCESS_NETWORK_STATE` (offline detection, added by connectivity_plus). Nothing else is requested; verified with `aapt dump badging`.
 
-## 9. Network security
+## 9. Network security (cleartext)
 
-`android/app/src/main/res/xml/network_security_config.xml` currently **allows cleartext (http://)** because live channel `stream_url` values come from upstream providers and may be plain HTTP. The API itself is HTTPS. Tighten this after checking the real stream URLs (see the "Live verification" section of `docs/API_DISCOVERY.md`); with only HTTPS streams you can set `cleartextTrafficPermitted="false"`.
+Generated per brand by `tool/apply_brand.dart` from `CLEARTEXT_HOSTS` in `brand.json` into `android/app/src/main/res/xml/network_security_config.xml`. Empty (the caritv value — live verification on 2026-09-20 found all 26 stream URLs on HTTPS) means HTTPS only. Listed hosts may serve plain http:// streams; any other http:// stream fails to play with an explicit message in the player. HTTPS streams are the recommended fix. iOS ATS mirrors this (see `docs/IOS_NEXT_STEPS.md`).
 
 ## 10. Project layout
 
 ```
+brands/<brand>/               brand.json + logo/icon/splash PNGs (+ gitignored key.properties, keystore)
+tool/apply_brand.dart         applies a brand to the tree; tool/build_brand.sh builds it; tool/verify_api.py checks a live API
 lib/
-  config/app_config.dart      flavour + branding
+  config/app_config.dart      build-time defines → AppConfig (defaults = caritv)
   core/                       network (dio + auth interceptor), storage (secure tokens, Hive cache), utils, theme, shared widgets
   models/                     API models (tolerant fromJson)
   features/                   auth, layout (server-driven home), content (VOD), player, live (EPG), search, library, profile, ads, recommendations, analytics
   router/app_router.dart      go_router with auth redirects and a bottom-tab shell
-test/                         unit tests (39): envelope, client/refresh, url resolver, models
+test/                         unit tests (48): envelope, client/refresh, url resolver, models, config, playback errors
 ```
 
 ## 11. Testing notes

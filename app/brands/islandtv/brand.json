@@ -1,0 +1,16 @@
+{
+  "BRAND_KEY": "islandtv",
+  "APP_NAME": "Island TV",
+  "APPLICATION_ID": "com.example.islandtv",
+  "API_BASE_URL_DEV": "https://player.caritech.net",
+  "API_BASE_URL_PROD": "https://tv.islandtv.example",
+  "PRIMARY_COLOR": "#0EA5A4",
+  "ACCENT_COLOR": "#F59E0B",
+  "BACKGROUND_COLOR": "#08131A",
+  "SURFACE_COLOR": "#12222B",
+  "PRIVACY_URL": "https://tv.islandtv.example/privacy",
+  "TERMS_URL": "https://tv.islandtv.example/privacy#terms",
+  "DELETE_ACCOUNT_URL": "https://tv.islandtv.example/delete-account",
+  "PLATFORM_TAG_PROD": "mobile",
+  "CLEARTEXT_HOSTS": "legacy-headend.islandtv.example"
+}

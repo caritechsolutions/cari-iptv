@@ -6,15 +6,30 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Release signing: android/key.properties (gitignored). See app/README.md "Release signing".
+// ---------------------------------------------------------------------------
+// Brand (white-label) inputs. tool/apply_brand.dart writes android/brand.properties
+// from brands/<brand>/brand.json. Without it the caritv dev placeholder is used.
+// ---------------------------------------------------------------------------
+val brandProps = Properties()
+val brandPropsFile = rootProject.file("brand.properties")
+if (brandPropsFile.exists()) {
+    brandPropsFile.inputStream().use { brandProps.load(it) }
+}
+val brandApplicationId = (brandProps.getProperty("applicationId") ?: "net.caritech.caritv").trim()
+val brandAppName = (brandProps.getProperty("appName") ?: "CARI TV").trim()
+
+// Release signing: per-brand brands/<brand>/key.properties (gitignored), path passed
+// through brand.properties. Falls back to the debug key so local release builds work.
 val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
+val keyPropsPath = (brandProps.getProperty("keyPropertiesFile") ?: "").trim()
+val keystorePropertiesFile = if (keyPropsPath.isNotEmpty()) file(keyPropsPath) else rootProject.file("key.properties")
 val hasReleaseKeystore = keystorePropertiesFile.exists()
 if (hasReleaseKeystore) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
 android {
+    // Namespace is a code identifier (R class); it stays fixed across brands.
     namespace = "net.caritech.caritv"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -25,8 +40,8 @@ android {
     }
 
     defaultConfig {
-        // Application ID is fixed once published on Google Play — choose carefully.
-        applicationId = "net.caritech.caritv"
+        // Per brand. Fixed once a brand is published on Google Play.
+        applicationId = brandApplicationId
         minSdk = 24
         // Google Play requires new apps and updates to target API 36 from 2026-08-31.
         targetSdk = 36
@@ -45,11 +60,11 @@ android {
             dimension = "env"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-            resValue("string", "app_name", "CARI TV Dev")
+            resValue("string", "app_name", "$brandAppName Dev")
         }
         create("prod") {
             dimension = "env"
-            resValue("string", "app_name", "CARI TV")
+            resValue("string", "app_name", brandAppName)
         }
     }
 
@@ -58,7 +73,8 @@ android {
             create("release") {
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
+                // storeFile is relative to the key.properties file's folder.
+                storeFile = keystorePropertiesFile.parentFile.resolve(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
             }
         }
@@ -66,8 +82,6 @@ android {
 
     buildTypes {
         release {
-            // Uses the release keystore when key.properties exists, otherwise the
-            // debug key so local `flutter build apk --release` still works.
             signingConfig = if (hasReleaseKeystore) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true

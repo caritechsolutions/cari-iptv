@@ -54,3 +54,10 @@ android/app/upload-keystore.jks
 *.keystore
 android/local.properties
 ios/Flutter/flutter_export_environment.sh
+
+# --- White-label: generated per brand by tool/apply_brand.dart ---
+android/brand.properties
+tool/generated/
+brands/*/key.properties
+brands/*/*.jks
+brands/*/*.keystore

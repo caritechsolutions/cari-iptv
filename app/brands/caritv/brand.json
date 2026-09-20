@@ -1,0 +1,16 @@
+{
+  "BRAND_KEY": "caritv",
+  "APP_NAME": "CARI TV",
+  "APPLICATION_ID": "net.caritech.caritv",
+  "API_BASE_URL_DEV": "https://player.caritech.net",
+  "API_BASE_URL_PROD": "https://player.caritech.net",
+  "PRIMARY_COLOR": "#6366F1",
+  "ACCENT_COLOR": "#22C55E",
+  "BACKGROUND_COLOR": "#0F172A",
+  "SURFACE_COLOR": "#1E293B",
+  "PRIVACY_URL": "https://player.caritech.net/privacy",
+  "TERMS_URL": "https://player.caritech.net/privacy#terms",
+  "DELETE_ACCOUNT_URL": "https://player.caritech.net/delete-account",
+  "PLATFORM_TAG_PROD": "mobile",
+  "CLEARTEXT_HOSTS": ""
+}

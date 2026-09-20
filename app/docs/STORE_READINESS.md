@@ -1,5 +1,7 @@
 # Store readiness — what the stores need that code cannot supply
 
+**Per brand.** Every item below is needed once per white-label brand (own listing, own policy URLs on the brand's host, own keystore/certificates, own reviewer account). URLs below use the caritv placeholder host; substitute the brand's `PRIVACY_URL` / `DELETE_ACCOUNT_URL` from `brands/<brand>/brand.json`.
+
 Everything below must be provided or decided by you before submission. Items marked **(app fact)** describe what the app actually does, derived from the code, so the answers are accurate.
 
 ## 1. Privacy policy

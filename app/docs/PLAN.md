@@ -131,8 +131,18 @@ Decisions (and why):
 - [x] Quality gates pass; commit
 
 ### P11 Live verification and release
-- [ ] Verify every authenticated endpoint against `player.caritech.net` with the test account (credentials in env only); correct `API_DISCOVERY.md`; record stream URL schemes/formats
-- [ ] Android cleartext policy decided from real stream URLs
+- [x] Verify every authenticated endpoint against `player.caritech.net` with the test account (credentials in env only); correct `API_DISCOVERY.md`; record stream URL schemes/formats (`tool/verify_api.py`, 2026-09-20)
+- [x] Android cleartext policy decided from real stream URLs (all HTTPS → caritv HTTPS-only; policy is per brand)
 - [x] Release signing config (`key.properties`, gitignored) documented; `flutter build appbundle --release --flavor prod` builds (60 MB, debug-signed until a keystore is added); target SDK = Play requirement (verified: API 36 as of 2026-08-31)
 - [x] `README.md` (setup, config, build, install), `STORE_READINESS.md`, `IOS_NEXT_STEPS.md`
-- [ ] Final tick of this plan; `API_GAPS.md` final
+- [x] Final tick of this plan; `API_GAPS.md` final
+
+### P12 White-label (added 2026-09-20)
+- [x] `brands/<brand>/brand.json` + 4 PNGs as the only brand input; `caritv` placeholder and `islandtv` example
+- [x] `AppConfig` built from `--dart-define-from-file` (defaults = caritv); no code edits per brand
+- [x] `tool/apply_brand.dart`: assets, `android/brand.properties` (id, name, signing file), generated `network_security_config.xml` from `CLEARTEXT_HOSTS`, icons + splash, iOS display name, ATS snippet
+- [x] `tool/build_brand.sh <brand> <apk|appbundle|run> [dev|prod]`
+- [x] Gradle reads brand id/name and per-brand `key.properties`; separate key per brand documented
+- [x] Player shows a specific message when a stream is blocked by the cleartext policy
+- [x] Proof: `com.example.islandtv` / "Island TV" and `net.caritech.caritv.dev` / "CARI TV Dev" verified with `aapt dump badging`
+- [x] `docs/WHITE_LABEL.md`; README, IOS_NEXT_STEPS, STORE_READINESS updated

@@ -50,16 +50,5 @@ flutter:
   assets:
     - assets/branding/
 
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/branding/icon.png"
-  adaptive_icon_background: "#0f172a"
-  adaptive_icon_foreground: "assets/branding/icon_foreground.png"
-
-flutter_native_splash:
-  color: "#0f172a"
-  image: assets/branding/splash.png
-  android_12:
-    color: "#0f172a"
-    image: assets/branding/splash.png
+# Launcher icons and splash are generated per brand by tool/apply_brand.dart
+# (configs in tool/generated/, gitignored). See docs/WHITE_LABEL.md.
