@@ -78,7 +78,7 @@ Decisions (and why):
 - [x] `TokenStore` (secure storage) and `CacheStore` (Hive)
 - [x] Repositories: auth, content, layout, epg, ads, recommendations, analytics
 - [x] Unit tests: envelope, models (fixtures), url resolver, interceptor refresh flow
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P4 Auth UI
 - [x] Splash/session restore → login or home
@@ -87,7 +87,7 @@ Decisions (and why):
 - [x] Forgot password (email) and "link sent" screen; reset link opens the web page
 - [x] Logout (revokes refresh, clears storage); evicted-device handling on refresh 401
 - [x] Privacy and terms links on login and register
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P5 Server-driven home, navigation and pages
 - [x] Manifest poller + cache invalidation
@@ -95,14 +95,14 @@ Decisions (and why):
 - [x] Layout renderer: `hero_slideshow`, `content_row` (server + client sources), `channel_grid`, `continue_watching`, `category_grid`, `banner`, `spotlight`, `text_divider`, recommendation sections, `live_now`, `epg_schedule`; unknown types skipped
 - [x] Built-in fallback home when `/app/layout/mobile` is 404
 - [x] Loading / empty / error / offline states
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P6 VOD
 - [x] Movies list (sort, category, pagination), Series list
 - [x] Movie detail (backdrop, metadata, cast, trailers link, rating, watchlist, play/resume)
 - [x] Series detail (seasons, episodes, per-episode progress via batch endpoint)
 - [x] Entitlement gating (`is_restricted` vs entitlements), adult gating with PIN
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P7 Player
 - [x] Playback screen (video_player), landscape fullscreen, wakelock, custom controls
@@ -110,29 +110,29 @@ Decisions (and why):
 - [x] Markers: skip intro, next-episode countdown at credits; `next_episode` chaining
 - [x] Subtitles (VTT from `subtitles[]`) toggle
 - [x] Error states with retry and the error code; QoE events
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P8 Live TV and EPG
 - [x] Channel list with categories and now/next
 - [x] Guide (grid by date) with programme detail
 - [x] Live playback (no resume), channel switching
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P9 Search, categories, watchlist, continue watching, profile, settings
 - [x] Search with type filter; Categories → filtered lists
 - [x] My List (watchlist) with detail hydration; Continue Watching
 - [x] Profile: account info, adult toggle, parental PIN, packages/entitlements (view only, no purchases)
 - [x] Settings: app version, clear cache, privacy/terms links, sign out, **Delete account** (confirmation + password re-entry)
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P10 Ads, recommendations, analytics
 - [x] Pre-roll / mid-roll (from `/ads/breaks`) with skip, impression + events; banner and text-scroller overlays per `/ads/overlay-settings`
 - [x] Recommendation sections; analytics event queue with batch flush (`platform` per flavour)
-- [ ] Quality gates pass; commit
+- [x] Quality gates pass; commit
 
 ### P11 Live verification and release
 - [ ] Verify every authenticated endpoint against `player.caritech.net` with the test account (credentials in env only); correct `API_DISCOVERY.md`; record stream URL schemes/formats
 - [ ] Android cleartext policy decided from real stream URLs
-- [ ] Release signing config (`key.properties`, gitignored) documented; `flutter build appbundle --release --flavor prod`; target SDK = Play requirement (verified: API 36 as of 2026-08-31)
+- [x] Release signing config (`key.properties`, gitignored) documented; `flutter build appbundle --release --flavor prod` builds (60 MB, debug-signed until a keystore is added); target SDK = Play requirement (verified: API 36 as of 2026-08-31)
 - [x] `README.md` (setup, config, build, install), `STORE_READINESS.md`, `IOS_NEXT_STEPS.md`
 - [ ] Final tick of this plan; `API_GAPS.md` final
