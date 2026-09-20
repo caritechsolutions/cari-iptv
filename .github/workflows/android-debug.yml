@@ -1,0 +1,117 @@
+name: Android debug APK
+
+# Builds the caritv dev-flavour debug APK on every push to the mobile-app
+# branch that touches app/** (or this file), publishes it as a GitHub
+# prerelease tagged dev-<short sha> with the APK attached, and also uploads
+# it as a workflow artifact. Debug build only: no secrets, no signing keys.
+
+on:
+  push:
+    branches:
+      - claude/intelligent-knuth-xzkkd7
+    paths:
+      - "app/**"
+      - ".github/workflows/android-debug.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.5"
+  BRAND: caritv
+
+jobs:
+  build:
+    name: Build caritv dev debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Flutter ${{ env.FLUTTER_VERSION }} (stable, pinned)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          cache-key: "flutter-:os:-:channel:-:version:-:arch:"
+
+      - name: Pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Analyze and test
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build brand APK (dev flavour, debug)
+        run: ./tool/build_brand.sh "$BRAND" apk dev --debug
+
+      - name: Name the APK
+        id: apk
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          SRC="build/app/outputs/flutter-apk/app-dev-debug.apk"
+          OUT="build/app/outputs/flutter-apk/${BRAND}-dev-debug-${SHORT_SHA}.apk"
+          cp "$SRC" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "path=app/$OUT" >> "$GITHUB_OUTPUT"
+          echo "sha_path=app/$OUT.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact (fallback download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BRAND }}-dev-debug-${{ steps.apk.outputs.short_sha }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.sha_path }}
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish prerelease dev-${{ steps.apk.outputs.short_sha }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev-${{ steps.apk.outputs.short_sha }}
+          target_commitish: ${{ github.sha }}
+          name: "Debug build dev-${{ steps.apk.outputs.short_sha }}"
+          prerelease: true
+          make_latest: false
+          body: |
+            Debug APK of the **${{ env.BRAND }}** brand, **dev** flavour (application id `net.caritech.caritv.dev`, label "CARI TV Dev").
+            Built from `${{ github.sha }}` on branch `${{ github.ref_name }}`.
+
+            Install: download the `.apk` below on the phone, open it and allow installing from this source. Signed with the debug key — not for stores.
+          files: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.sha_path }}
+          token: ${{ secrets.GITHUB_TOKEN }}

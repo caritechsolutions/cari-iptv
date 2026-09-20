@@ -84,7 +84,17 @@ printf 'storePassword=…\nkeyPassword=…\nkeyAlias=upload\nstoreFile=upload-ke
 
 `tool/apply_brand.dart` passes the brand's `key.properties` path to Gradle. Without it the release build is signed with the debug key so local release builds still work; the stores reject such uploads. Enable Play App Signing per listing and back each keystore up outside the repo.
 
-## 7. Install on a device
+## 7. Getting a test build (GitHub Actions)
+
+You do not need a local toolchain to try the app. The workflow `.github/workflows/android-debug.yml` runs on every push to the mobile-app branch that changes `app/**`:
+
+1. It builds `./tool/build_brand.sh caritv apk dev --debug` on Flutter 3.47.5 with Java 21 (pub and Gradle caches keep repeat runs short).
+2. It publishes a GitHub **prerelease** tagged `dev-<short sha>` under the repository's Releases page with `caritv-dev-debug-<sha>.apk` (and its SHA-256) attached as a direct download.
+3. The same APK is also uploaded as a workflow artifact (Actions → the run → Artifacts) as a fallback; artifacts expire after 14 days.
+
+On the phone: open the release page in the browser, download the `.apk`, open it and allow installing from that source. It is a debug build signed with the debug key (application id `net.caritech.caritv.dev`, label "CARI TV Dev"), so it installs alongside any store build. The workflow uses no secrets and no signing keys; it can also be started by hand from the Actions tab (`workflow_dispatch`).
+
+## 8. Install on a device (local build)
 
 ```bash
 adb devices
@@ -92,15 +102,15 @@ adb install -r build/app/outputs/flutter-apk/app-dev-debug.apk
 ```
 Or copy the APK to the phone and open it (allow "install from unknown sources").
 
-## 8. Permissions
+## 9. Permissions
 
 `INTERNET`, `WAKE_LOCK` (screen stays on during playback) and `ACCESS_NETWORK_STATE` (offline detection, added by connectivity_plus). Nothing else is requested; verified with `aapt dump badging`.
 
-## 9. Network security (cleartext)
+## 10. Network security (cleartext)
 
 Generated per brand by `tool/apply_brand.dart` from `CLEARTEXT_HOSTS` in `brand.json` into `android/app/src/main/res/xml/network_security_config.xml`. Empty (the caritv value — live verification on 2026-09-20 found all 26 stream URLs on HTTPS) means HTTPS only. Listed hosts may serve plain http:// streams; any other http:// stream fails to play with an explicit message in the player. HTTPS streams are the recommended fix. iOS ATS mirrors this (see `docs/IOS_NEXT_STEPS.md`).
 
-## 10. Project layout
+## 11. Project layout
 
 ```
 brands/<brand>/               brand.json + logo/icon/splash PNGs (+ gitignored key.properties, keystore)
@@ -114,7 +124,7 @@ lib/
 test/                         unit tests (48): envelope, client/refresh, url resolver, models, config, playback errors
 ```
 
-## 11. Testing notes
+## 12. Testing notes
 
 - `flutter test` covers the API client (bearer, pre-emptive refresh, retry-on-401, refresh failure → sign-out), the response envelopes and all model parsers.
 - Manual device checks: sign in, home renders (server layout or built-in fallback), movie play/resume, series episode chaining, live channel playback, guide, search, My List, profile PIN/adult toggle, settings → delete account, airplane mode (offline banner + cached lists).
