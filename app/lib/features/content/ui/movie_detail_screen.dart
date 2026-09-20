@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/util/time.dart';
+import '../../../core/util/url_resolver.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../models/movie.dart';
 import '../../player/ui/playback_request.dart';
@@ -80,8 +81,10 @@ class _MovieBody extends ConsumerWidget {
                                   progress: progress,
                                 )
                             : null,
-                        icon: const Icon(Icons.play_arrow_rounded),
-                        label: Text(progress != null && progress.isResumable ? 'Resume' : (movie.isPlayable ? 'Play' : 'Not available')),
+                        icon: Icon(isExternalWatchUrl(movie.streamUrl) ? Icons.open_in_new_rounded : Icons.play_arrow_rounded),
+                        label: Text(isExternalWatchUrl(movie.streamUrl)
+                            ? 'Watch on ${Uri.tryParse(movie.streamUrl!)?.host.contains('youtu') ?? false ? 'YouTube' : 'the web'}'
+                            : progress != null && progress.isResumable ? 'Resume' : (movie.isPlayable ? 'Play' : 'Not available')),
                       ),
                     ),
                     const SizedBox(width: 10),

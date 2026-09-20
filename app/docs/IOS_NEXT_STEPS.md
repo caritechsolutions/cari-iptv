@@ -8,7 +8,7 @@ What is needed to build and ship for iOS:
 2. **Apple Developer account** ($99/year) and an App ID for the bundle id. Set the bundle id in Xcode (`Runner` target → Signing & Capabilities) to match Android, e.g. `net.caritech.caritv`, with `.dev` for the dev scheme.
 3. **Flavours on iOS**: create two Xcode schemes/configurations (`dev`, `prod`) or use `--dart-define` instead; Flutter's `--flavor` needs matching Xcode build configurations (`Debug-dev`, `Release-prod`, …). The Dart side already switches on the entry point (`main_dev.dart` / `main_prod.dart`).
 4. **Info.plist additions**:
-   - `NSAppTransportSecurity` → `NSAllowsArbitraryLoadsForMedia = true` if any live stream is plain HTTP (same decision as Android's cleartext config).
+   - `NSAppTransportSecurity`: mirror the brand's `CLEARTEXT_HOSTS` (from `brands/<brand>/brand.json`). Empty list → no ATS exception (HTTPS only, the caritv default). Non-empty → add an `NSExceptionDomains` entry per host with `NSExceptionAllowsInsecureHTTPLoads = true` (preferred over the blanket `NSAllowsArbitraryLoadsForMedia`). `tool/apply_brand.dart` prints the exact plist snippet for the brand; an http host not listed will fail to play. HTTPS streams are the recommended fix.
    - `UISupportedInterfaceOrientations` must include landscape (the player forces landscape).
    - Background audio is intentionally off (`allowBackgroundPlayback: false`).
 5. **Launcher icons and splash**: `dart run flutter_launcher_icons` and `dart run flutter_native_splash:create` already generate iOS assets from `assets/branding/`.

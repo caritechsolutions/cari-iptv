@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/util/time.dart';
+import '../../../core/util/url_resolver.dart';
+import '../../../core/widgets/legal_links.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
 import '../../../models/media_card.dart';
@@ -30,6 +32,12 @@ Future<void> playWithGate(BuildContext context, WidgetRef ref, {required MediaCa
     }
   }
   if (!context.mounted) return;
+
+  // Web links (e.g. a YouTube URL stored as stream_url) open in the browser.
+  if (isExternalWatchUrl(request.streamUrl)) {
+    await openExternal(context, request.streamUrl);
+    return;
+  }
 
   var req = request;
   if (progress != null && progress.isResumable) {

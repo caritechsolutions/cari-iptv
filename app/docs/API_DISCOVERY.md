@@ -155,6 +155,41 @@ Ad object: `id, campaign_id, placement_id, type, zone, scroll_text, scroll_speed
 
 The `platform` field is free text on analytics and ads calls; the dev flavour sends `mobile-dev` so test traffic can be filtered.
 
-## 9. Live verification
+## 9. Live verification (2026-09-20, `https://player.caritech.net`, subscriber test account, `tool/verify_api.py`)
 
-_To be filled in once the test account is verified (see PLAN.md task "Live API verification")._
+Method: login as `device_type: mobile`, GET every endpoint above, logout. No account-changing POSTs were made. Output shapes were compared with the code-derived sections; tokens were redacted.
+
+### Confirmed as predicted
+Envelopes (`data/meta`, bare `data` for `/auth/*`, `success` for `/ads/*`), all error codes seen (401 `UNAUTHORIZED` without token, 404 `NOT_FOUND` for the mobile layout), `ETag` + `Cache-Control: public, max-age=30` on list endpoints, login/refresh/logout payloads (refresh returns no new refresh token), `user` object keys, entitlements keys, manifest keys, `/app/config` returning `layout: null`, navigation `bottom_tab` with 5 items, 10 mobile pages, categories, continue-watching folding episodes into series items with `resume_*` fields, watch-progress and batch map shapes, recommendations set shape, search flat rows, channel detail `now_playing`/`next_up`, movie and episode detail extras (`drm`, `trailers`, `cast`, `markers`, `subtitles`, `next_episode`), ads endpoints public with `success` envelope.
+
+### Differences and details the code did not make explicit
+| Item | Live behaviour | App handling |
+|---|---|---|
+| Numeric fields as strings | `year:"2003"`, `vote_average:"7.1"`, `community_rating:"5.0"`, `vod_progress:"100.00"`, `completed:0/1`, `is_hd:0/1`, `is_system:0/1` (PDO string/int mix) | tolerant parsers (`asInt`/`asDouble`/`asBool`) |
+| `genres` | JSON-encoded string `"[\"Drama\", \"Action & Adventure\"]"` | `asStringList` decodes it |
+| `manifest.layouts` with no layouts | `[]` (empty **array**), not `{}` | parser treats non-map as empty |
+| `manifest.epg.updated_at` | `null` (no EPG data loaded on this install) | handled |
+| `/app/layout/mobile` | 404 — **no mobile layout is published**; `/app/config/mobile` returns `layout: null` | built-in fallback home is used |
+| `/epg`, `/epg/{id}` | `data: []` — no EPG rows; channel `now_playing`/`next_up` are `null` | now/next shows "No programme information" |
+| `/movies/featured` | `[]` (nothing flagged featured) | fallback home hero uses latest titles when empty |
+| `/auth/watchlist` | `[]` for the test account | — |
+| `cast[]` keys | `id, movie_id, name, character_name, role, profile_image, profile_url, tmdb_person_id, sort_order, created_at` | `CastMember` reads `profile_url`/`profile_image`/`tmdb_person_id` |
+| `search` `meta.total` | 9 rows for `limit=5` (3 × limit, as read from code) | client caps display |
+| Movie `stream_url` may be a **YouTube link** | one movie has `https://www.youtube.com/watch?v=…` as `stream_url` | app opens such URLs externally instead of the player |
+| `drm` present on movies **and** episodes | `scheme: "cenc"`, `key_id`, `license_url` (absolute) | not needed for HLS; the packager writes standard `#EXT-X-KEY` AES-128 (`vod-server/src/packager.c:187-199`) |
+| `max_connections` on the test account | 1 — every login (including this verification) evicts the previous session | reported to the user |
+
+### Stream URL schemes and formats (all 26 URLs returned by `/channels`, `/movies`, `/series/{id}`)
+| Kind | Count | Scheme | Format | Host |
+|---|---|---|---|---|
+| channel | 15 | `https://` | `.m3u8` (`/wplg-<slug>/video.m3u8`) | `headend.caritech.net` |
+| movie | 2 | `https://` | `master.m3u8` (`/content/movie-<id>/master.m3u8`) | `vod1.caritech.net:8090` |
+| movie | 1 | `https://` | YouTube watch URL (not a media stream) | `www.youtube.com` |
+| episode | 8 | `https://` | `master.m3u8` (`/content/episode-<id>/master.m3u8`) | `vod1.caritech.net:8090` |
+
+**No `http://` stream URL exists on the live system → the caritv brand ships HTTPS-only (`CLEARTEXT_HOSTS` empty).**
+
+Not verifiable from the build container: `vod1.caritech.net:8090` refused the connection (reset through the proxy, timeout direct) and the sampled headend playlist returned 404, so no playlist body was inspected and the TLS certificates of those two hosts were not checked. Both must be confirmed on a device: ExoPlayer/AVPlayer reject self-signed or mismatched certificates, and the headend 404 may mean that channel is offline or needs a referer.
+
+### Cleartext decision
+Per brand, generated from `brands/<brand>/brand.json` `CLEARTEXT_HOSTS` into `android/app/src/main/res/xml/network_security_config.xml` (Android) and documented for iOS ATS. `caritv`: empty list = HTTPS only. Any `http://` stream host not listed will fail to play with a clear "blocked by security policy" error in the player.

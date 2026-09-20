@@ -60,6 +60,6 @@ Answer from the content you distribute, not the app code. Points to consider:
 
 ## 6. Open items that affect the answers above
 
-- Whether any live streams are served over plain HTTP (affects the "encrypted in transit" answer and the Android cleartext policy). Fill in after live verification.
+- Live verification (2026-09-20): all 26 stream URLs are HTTPS; the caritv brand is built HTTPS-only. Other brands set `CLEARTEXT_HOSTS` in their `brand.json`; if non-empty, answer "encrypted in transit" accordingly.
 - Whether ad impression data is shared with advertisers as reports (affects "Shared" for ad interactions).
 - Retention period for anonymised subscription records after deletion (state it in the policy).

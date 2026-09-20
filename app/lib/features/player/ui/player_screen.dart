@@ -157,8 +157,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   void _reportError(String message) {
-    setState(() => _error = message);
-    ref.read(analyticsRepositoryProvider).qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: {'message': message});
+    final friendly = PlayerScreenErrors.friendlyPlaybackError(message, _req.streamUrl);
+    setState(() => _error = friendly);
+    ref.read(analyticsRepositoryProvider).qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: {'message': message, 'url_scheme': Uri.tryParse(_req.streamUrl)?.scheme});
   }
 
   void _tick() {
@@ -602,3 +603,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 }
+
+/// Classifies native player errors into user-facing text. Cleartext (http://)
+/// blocks come from the per-brand network security policy (Android) or ATS (iOS).
+class PlayerScreenErrors {
+  static String friendlyPlaybackError(String raw, String url) {
+    final lower = raw.toLowerCase();
+    final host = Uri.tryParse(url)?.host ?? '';
+    final isHttp = url.startsWith('http://');
+    if (lower.contains('cleartext') || lower.contains('clear text') || lower.contains('app transport security') || (isHttp && (lower.contains('not permitted') || lower.contains('-1022')))) {
+      return 'This stream uses an insecure http:// address ($host) that this app is not allowed to play. Ask your provider for an https:// stream.';
+    }
+    if (lower.contains('certificate') || lower.contains('ssl') || lower.contains('tls') || lower.contains('trust anchor')) {
+      return 'The stream server ($host) has an invalid security certificate.';
+    }
+    if (lower.contains('404') || lower.contains('not found')) return 'The stream was not found on the server ($host).';
+    if (lower.contains('403') || lower.contains('401') || lower.contains('forbidden')) return 'The stream server ($host) refused access.';
+    if (lower.contains('unable to connect') || lower.contains('failed to connect') || lower.contains('unknownhost') || lower.contains('timeout')) {
+      return 'Could not connect to the stream server ($host). Check your connection and try again.';
+    }
+    return raw;
+  }
+}
+

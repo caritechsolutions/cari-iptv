@@ -25,4 +25,7 @@ Status key: **Closed** = backend change made in this branch (see BACKEND_CHANGES
 | 19 | Web login page has no "Forgot password?" link | Web users cannot start a reset | **Open** — one-template change, awaiting your go-ahead |
 | 20 | `subscriber_subscriptions` retention after account deletion is not time-limited | Privacy policy wording | **Open** — document retention period in policy or add a purge job |
 
-Stream URL schemes/formats on live data: _to be filled in from live verification_.
+Stream URL schemes/formats on live data (2026-09-20): 26/26 `https://`; channels `.m3u8` on `headend.caritech.net`; VOD `master.m3u8` on `vod1.caritech.net:8090`; one movie has a YouTube URL as `stream_url` (#21).
+
+| 21 | A movie's `stream_url` can be a YouTube watch URL | Not playable by a native player | **Worked around** — URLs on youtube.com/youtu.be/vimeo.com (or without a media extension) open in the browser with a "Watch on YouTube" button |
+| 22 | No EPG data on the live install; `/movies/featured` empty; no mobile layout published | Empty guide, no hero | **Worked around** — fallback home uses latest titles; guide shows an empty state. Publish a mobile layout in Admin → App Layout to take over the home screen |
