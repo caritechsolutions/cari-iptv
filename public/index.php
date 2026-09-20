@@ -89,6 +89,12 @@ if (preg_match('#^/verify-email/([a-f0-9]+)$#', $uri, $matches)) {
     exit;
 }
 
+// Forgot password page (requests the reset email)
+if ($uri === '/forgot-password') {
+    $controller->forgotPassword();
+    exit;
+}
+
 // Password reset page (link target from the reset email)
 if (preg_match('#^/reset-password/([a-f0-9]+)$#', $uri, $matches)) {
     $controller->resetPassword($matches[1]);

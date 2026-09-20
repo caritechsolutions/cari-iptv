@@ -66,6 +66,15 @@ class PlayerController
     }
 
     /**
+     * Serve the forgot-password page (requests the reset email)
+     */
+    public function forgotPassword(): void
+    {
+        [$siteName, $siteLogo] = $this->siteBranding();
+        include BASE_PATH . '/templates/player/forgot-password.php';
+    }
+
+    /**
      * Serve the password reset page (target of the emailed reset link)
      */
     public function resetPassword(string $token): void

@@ -13,6 +13,7 @@ Commits are prefixed `backend:` and are separate from `/app` commits.
 | API | `GET /api/v1/auth/reset-password/{token}` → `{data:{valid:bool}}` |
 | API | `POST /api/v1/auth/reset-password` `{token,password,password_confirm}` → `200 {data:{message}}`; `400 INVALID_TOKEN`; `422 VALIDATION_ERROR` |
 | Web page | `GET /reset-password/{token}` (`templates/player/reset-password.php`) — target of the emailed link; calls the two API endpoints above |
+| Web page | `GET /forgot-password` (`templates/player/forgot-password.php`) — requests the reset email; linked from the web login page ("Forgot password?" next to "Remember me") |
 | Email | Reuses `EmailService::sendPasswordReset()` (existing `password-reset` template). Link is `{general.site_url}/reset-password/{token}`. If SMTP is not configured the request still returns 200 and the failure is written to the PHP error log. |
 | Behaviour | A successful reset revokes every refresh token for the subscriber (all devices are signed out). Previous unused tokens are invalidated when a new one is requested. |
 
@@ -40,6 +41,7 @@ Commits are prefixed `backend:` and are separate from `/app` commits.
 
 | Route | Template | Purpose |
 |---|---|---|
+| `GET /forgot-password` | `templates/player/forgot-password.php` | Request a password reset email |
 | `GET /privacy` (alias `/privacy-policy`) | `templates/player/privacy.php` | Privacy policy with **placeholder** text marked `[LIKE THIS]`; includes a `#deletion` section and a `#terms` section. The app links to `/privacy` and `/privacy#terms`. |
 | `GET /delete-account` | `templates/player/delete-account.php` | Account deletion without the app (see above) |
 | `GET /reset-password/{token}` | `templates/player/reset-password.php` | Password reset link target |
@@ -54,7 +56,8 @@ src/Controllers/Api/AuthController.php                                          
 src/Controllers/Player/PlayerController.php                                         (page methods added)
 public/api/index.php                                                                (4 routes)
 public/index.php                                                                    (3 routes)
-templates/player/reset-password.php  templates/player/delete-account.php  templates/player/privacy.php  (new)
+templates/player/reset-password.php  templates/player/delete-account.php  templates/player/privacy.php  templates/player/forgot-password.php  (new)
+templates/player/login.php                                                          ("Forgot password?" link)
 ```
 
 ## Deployment steps (not performed)
@@ -66,6 +69,5 @@ templates/player/reset-password.php  templates/player/delete-account.php  templa
 6. Replace the placeholder text in `templates/player/privacy.php`.
 
 ## Not changed (needs your decision)
-- The web player's login page has no "Forgot password?" link yet (the app has the flow). Adding the link and a small `/forgot-password` web page is a one-template change if you want it.
 - `install.sh` / `update.sh` `BRANCH=` values were not touched (CLAUDE.md says to update them before pushing; you asked not to deploy).
 - Subscription and billing retention period is not enforced by code.
