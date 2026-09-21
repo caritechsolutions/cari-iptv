@@ -2,16 +2,32 @@ import '../core/util/json.dart';
 import '../core/util/time.dart';
 
 class EpgProgramme {
-  const EpgProgramme({required this.id, required this.channelId, required this.title, required this.description, required this.start, required this.end, required this.category});
+  const EpgProgramme({required this.id, required this.channelId, required this.title, required this.description, required this.start, required this.end, required this.category, this.isPlaceholder = false});
   final int id;
   final int channelId;
   final String title;
   final String? description;
+
+  /// UTC. Placeholders always have both; real rows may lack them (bad data)
+  /// and are then left out of the grid.
   final DateTime? start;
   final DateTime? end;
   final String? category;
 
+  /// A generated `<Channel> Content` block filling missing guide data. It has
+  /// exact start/end times like a real programme so it can be time-shifted
+  /// later.
+  final bool isPlaceholder;
+
+  bool get hasTimes => start != null && end != null && end!.isAfter(start!);
+  Duration get duration => hasTimes ? end!.difference(start!) : Duration.zero;
+
+  /// Stable identity across reloads: channel + start (same key the web player uses).
+  String get key => '${channelId}_${start?.toUtc().toIso8601String() ?? id}';
+
   bool isAiringAt(DateTime t) => start != null && end != null && !t.isBefore(start!) && t.isBefore(end!);
+  bool isPastAt(DateTime t) => end != null && !end!.isAfter(t);
+  bool isFutureAt(DateTime t) => start != null && start!.isAfter(t);
 
   double progressAt(DateTime t) {
     if (start == null || end == null) return 0;

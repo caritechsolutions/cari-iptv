@@ -10,6 +10,7 @@ import '../../../models/channel.dart';
 import '../../../models/epg.dart';
 import '../../layout/state/layout_providers.dart';
 import '../../shell/ui/app_shell.dart';
+import '../epg/guide_model.dart';
 
 /// Live TV tab: channel list with category filter and now/next from the EPG.
 class LiveScreen extends ConsumerStatefulWidget {
@@ -37,7 +38,6 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
     final channels = ref.watch(channelsProvider);
     final guide = ref.watch(epgGuideProvider).value ?? const <EpgChannelSchedule>[];
     final categories = ref.watch(categoriesProvider('live')).value ?? const [];
-    final byChannel = {for (final s in guide) s.channelId: s};
     final now = DateTime.now().toUtc();
 
     final title = widget.title ?? 'Live TV';
@@ -75,6 +75,8 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
               onRetry: () => ref.invalidate(channelsProvider),
               builder: (all) {
                 final list = all.where((c) => (_categoryId == null || c.categoryId == _categoryId) && (_filter.isEmpty || c.name.toLowerCase().contains(_filter))).toList();
+
+                final programmes = buildGuideMap(list, guide, now);
                 if (list.isEmpty) return const EmptyView(message: 'No channels found.', icon: Icons.live_tv_outlined);
                 return RefreshIndicator(
                   onRefresh: () async {
@@ -85,10 +87,9 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
                     itemCount: list.length,
                     itemBuilder: (context, i) {
                       final ch = list[i];
-                      final sched = byChannel[ch.id];
-                      final nowProg = sched?.nowAt(now);
-                      final next = sched?.nextAfter(now);
-                      return ChannelTile(channel: ch, now: nowProg, next: next, at: now);
+                      // Same now/next source as the guide grid: real rows or placeholders.
+                      final nn = nowAndNext(programmes[ch.id] ?? const [], now);
+                      return ChannelTile(channel: ch, now: nn.now, next: nn.next, at: now);
                     },
                   ),
                 );
