@@ -5,8 +5,9 @@
 #
 #   ./tool/smoke_test.sh <apk> <package> [out_dir] [wait_seconds]
 #
-# Exit codes: 0 = app running with our activity resumed and no FATAL EXCEPTION;
-#             1 = crash / not running / FATAL EXCEPTION in logcat.
+# Exit codes: 0 = app running, our activity resumed, no FATAL EXCEPTION, and the
+#                 login screen reported itself ("CARI_SMOKE screen=login" in logcat);
+#             1 = crash / not running / FATAL EXCEPTION / login screen not reached.
 set -uo pipefail
 
 APK="${1:?apk path}"
@@ -65,8 +66,9 @@ OK=1
 [[ -z "$PID" ]] && { echo "process not running"; OK=0; }
 [[ -n "$FATAL" ]] && { echo "FATAL EXCEPTION in logcat"; OK=0; }
 if ! echo "$RESUMED" | grep -q "$PKG"; then echo "our activity is not the resumed activity"; OK=0; fi
+if ! grep -q 'CARI_SMOKE screen=login' "$LOG"; then echo "login screen marker not found in logcat"; OK=0; fi
 if [[ "$OK" == 1 ]]; then
-  echo "SMOKE RESULT: PASS ($PKG pid $PID, activity resumed, no FATAL EXCEPTION)"
+  echo "SMOKE RESULT: PASS ($PKG pid $PID, activity resumed, login screen reached, no FATAL EXCEPTION)"
   exit 0
 fi
 echo "SMOKE RESULT: FAIL"

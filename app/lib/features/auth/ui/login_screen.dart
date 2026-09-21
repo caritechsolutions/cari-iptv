@@ -27,6 +27,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _info;
 
   @override
+  void initState() {
+    super.initState();
+    // Startup marker read by tool/smoke_test.sh from logcat (debug and release).
+    debugPrint('CARI_SMOKE screen=login');
+  }
+
+  @override
   void dispose() {
     _identity.dispose();
     _password.dispose();
