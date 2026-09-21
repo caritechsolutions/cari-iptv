@@ -23,7 +23,7 @@ class AdPlayer extends ConsumerStatefulWidget {
   ConsumerState<AdPlayer> createState() => _AdPlayerState();
 }
 
-class _AdPlayerState extends ConsumerState<AdPlayer> {
+class _AdPlayerState extends ConsumerState<AdPlayer> with WidgetsBindingObserver {
   int _index = 0;
   VideoPlayerController? _controller;
   int? _impressionId;
@@ -36,7 +36,26 @@ class _AdPlayerState extends ConsumerState<AdPlayer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  /// Same background rule as content: pause when the app leaves the
+  /// foreground; ads resume by themselves when it comes back.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        if (c.value.isPlaying) unawaited(c.pause());
+      case AppLifecycleState.resumed:
+        if (!_finished && !c.value.isPlaying) unawaited(c.play());
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   Future<void> _load() async {
@@ -51,7 +70,7 @@ class _AdPlayerState extends ConsumerState<AdPlayer> {
     _controller = c;
     try {
       await c.initialize().timeout(const Duration(seconds: 12));
-      if (!mounted) return;
+      if (!mounted || !identical(_controller, c)) return;
       setState(() {});
       await c.play();
       _impressionId = await ref.read(adsRepositoryProvider).impression(ad, widget.context);
@@ -117,9 +136,16 @@ class _AdPlayerState extends ConsumerState<AdPlayer> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
-    _controller?.removeListener(_onValue);
-    _controller?.dispose();
+    final c = _controller;
+    _controller = null;
+    if (c != null) {
+      c.removeListener(_onValue);
+      // Stop the ad's audio before the native player is freed.
+      if (c.value.isInitialized) unawaited(c.pause());
+      unawaited(c.dispose());
+    }
     super.dispose();
   }
 

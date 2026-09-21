@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/util/time.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../models/series.dart';
 import '../../../models/watch.dart';
@@ -26,6 +26,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
   Widget build(BuildContext context) {
     final series = ref.watch(seriesDetailProvider(widget.id));
     return Scaffold(
+      // Loading and error states need the back arrow too.
+      appBar: series.hasValue ? null : AppBar(backgroundColor: Colors.transparent, leading: const AppBackButton()),
       body: AsyncView<Series>(
         value: series,
         onRetry: () => ref.invalidate(seriesDetailProvider(widget.id)),
@@ -56,7 +58,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
               SliverAppBar(
                 pinned: true,
                 backgroundColor: Colors.transparent,
-                leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/home')),
+                leading: const AppBackButton(),
                 actions: [WatchlistButton(type: 'series', id: s.id, compact: true)],
               ),
               SliverToBoxAdapter(

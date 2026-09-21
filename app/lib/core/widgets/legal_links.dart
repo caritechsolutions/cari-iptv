@@ -22,8 +22,10 @@ class LegalLinks extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(appConfigProvider);
     final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.primary);
-    return Row(
-      mainAxisAlignment: alignment,
+    // Wrap, not Row: survives large system fonts and narrow phones.
+    return Wrap(
+      alignment: switch (alignment) { MainAxisAlignment.start => WrapAlignment.start, MainAxisAlignment.end => WrapAlignment.end, _ => WrapAlignment.center },
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         TextButton(onPressed: () => openExternal(context, config.privacyUrl), child: Text('Privacy Policy', style: style)),
         Text('·', style: Theme.of(context).textTheme.bodySmall),

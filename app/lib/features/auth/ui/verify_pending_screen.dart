@@ -36,6 +36,7 @@ class _VerifyPendingScreenState extends ConsumerState<VerifyPendingScreen> {
     return AuthScaffold(
       title: 'Verify your email',
       showLegal: false,
+      showBack: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -2,14 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/util/time.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../models/ad.dart';
 import '../../../models/content_extras.dart';
+import '../../analytics/data/analytics_repository.dart';
+import '../../library/data/user_content_repository.dart';
 import '../../repositories.dart';
 import '../state/player_support.dart';
 import 'ad_player.dart';
@@ -37,7 +39,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   late PlaybackRequest _req = widget.request;
   _Phase _phase = _Phase.loadingAds;
@@ -61,15 +63,81 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   DateTime? _startedAt;
   bool _startupReported = false;
   bool _completedReported = false;
-  late final ProgressReporter _progress = ProgressReporter(ref.read(userContentRepositoryProvider), _req);
+  // Captured in initState: `ref` must never be used from dispose() — Riverpod
+  // throws a StateError once the element is unmounted, and anything after the
+  // throw (such as releasing the video controller) would never run.
+  late final AnalyticsRepository _analytics;
+  late final UserContentRepository _userContent;
+  late ProgressReporter _progress;
   final PlayerFullscreen _fs = PlayerFullscreen();
 
   @override
   void initState() {
     super.initState();
+    _analytics = ref.read(analyticsRepositoryProvider);
+    _userContent = ref.read(userContentRepositoryProvider);
+    _progress = ProgressReporter(_userContent, _req);
+    WidgetsBinding.instance.addObserver(this);
     _fs.addListener(_onFullscreenChanged);
     WakelockPlus.enable();
     _start();
+  }
+
+  /// App goes to the background (home button, screen off, incoming call):
+  /// pause and save progress. `inactive` arrives before `paused`, so pausing
+  /// here also stops video_player's own observer from auto-resuming later —
+  /// the user resumes with the play button.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        _pauseForBackground();
+      case AppLifecycleState.resumed:
+        if (mounted) setState(() => _controlsVisible = true);
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  void _pauseForBackground() {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized || !c.value.isPlaying) return;
+    unawaited(c.pause());
+    unawaited(_progress.report(c.value.position, c.value.duration));
+    _analytics.track('watch_pause', contentType: _req.contentType, contentId: _req.contentId, metadata: {'reason': 'background'});
+    _hideTimer?.cancel();
+    if (mounted) setState(() => _controlsVisible = true);
+  }
+
+  /// Stops audio/video and frees the native player. Idempotent, never throws,
+  /// and every exit path (back, next episode, retry, dispose) goes through it.
+  /// Progress is saved on the way out.
+  void _releaseController({bool abandon = false}) {
+    final c = _controller;
+    if (c == null) return;
+    _controller = null;
+    _initialized = false;
+    _positionTimer?.cancel();
+    _positionTimer = null;
+    _progress.stop();
+    c.removeListener(_onValue);
+    try {
+      if (c.value.isInitialized && !_req.isLive) {
+        final pos = c.value.position;
+        final dur = c.value.duration;
+        if (!_completedReported && pos.inSeconds > 0) {
+          unawaited(_progress.report(pos, dur));
+          if (abandon) _analytics.track('watch_abandon', contentType: _req.contentType, contentId: _req.contentId, metadata: {'position': pos.inSeconds});
+        }
+      }
+    } catch (_) {
+      // Reporting must never keep the native player alive.
+    } finally {
+      if (c.value.isInitialized) unawaited(c.pause());
+      unawaited(c.dispose());
+    }
   }
 
   void _onFullscreenChanged() {
@@ -106,9 +174,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   Future<void> _initController(String url, {int? resumeFrom}) async {
-    _controller?.removeListener(_onValue);
-    await _controller?.dispose();
-    _initialized = false;
+    _releaseController();
     _error = null;
     _startedAt = DateTime.now();
     _startupReported = false;
@@ -126,24 +192,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
     _controller = c;
     c.addListener(_onValue);
+    // The screen may be left (or the controller replaced) during any await.
+    bool stale() => !mounted || !identical(_controller, c);
     try {
       await c.initialize();
-      if (!mounted) return;
+      if (stale()) return;
       _initialized = true;
       _duration = c.value.duration;
       if (resumeFrom != null && resumeFrom > 0 && !_req.isLive) {
         await c.seekTo(Duration(seconds: resumeFrom));
+        if (stale()) return;
       }
       final defaultSub = _req.subtitles.where((s) => s.isDefault).firstOrNull;
       if (defaultSub != null) _setSubtitle(defaultSub);
       await c.play();
+      if (stale()) return;
       _progress.start(() => c.value.position, () => c.value.duration);
       _positionTimer = Timer.periodic(const Duration(milliseconds: 500), (_) => _tick());
-      ref.read(analyticsRepositoryProvider).track('watch_start', contentType: _req.contentType, contentId: _req.contentId, metadata: {'live': _req.isLive});
+      _analytics.track('watch_start', contentType: _req.contentType, contentId: _req.contentId, metadata: {'live': _req.isLive});
       _scheduleHide();
       setState(() {});
     } catch (e) {
-      if (!mounted) return;
+      if (stale()) return;
       _reportError('$e');
     }
   }
@@ -157,11 +227,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
     if (v.isBuffering != _buffering) {
       setState(() => _buffering = v.isBuffering);
-      ref.read(analyticsRepositoryProvider).qoe(v.isBuffering ? 'buffer_start' : 'buffer_end', contentType: _req.contentType, contentId: _req.contentId);
+      _analytics.qoe(v.isBuffering ? 'buffer_start' : 'buffer_end', contentType: _req.contentType, contentId: _req.contentId);
     }
     if (v.isPlaying && !_startupReported && _startedAt != null) {
       _startupReported = true;
-      ref.read(analyticsRepositoryProvider).qoe('startup', contentType: _req.contentType, contentId: _req.contentId, metadata: {'ms': DateTime.now().difference(_startedAt!).inMilliseconds});
+      _analytics.qoe('startup', contentType: _req.contentType, contentId: _req.contentId, metadata: {'ms': DateTime.now().difference(_startedAt!).inMilliseconds});
     }
   }
 
@@ -170,7 +240,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     setState(() => _error = friendly);
     // A stream error is an exit from full screen: back to portrait + system bars.
     unawaited(_fs.exit());
-    ref.read(analyticsRepositoryProvider).qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: {'message': message, 'url_scheme': Uri.tryParse(_req.streamUrl)?.scheme});
+    _analytics.qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: {'message': message, 'url_scheme': Uri.tryParse(_req.streamUrl)?.scheme});
   }
 
   void _tick() {
@@ -211,7 +281,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (dur > Duration.zero && pos >= dur - const Duration(seconds: 1) && !_completedReported) {
       _completedReported = true;
       _progress.report(dur, dur);
-      ref.read(analyticsRepositoryProvider).track('watch_complete', contentType: _req.contentType, contentId: _req.contentId);
+      _analytics.track('watch_complete', contentType: _req.contentType, contentId: _req.contentId);
       if (_req.nextEpisode != null && !_showNextCountdown) {
         _beginNextCountdown();
       } else {
@@ -227,6 +297,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final c = _controller;
     await c?.pause();
     _progress.stop();
+    if (!mounted) return;
     final res = await ref.read(adsRepositoryProvider).serve('mid_roll', _ads.context, limit: 2);
     final ads = res.ads.where((a) => a.hasPlayableVideo).toList();
     if (!mounted) return;
@@ -248,7 +319,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     setState(() => _phase = _Phase.content);
     final c = _controller;
     await c?.play();
-    if (c != null) _progress.start(() => c.value.position, () => c.value.duration);
+    if (!mounted || c == null || !identical(_controller, c)) return;
+    _progress.start(() => c.value.position, () => c.value.duration);
   }
 
   void _beginNextCountdown() {
@@ -280,8 +352,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _nextTimer = null;
     _showNextCountdown = false;
     await _progress.report(_position, _duration);
-    _progress.stop();
-    _positionTimer?.cancel();
+    _releaseController();
+    if (!mounted) return;
     try {
       final ep = await ref.read(contentRepositoryProvider).episode(next.id);
       if (!mounted) return;
@@ -302,7 +374,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       );
       _playedBreaks.clear();
       _activeSubtitle = null;
-      ref.read(analyticsRepositoryProvider).track('episode_nav', contentType: 'episode', contentId: ep.id);
+      // Progress must be reported against the new episode, not the first one.
+      _progress = ProgressReporter(_userContent, _req);
+      _analytics.track('episode_nav', contentType: 'episode', contentId: ep.id);
       setState(() {});
       await _initController(_req.streamUrl);
     } catch (e) {
@@ -319,7 +393,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     } else {
       final file = ref.read(subtitleFileProvider(sub).future);
       await c.setClosedCaptionFile(file.then((f) => f ?? WebVTTCaptionFile('WEBVTT\n')));
-      ref.read(analyticsRepositoryProvider).track('cc_toggle', contentType: _req.contentType, contentId: _req.contentId, metadata: {'language': sub.languageCode});
+      _analytics.track('cc_toggle', contentType: _req.contentType, contentId: _req.contentId, metadata: {'language': sub.languageCode});
     }
     if (mounted) setState(() {});
   }
@@ -342,10 +416,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (c.value.isPlaying) {
       await c.pause();
       await _progress.report(c.value.position, c.value.duration);
-      ref.read(analyticsRepositoryProvider).track('watch_pause', contentType: _req.contentType, contentId: _req.contentId);
+      _analytics.track('watch_pause', contentType: _req.contentType, contentId: _req.contentId);
     } else {
       await c.play();
-      ref.read(analyticsRepositoryProvider).track('watch_resume', contentType: _req.contentType, contentId: _req.contentId);
+      _analytics.track('watch_resume', contentType: _req.contentType, contentId: _req.contentId);
     }
     _scheduleHide();
     setState(() {});
@@ -358,7 +432,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (target < Duration.zero) target = Duration.zero;
     if (_duration > Duration.zero && target > _duration) target = _duration;
     await c.seekTo(target);
-    ref.read(analyticsRepositoryProvider).track(seconds < 0 ? 'watch_rewind' : 'watch_seek', contentType: _req.contentType, contentId: _req.contentId);
+    _analytics.track(seconds < 0 ? 'watch_rewind' : 'watch_seek', contentType: _req.contentType, contentId: _req.contentId);
     _scheduleHide();
   }
 
@@ -369,24 +443,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _positionTimer?.cancel();
     _nextTimer?.cancel();
-    final c = _controller;
-    if (c != null && c.value.isInitialized && !_req.isLive) {
-      final pos = c.value.position;
-      final dur = c.value.duration;
-      if (!_completedReported && pos.inSeconds > 0) {
-        unawaited(_progress.report(pos, dur));
-        ref.read(analyticsRepositoryProvider).track('watch_abandon', contentType: _req.contentType, contentId: _req.contentId, metadata: {'position': pos.inSeconds});
-      }
-    }
+    // First and unconditionally: no audio may outlive the screen.
+    _releaseController(abandon: true);
     _progress.stop();
-    c?.removeListener(_onValue);
-    c?.dispose();
-    unawaited(ref.read(analyticsRepositoryProvider).flush());
+    unawaited(_analytics.flush());
     WakelockPlus.disable();
-    // Unconditional: whatever state we were in, the app leaves the player in portrait.
+    // Whatever state we were in, the app leaves the player in portrait.
     _fs.removeListener(_onFullscreenChanged);
     _fs.dispose();
     unawaited(PlayerFullscreen.restorePortrait());
@@ -419,7 +485,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   bool get _full => _fs.isFullscreen;
 
-  void _close() => context.canPop() ? context.pop() : context.go('/home');
+  void _close() => leaveScreen(context);
 
   /// Ads play in the same stage; the full-screen toggle stays available.
   Widget _adStage(Widget ad) => Stack(
@@ -520,7 +586,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         onPressed: () {
           final end = _marker('intro_end')?.positionSeconds;
           if (end != null) _controller?.seekTo(Duration(milliseconds: (end * 1000).round()));
-          ref.read(analyticsRepositoryProvider).track('skip_intro', contentType: _req.contentType, contentId: _req.contentId);
+          _analytics.track('skip_intro', contentType: _req.contentType, contentId: _req.contentId);
         },
         child: const Text('Skip intro'),
       );

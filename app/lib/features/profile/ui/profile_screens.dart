@@ -68,7 +68,7 @@ class ProfileScreen extends ConsumerWidget {
                   const ListTile(title: Text('No active package'), subtitle: Text('Some titles may not be available.')),
                 for (final p in e.packages.where((p) => p.isSubscribed))
                   ListTile(leading: const Icon(Icons.check_circle, color: Colors.greenAccent), title: Text(p.name), subtitle: Text(p.priceDisplay)),
-                TextButton(onPressed: () => context.go('/subscribe'), child: const Text('View all packages')),
+                TextButton(onPressed: () => openTopLevel(context, ref, '/subscribe'), child: const Text('View all packages')),
               ],
             ),
           ),
@@ -220,7 +220,7 @@ class SettingsScreen extends ConsumerWidget {
               title: Text(user.displayName),
               subtitle: Text(user.email),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/profile'),
+              onTap: () => openTopLevel(context, ref, '/profile'),
             ),
           const Divider(),
           ListTile(

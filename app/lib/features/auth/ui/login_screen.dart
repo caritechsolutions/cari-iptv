@@ -151,8 +151,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     : const Text('Sign In'),
               ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              // Wrap, not Row: survives large system fonts and narrow phones.
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   const Text("Don't have an account?"),
                   TextButton(onPressed: () => context.push('/register'), child: const Text('Register')),

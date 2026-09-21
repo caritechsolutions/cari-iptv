@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
 import '../../../core/widgets/async_view.dart';
@@ -88,11 +87,11 @@ class DefaultHome extends ConsumerWidget {
           if ((cw.value ?? const []).isNotEmpty)
             ContentRail(title: 'Continue Watching', cards: cw.value!.map((i) => i.toCard()).toList(), style: 'backdrop'),
           if ((latestMovies.value ?? const []).isNotEmpty)
-            ContentRail(title: 'Latest Movies', cards: latestMovies.value!.map((m) => m.toCard()).toList(), onSeeAll: () => context.go('/movies')),
+            ContentRail(title: 'Latest Movies', cards: latestMovies.value!.map((m) => m.toCard()).toList(), onSeeAll: () => openTopLevel(context, ref, '/movies')),
           if ((latestSeries.value ?? const []).isNotEmpty)
-            ContentRail(title: 'Latest TV Shows', cards: latestSeries.value!.map((s) => s.toCard()).toList(), onSeeAll: () => context.go('/series')),
+            ContentRail(title: 'Latest TV Shows', cards: latestSeries.value!.map((s) => s.toCard()).toList(), onSeeAll: () => openTopLevel(context, ref, '/series')),
           if ((channels.value ?? const []).isNotEmpty)
-            ContentRail(title: 'Live TV', cards: channels.value!.take(20).map((c) => c.toCard()).toList(), style: 'backdrop', onSeeAll: () => context.go('/live')),
+            ContentRail(title: 'Live TV', cards: channels.value!.take(20).map((c) => c.toCard()).toList(), style: 'backdrop', onSeeAll: () => openTopLevel(context, ref, '/live')),
           if (hero.isEmpty && (latestMovies.value ?? const []).isEmpty && (latestSeries.value ?? const []).isEmpty && (channels.value ?? const []).isEmpty)
             const EmptyView(message: 'No content has been published yet.'),
         ],

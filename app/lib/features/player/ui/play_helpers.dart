@@ -14,29 +14,32 @@ import '../../auth/state/auth_notifier.dart';
 import '../../repositories.dart';
 import 'playback_request.dart';
 
-/// Applies entitlement/adult gating, offers "Resume or start over", then opens the player.
-Future<void> playWithGate(BuildContext context, WidgetRef ref, {required MediaCard card, required PlaybackRequest request, WatchProgress? progress}) async {
+/// Applies entitlement/adult gating, offers "Resume or start over", then opens
+/// the player. Returns true when the player screen was opened. With [replace]
+/// the current screen is replaced by the player (used by launcher screens so
+/// back from the player never lands on them).
+Future<bool> playWithGate(BuildContext context, WidgetRef ref, {required MediaCard card, required PlaybackRequest request, WatchProgress? progress, bool replace = false}) async {
   final user = ref.read(currentUserProvider);
   if (card.isAdult && !(user?.adultEnabled ?? false)) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enable adult content in Profile to watch this title.')));
-    return;
+    return false;
   }
   if (card.isAdult && (user?.parentalPin?.isNotEmpty ?? false)) {
-    if (!await askParentalPin(context, user!.parentalPin!)) return;
+    if (!await askParentalPin(context, user!.parentalPin!)) return false;
   }
   if (card.isRestricted) {
     final ent = await ref.read(entitlementsProvider.future);
     if (!ent.allows(card.type, card.id, categoryId: card.categoryId)) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This title is not included in your current package.')));
-      return;
+      return false;
     }
   }
-  if (!context.mounted) return;
+  if (!context.mounted) return false;
 
   // Web links (e.g. a YouTube URL stored as stream_url) open in the browser.
   if (isExternalWatchUrl(request.streamUrl)) {
     await openExternal(context, request.streamUrl);
-    return;
+    return false;
   }
 
   var req = request;
@@ -52,37 +55,43 @@ Future<void> playWithGate(BuildContext context, WidgetRef ref, {required MediaCa
         ],
       ),
     );
-    if (resume == null) return;
+    if (resume == null) return false;
     if (resume) req = req.copyWith(resumeFromSeconds: progress.progressSeconds);
   }
-  if (!context.mounted) return;
-  context.push('/player', extra: req);
+  if (!context.mounted) return false;
+  if (replace) {
+    context.pushReplacement('/player', extra: req);
+  } else {
+    context.push('/player', extra: req);
+  }
+  return true;
 }
 
 /// Opens the player for an episode. Fetches `/episodes/{id}` first so that
 /// markers, subtitles and `next_episode` are available (the series payload
 /// omits them — docs/API_GAPS.md #15).
-Future<void> playEpisode(BuildContext context, WidgetRef ref, {required Series series, required Episode episode, WatchProgress? progress}) async {
+Future<bool> playEpisode(BuildContext context, WidgetRef ref, {required Series series, required Episode episode, WatchProgress? progress, bool replace = false}) async {
   Episode full = episode;
   try {
     full = await ref.read(contentRepositoryProvider).episode(episode.id);
   } catch (e) {
-    if (!context.mounted) return;
+    if (!context.mounted) return false;
     if (!episode.isPlayable) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
-      return;
+      return false;
     }
   }
-  if (!context.mounted) return;
+  if (!context.mounted) return false;
   final stream = full.streamUrl ?? episode.streamUrl;
   if (stream == null || stream.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This episode is not available yet.')));
-    return;
+    return false;
   }
   final code = full.seasonNumber != null ? 'S${full.seasonNumber}E${full.episodeNumber}' : 'E${full.episodeNumber}';
-  await playWithGate(
+  return playWithGate(
     context,
     ref,
+    replace: replace,
     card: series.toCard(),
     request: PlaybackRequest(
       contentType: 'episode',

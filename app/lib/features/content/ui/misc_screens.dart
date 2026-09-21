@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../../core/widgets/app_back_button.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
@@ -39,13 +39,16 @@ class _EpisodeLaunchScreenState extends ConsumerState<EpisodeLaunchScreen> {
       final series = ep.seriesId != null ? await ref.read(contentRepositoryProvider).series(ep.seriesId!) : null;
       if (!mounted) return;
       if (series == null) {
-        context.pushReplacement('/home');
+        leaveScreen(context);
         return;
       }
       final progress = await ref.read(watchProgressProvider((type: 'episode', id: ep.id)).future);
       if (!mounted) return;
-      context.pop();
-      await playEpisode(context, ref, series: series, episode: ep, progress: progress);
+      // The player replaces this launcher, so back from the player returns to
+      // where the user came from. If nothing opened (gated, external link,
+      // resume dialog dismissed) leave instead of sitting on a spinner.
+      final opened = await playEpisode(context, ref, series: series, episode: ep, progress: progress, replace: true);
+      if (!opened && mounted) leaveScreen(context);
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }

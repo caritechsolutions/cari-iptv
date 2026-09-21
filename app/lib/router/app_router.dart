@@ -72,12 +72,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/subscribe', builder: (_, _) => const SubscribeTab()),
           GoRoute(path: '/profile', builder: (_, _) => const ProfileTab()),
           GoRoute(path: '/page/:slug', builder: (_, state) => CustomPageTab(slug: state.pathParameters['slug'] ?? '')),
+          // Search and Settings can be bottom tabs (backend page types) and are
+          // also pushed from the app bar; either way the tab bar stays visible.
+          GoRoute(path: '/search', builder: (_, _) => const SearchPage()),
+          GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
         ],
       ),
 
-      // Full-screen pages pushed over the shell
-      GoRoute(path: '/search', builder: (_, _) => const SearchPage()),
-      GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+      // Full-screen pages pushed over the shell (no tab bar)
       GoRoute(path: '/movie/:id', builder: (_, s) => MovieDetailScreen(id: int.tryParse(s.pathParameters['id'] ?? '') ?? 0)),
       GoRoute(path: '/series/:id', builder: (_, s) => SeriesDetailScreen(id: int.tryParse(s.pathParameters['id'] ?? '') ?? 0)),
       GoRoute(path: '/episode/:id', builder: (_, s) => EpisodeLaunchScreen(id: int.tryParse(s.pathParameters['id'] ?? '') ?? 0)),

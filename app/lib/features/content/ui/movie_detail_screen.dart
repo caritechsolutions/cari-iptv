@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/util/time.dart';
 import '../../../core/util/url_resolver.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../models/movie.dart';
 import '../../player/ui/playback_request.dart';
@@ -19,6 +19,8 @@ class MovieDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final movie = ref.watch(movieDetailProvider(id));
     return Scaffold(
+      // Loading and error states need the back arrow too.
+      appBar: movie.hasValue ? null : AppBar(backgroundColor: Colors.transparent, leading: const AppBackButton()),
       body: AsyncView<Movie>(
         value: movie,
         onRetry: () => ref.invalidate(movieDetailProvider(id)),
@@ -46,7 +48,7 @@ class _MovieBody extends ConsumerWidget {
         SliverAppBar(
           pinned: true,
           backgroundColor: Colors.transparent,
-          leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/home')),
+          leading: const AppBackButton(),
           actions: [WatchlistButton(type: 'movie', id: movie.id, compact: true)],
         ),
         SliverToBoxAdapter(

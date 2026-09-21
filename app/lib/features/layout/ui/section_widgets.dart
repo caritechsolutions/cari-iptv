@@ -8,6 +8,7 @@ import '../../../core/util/json.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
+import '../../shell/ui/app_shell.dart';
 import '../../../core/widgets/legal_links.dart';
 import '../../../models/layout.dart';
 import '../../../models/media_card.dart';
@@ -165,19 +166,19 @@ class ContentRowSection extends StatelessWidget {
   }
 }
 
-class ChannelGridSection extends StatelessWidget {
+class ChannelGridSection extends ConsumerWidget {
   const ChannelGridSection({super.key, required this.section});
   final LayoutSection section;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cards = section.cards;
     if (cards.isEmpty) return const SizedBox.shrink();
     final columns = asInt(section.settings['columns'], 4).clamp(2, 6);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(title: section.title ?? 'Channels', onSeeAll: () => context.go('/live')),
+        SectionHeader(title: section.title ?? 'Channels', onSeeAll: () => openTopLevel(context, ref, '/live')),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: GridView.builder(
@@ -249,7 +250,7 @@ class CategoryGridSection extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SectionHeader(title: section.title ?? 'Browse by category', onSeeAll: () => context.go('/categories')),
+            SectionHeader(title: section.title ?? 'Browse by category', onSeeAll: () => openTopLevel(context, ref, '/categories')),
             SizedBox(
               height: 44,
               child: ListView.separated(
@@ -426,7 +427,7 @@ class LiveNowSection extends ConsumerWidget {
       if (cards.length >= asInt(section.settings['max_items'], 12)) break;
     }
     if (cards.isEmpty) return const SizedBox.shrink();
-    return ContentRail(title: section.title ?? 'Live now', cards: cards, style: 'backdrop', onSeeAll: () => context.go('/live'));
+    return ContentRail(title: section.title ?? 'Live now', cards: cards, style: 'backdrop', onSeeAll: () => openTopLevel(context, ref, '/live'));
   }
 }
 
@@ -447,7 +448,7 @@ class EpgScheduleSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(title: section.title ?? 'TV Guide', onSeeAll: () => context.go('/live')),
+        SectionHeader(title: section.title ?? 'TV Guide', onSeeAll: () => openTopLevel(context, ref, '/live')),
         for (final s in rows)
           ListTile(
             dense: true,
@@ -475,7 +476,7 @@ class PackagesListSection extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SectionHeader(title: section.title ?? 'Packages', onSeeAll: () => context.go('/subscribe')),
+            SectionHeader(title: section.title ?? 'Packages', onSeeAll: () => openTopLevel(context, ref, '/subscribe')),
             SizedBox(
               height: 120,
               child: ListView.separated(
