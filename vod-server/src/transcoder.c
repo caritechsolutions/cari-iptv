@@ -2,6 +2,10 @@
 #include "logger.h"
 #include "cjson/cJSON.h"
 
+/* Defined with the output-format policy below transcoder_probe */
+static int pix_fmt_bit_depth(const char *pix_fmt);
+static const char *effective_hwaccel(const vod_config_t *config);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,8 +47,9 @@ int transcoder_init(const vod_config_t *config)
         return -1;
     }
 
-    log_info("Transcoder initialized: ffmpeg=%s ffprobe=%s hwaccel=%s",
-             config->ffmpeg_path, config->ffprobe_path, config->hwaccel);
+    log_info("Transcoder initialized: ffmpeg=%s ffprobe=%s hwaccel=%s (effective: %s)",
+             config->ffmpeg_path, config->ffprobe_path, config->hwaccel,
+             effective_hwaccel(config));
 
     return 0;
 }
@@ -222,6 +227,26 @@ int transcoder_probe(const char *source_path, media_info_t *info)
                     info->height = height->valueint;
                 }
 
+                /* Pixel format / bit depth / profile: a 10-bit source must be
+                 * forced to 8-bit on output or phones cannot decode it. */
+                cJSON *pix_fmt = cJSON_GetObjectItemCaseSensitive(stream, "pix_fmt");
+                if (pix_fmt && cJSON_IsString(pix_fmt)) {
+                    snprintf(info->pix_fmt, sizeof(info->pix_fmt), "%s", pix_fmt->valuestring);
+                }
+                cJSON *bprs = cJSON_GetObjectItemCaseSensitive(stream, "bits_per_raw_sample");
+                if (bprs && cJSON_IsString(bprs)) {
+                    info->bit_depth = atoi(bprs->valuestring);
+                } else if (bprs && cJSON_IsNumber(bprs)) {
+                    info->bit_depth = bprs->valueint;
+                }
+                if (info->bit_depth <= 0) {
+                    info->bit_depth = pix_fmt_bit_depth(info->pix_fmt);
+                }
+                cJSON *vprofile = cJSON_GetObjectItemCaseSensitive(stream, "profile");
+                if (vprofile && cJSON_IsString(vprofile)) {
+                    snprintf(info->video_profile, sizeof(info->video_profile), "%s", vprofile->valuestring);
+                }
+
                 /* Parse frame rate from r_frame_rate (e.g., "24000/1001") */
                 cJSON *r_frame_rate = cJSON_GetObjectItemCaseSensitive(stream, "r_frame_rate");
                 if (r_frame_rate && cJSON_IsString(r_frame_rate)) {
@@ -311,13 +336,74 @@ int transcoder_probe(const char *source_path, media_info_t *info)
 
     cJSON_Delete(root);
 
-    log_info("Probed '%s': %.1fs, %dx%d, %.2f fps, vcodec=%s, acodec=%s, "
+    log_info("Probed '%s': %.1fs, %dx%d, %.2f fps, vcodec=%s (%s, %s, %d-bit), acodec=%s, "
              "subs=%d, size=%lld bytes",
              source_path, info->duration, info->width, info->height, info->fps,
-             info->video_codec, info->audio_codec, info->subtitle_count,
+             info->video_codec,
+             info->video_profile[0] ? info->video_profile : "?",
+             info->pix_fmt[0] ? info->pix_fmt : "?",
+             info->bit_depth,
+             info->audio_codec, info->subtitle_count,
              (long long)info->file_size);
+    if (info->bit_depth > 8) {
+        log_warn("Source '%s' is %d-bit (%s); output will be forced to 8-bit yuv420p",
+                 source_path, info->bit_depth, info->pix_fmt);
+    }
 
     return 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Output format policy
+ *
+ * Every rendition is 8-bit yuv420p. H.264 is High profile with a level that
+ * fits the rendition (phone hardware decoders reject High 10 / 10-bit, which
+ * libx264 picks by itself for a 10-bit source when nothing is forced). HEVC
+ * is Main (8-bit) tagged hvc1. Only nvenc and vaapi are implemented as
+ * hardware paths; anything else (qsv, typos) is software encoding with the
+ * same guards rather than a silent fallback without them.
+ * ------------------------------------------------------------------------- */
+
+/* Bit depth from a pix_fmt name: yuv420p -> 8, yuv420p10le -> 10, p010le -> 10 */
+static int pix_fmt_bit_depth(const char *pix_fmt)
+{
+    if (!pix_fmt || !pix_fmt[0]) return 0;
+    if (strncmp(pix_fmt, "p010", 4) == 0 || strncmp(pix_fmt, "p210", 4) == 0 ||
+        strncmp(pix_fmt, "p410", 4) == 0) return 10;
+    if (strncmp(pix_fmt, "p012", 4) == 0 || strncmp(pix_fmt, "p212", 4) == 0 ||
+        strncmp(pix_fmt, "p412", 4) == 0) return 12;
+    if (strncmp(pix_fmt, "p016", 4) == 0) return 16;
+    /* yuv420p10le, yuv444p12be, gbrp10le: digits right after the 'p' */
+    const char *p = strrchr(pix_fmt, 'p');
+    if (p && p[1] >= '0' && p[1] <= '9') {
+        int depth = atoi(p + 1);
+        if (depth >= 8 && depth <= 16) return depth;
+    }
+    return 8;
+}
+
+/* nvenc / vaapi / none. Unknown values encode in software (with a warning). */
+static const char *effective_hwaccel(const vod_config_t *config)
+{
+    const char *hw = config->hwaccel;
+    if (hw[0] == '\0' || strcmp(hw, "none") == 0) return "none";
+    if (strcmp(hw, "nvenc") == 0 || strcmp(hw, "vaapi") == 0) return hw;
+    log_warn("hwaccel '%s' is not implemented (nvenc, vaapi or none); "
+             "encoding in software with the 8-bit guards", hw);
+    return "none";
+}
+
+/* H.264 level_idc that fits the rendition (High profile, 8-bit):
+ * 3.0 <= 360p, 3.1 <= 480p / 720p30, 3.2 720p60, 4.0 1080p30, 4.2 1080p60,
+ * 5.1 2160p30, 5.2 2160p60. */
+static int h264_level_idc(int height, double fps)
+{
+    bool high_fps = fps > 30.5;
+    if (height <= 360)  return 30;
+    if (height <= 480)  return 31;
+    if (height <= 720)  return high_fps ? 32 : 31;
+    if (height <= 1080) return high_fps ? 42 : 40;
+    return high_fps ? 52 : 51;
 }
 
 /* ---------------------------------------------------------------------------
@@ -346,12 +432,18 @@ int transcoder_build_command(char *out_cmd, size_t cmd_len,
     int pos = 0;
     int remaining = (int)sizeof(cmd);
 
+    const char *hw = effective_hwaccel(config);
+    bool is_hevc = strcmp(profile->codec, "libx265") == 0 ||
+                   strcmp(profile->codec, "hevc") == 0;
+    bool is_av1  = strstr(profile->codec, "av1") != NULL;
+    bool is_h264 = !is_hevc && !is_av1;
+
     /* --- Hardware acceleration input options --- */
-    if (strcmp(config->hwaccel, "nvenc") == 0) {
+    if (strcmp(hw, "nvenc") == 0) {
         pos += snprintf(cmd + pos, remaining - pos,
                         "%s -hwaccel cuda -hwaccel_device %d ",
                         config->ffmpeg_path, config->gpu_device);
-    } else if (strcmp(config->hwaccel, "vaapi") == 0) {
+    } else if (strcmp(hw, "vaapi") == 0) {
         pos += snprintf(cmd + pos, remaining - pos,
                         "%s -hwaccel vaapi -hwaccel_output_format vaapi "
                         "-vaapi_device /dev/dri/renderD%d ",
@@ -374,8 +466,9 @@ int transcoder_build_command(char *out_cmd, size_t cmd_len,
     /* Start filter_complex: split the video into N copies */
     pos += snprintf(cmd + pos, remaining - pos, "-filter_complex \"");
 
-    if (strcmp(config->hwaccel, "vaapi") == 0) {
-        /* VAAPI: upload to hardware surface, then split and scale in VAAPI */
+    if (strcmp(hw, "vaapi") == 0) {
+        /* VAAPI: upload to hardware surface, then split and scale in VAAPI
+         * (format=nv12 is the 8-bit guard on this path) */
         pos += snprintf(cmd + pos, remaining - pos,
                         "[0:v]format=nv12|vaapi,hwupload");
         if (rcount > 1) {
@@ -422,20 +515,10 @@ int transcoder_build_command(char *out_cmd, size_t cmd_len,
     /* --- Per-rendition output options --- */
     /* Determine video encoder based on hwaccel and codec settings */
     const char *vcodec = profile->codec;
-    if (strcmp(config->hwaccel, "nvenc") == 0) {
-        if (strcmp(profile->codec, "libx265") == 0 ||
-            strcmp(profile->codec, "hevc") == 0) {
-            vcodec = "hevc_nvenc";
-        } else {
-            vcodec = "h264_nvenc";
-        }
-    } else if (strcmp(config->hwaccel, "vaapi") == 0) {
-        if (strcmp(profile->codec, "libx265") == 0 ||
-            strcmp(profile->codec, "hevc") == 0) {
-            vcodec = "hevc_vaapi";
-        } else {
-            vcodec = "h264_vaapi";
-        }
+    if (strcmp(hw, "nvenc") == 0) {
+        vcodec = is_hevc ? "hevc_nvenc" : "h264_nvenc";
+    } else if (strcmp(hw, "vaapi") == 0) {
+        vcodec = is_hevc ? "hevc_vaapi" : "h264_vaapi";
     }
 
     int gop = config->gop_size;
@@ -462,11 +545,11 @@ int transcoder_build_command(char *out_cmd, size_t cmd_len,
                         i, r->bitrate_kbps * 2);
 
         /* Preset and CRF (software encoders) or quality (hardware encoders) */
-        if (strcmp(config->hwaccel, "nvenc") == 0) {
+        if (strcmp(hw, "nvenc") == 0) {
             pos += snprintf(cmd + pos, remaining - pos,
                             "-preset:v:%d p4 -rc:v:%d vbr -cq:v:%d %d ",
                             i, i, i, profile->crf);
-        } else if (strcmp(config->hwaccel, "vaapi") == 0) {
+        } else if (strcmp(hw, "vaapi") == 0) {
             pos += snprintf(cmd + pos, remaining - pos,
                             "-rc_mode:v:%d VBR -qp:v:%d %d ",
                             i, i, profile->crf);
@@ -481,11 +564,21 @@ int transcoder_build_command(char *out_cmd, size_t cmd_len,
                         "-g:v:%d %d -keyint_min:v:%d %d -sc_threshold:v:%d 0 ",
                         i, gop, i, gop, i);
 
-        /* Force pixel format for software encode */
-        if (strcmp(config->hwaccel, "none") == 0 ||
-            config->hwaccel[0] == '\0') {
+        /* 8-bit output on every path. VAAPI frames are already nv12 (8-bit)
+         * from the upload filter; software and NVENC take -pix_fmt. */
+        if (strcmp(hw, "vaapi") != 0) {
             pos += snprintf(cmd + pos, remaining - pos,
                             "-pix_fmt:v:%d yuv420p ", i);
+        }
+
+        /* Profile and level suited to the rendition */
+        if (is_h264) {
+            pos += snprintf(cmd + pos, remaining - pos,
+                            "-profile:v:%d high -level:v:%d %d ",
+                            i, i, h264_level_idc(r->height, info->fps));
+        } else if (is_hevc) {
+            pos += snprintf(cmd + pos, remaining - pos,
+                            "-profile:v:%d main -tag:v:%d hvc1 ", i, i);
         }
 
         /* Output individual MP4 file per rendition */
@@ -519,6 +612,9 @@ int transcoder_build_command(char *out_cmd, size_t cmd_len,
 
     memcpy(out_cmd, cmd, pos + 1); /* includes null terminator from snprintf */
 
+    log_info("Encode policy: hwaccel=%s codec=%s 8-bit yuv420p%s (source %s %d-bit)",
+             hw, vcodec, is_h264 ? " H.264 High" : (is_hevc ? " HEVC Main/hvc1" : ""),
+             info->pix_fmt[0] ? info->pix_fmt : "?", info->bit_depth);
     log_debug("Built FFmpeg command (%d bytes): %s", pos, out_cmd);
 
     return 0;

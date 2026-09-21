@@ -38,6 +38,9 @@ typedef struct {
     int         height;
     double      fps;
     char        video_codec[64];
+    char        video_profile[64];  /* ffprobe profile, e.g. "High", "High 10", "Main 10" */
+    char        pix_fmt[32];        /* ffprobe pix_fmt, e.g. yuv420p, yuv420p10le */
+    int         bit_depth;          /* 8, 10, 12 (0 = unknown) */
     char        audio_codec[64];
     int         audio_channels;
     int         audio_sample_rate;

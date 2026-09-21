@@ -71,3 +71,62 @@ templates/player/login.php                                                      
 ## Not changed (needs your decision)
 - `install.sh` / `update.sh` `BRANCH=` values were not touched (CLAUDE.md says to update them before pushing; you asked not to deploy).
 - Subscription and billing retention period is not enforced by code.
+
+## 4. VOD server: force 8-bit H.264 High output (`vod:` commit)
+
+**Why.** A 10-bit source (e.g. Black Sails S1E3) was packaged as H.264 **High 10** (`avc1.6E0028`): phone hardware decoders reject it (`MediaCodecVideoRenderer error … format_supported=NO_UNSUPPORTED_TYPE`). In `vod-server/src/transcoder.c` the `-pix_fmt yuv420p` guard only applied when `hwaccel` was `none`; `-profile:v`/`-level:v` were never set; the GUI offered `qsv`, which the transcoder did not implement, so that setting silently meant "software libx264 with no 8-bit guard". The HLS packaging step is `-c copy`, so whatever the encoder produced went straight to players.
+
+**What changed (`vod-server/src/transcoder.c`, `transcoder.h`).**
+
+| # | Change |
+|---|---|
+| 1 | `-pix_fmt yuv420p` on every H.264/HEVC/AV1 rendition for software and NVENC; the VAAPI path already converts to `nv12` (8-bit) in the filter graph |
+| 2 | H.264: `-profile:v high` plus a per-rendition `-level:v` (level_idc): 3.0 ≤ 360p, 3.1 ≤ 480p and 720p ≤ 30 fps, 3.2 720p > 30 fps, 4.0 1080p ≤ 30 fps, 4.2 1080p > 30 fps, 5.1 / 5.2 for 2160p (fps from the source probe) |
+| 3 | HEVC profiles (`libx265`, `hevc_nvenc`, `hevc_vaapi`): `-profile:v main -tag:v hvc1` (8-bit Main, never Main 10). Level left automatic |
+| 4 | `hwaccel` values other than `nvenc` / `vaapi` / `none` (including `qsv`) encode in software **with** the guards, and log a warning at start-up and per job |
+| 5 | The source probe now records `pix_fmt`, bit depth (`bits_per_raw_sample`, else derived from the pix_fmt name) and profile; the job log prints them and warns for >8-bit sources; each job logs its "Encode policy" line |
+
+Profiles in `vod-server.conf` need no change. Nothing has been deployed.
+
+**Build and deploy (VOD server, as root).** `vod-server/scripts/update.sh` is pinned to `BRANCH="claude/fix-opensubtitle-connection-TvyOH"` (left unchanged on purpose), so it will not pick this change up until the branch is merged or that line is updated. Manual build from this branch:
+
+```bash
+# 1. build
+git clone --depth 1 --branch claude/intelligent-knuth-xzkkd7 https://github.com/caritechsolutions/cari-iptv.git /tmp/cari-src
+cd /tmp/cari-src/vod-server && mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)"
+./vod-server --version
+
+# 2. swap the binary (keeps a rollback copy), restart
+systemctl stop vod-server
+cp /usr/local/bin/vod-server /usr/local/bin/vod-server.bak
+install -m 0755 ./vod-server /usr/local/bin/vod-server
+systemctl start vod-server
+journalctl -u vod-server -n 30 --no-pager      # expect "Transcoder initialized: ... hwaccel=<value> (effective: ...)"
+
+# 3. verify with one job, then inspect the output
+#    submit any title (admin → VOD section → Upload & Transcode, or POST /api/jobs);
+#    the job log shows "Probed ... (High 10, yuv420p10le, 10-bit)" and "Encode policy: ... 8-bit yuv420p H.264 High"
+ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile,pix_fmt,level \
+        -of default=noprint_wrappers=1 /var/lib/vod-server/library/<content_id>/1080p.mp4
+#    expected: codec_name=h264  profile=High  pix_fmt=yuv420p  level=40
+
+# rollback if needed
+systemctl stop vod-server && cp /usr/local/bin/vod-server.bak /usr/local/bin/vod-server && systemctl start vod-server
+```
+
+Also set **Settings → Hardware acceleration** in the VOD GUI to a value the server really has (`none`, `nvenc`, `vaapi`); `qsv` now falls back to software with a warning instead of silently.
+
+**Re-package procedure (existing titles).**
+
+1. Find affected titles (read-only; the script parses `ffprobe` key=value output and probes the rendition MP4s the packager copied from, falling back to `stream_*.m3u8`):
+   ```bash
+   scp vod-server/tools/audit_pixfmt.sh root@vod1:/root/
+   sudo bash /root/audit_pixfmt.sh            # or: sudo bash audit_pixfmt.sh /path/to/library
+   ```
+   Every rendition that is not `yuv420p` (or whose profile is High 10 / Main 10 / 4:2:2 / 4:4:4) is printed with `REPACKAGE`, followed by the list of titles.
+2. For each listed title, remove the old library folder so stale segments do not survive the overwrite (`storage_move_dir` falls back to copy-over when the folder exists): VOD GUI → Content → Delete, or `curl -X DELETE -H "X-API-Key: …" http://vod1:8090/api/content/<content_id>`.
+3. Re-submit the transcode with the same `content_id` from the IPTV admin: **Movies → edit → VOD section → "Overwrite & Re-transcode"**; **Series → Episodes → Transcode → "Upload & Transcode"**. Both go through `POST /admin/vod-server/jobs/submit` → `POST /api/jobs` `{content_id, source_path, profile, source_type}`; the source file (or URL) must still be available because the VOD server does not keep sources after a job.
+4. Re-run the audit script; the list should be empty. The app now reports decoder failures as `playback_error` QoE events with `codec` (e.g. `avc1.6E0028`) and the content id, so any title missed by the audit shows up in analytics.
+
+Files: `vod-server/src/transcoder.c`, `vod-server/src/transcoder.h`, `vod-server/tools/audit_pixfmt.sh` (+ `test_audit_pixfmt.sh`, run with `bash vod-server/tools/test_audit_pixfmt.sh`).
