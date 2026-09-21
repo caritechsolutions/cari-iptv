@@ -22,12 +22,15 @@ import 'package:cari_tv/features/layout/state/layout_providers.dart';
 import 'package:cari_tv/features/library/data/user_content_repository.dart';
 import 'package:cari_tv/features/live/data/epg_repository.dart';
 import 'package:cari_tv/features/navigation/state/navigation_provider.dart';
+import 'package:cari_tv/features/player/hls/hls_master.dart';
+import 'package:cari_tv/features/player/hls/hls_master_source.dart';
 import 'package:cari_tv/features/player/state/player_support.dart';
 import 'package:cari_tv/features/recommendations/data/recommendation_repository.dart';
 import 'package:cari_tv/features/repositories.dart';
 import 'package:cari_tv/models/entitlements.dart';
 import 'package:cari_tv/models/navigation.dart';
 import 'package:cari_tv/models/user.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:mocktail/mocktail.dart';
@@ -55,7 +58,10 @@ class MockAuthRepository extends Mock implements AuthRepository {}
 class FakeAnalyticsRepository implements AnalyticsRepository {
   final List<String> events = [];
   final List<String> qoeEvents = [];
+  final List<QoeCall> qoeCalls = [];
   int flushes = 0;
+
+  List<QoeCall> qoeOf(String type) => qoeCalls.where((q) => q.type == type).toList();
 
   @override
   String get sessionId => 'test-session';
@@ -64,13 +70,50 @@ class FakeAnalyticsRepository implements AnalyticsRepository {
   void track(String eventType, {String? contentType, int? contentId, String? page, Map<String, dynamic>? metadata}) => events.add(eventType);
 
   @override
-  void qoe(String eventType, {String? contentType, int? contentId, Map<String, dynamic>? metadata}) => qoeEvents.add(eventType);
+  void qoe(String eventType, {String? contentType, int? contentId, Map<String, dynamic>? metadata}) {
+    qoeEvents.add(eventType);
+    qoeCalls.add(QoeCall(eventType, contentType: contentType, contentId: contentId, metadata: metadata ?? const {}));
+  }
 
   @override
   Future<void> flush() async => flushes++;
 
   @override
   void dispose() {}
+}
+
+class QoeCall {
+  const QoeCall(this.type, {this.contentType, this.contentId, required this.metadata});
+  final String type;
+  final String? contentType;
+  final int? contentId;
+  final Map<String, dynamic> metadata;
+}
+
+/// A failure the fake player reports for URLs containing [urlPart]:
+/// `after == null` fails before `initialized` (decoder init failure);
+/// otherwise the player initialises and fails [after] that long into playback
+/// (adaptive selection climbing to a bad rendition).
+class FakeFailure {
+  const FakeFailure(this.message, {this.after});
+  final String message;
+  final Duration? after;
+}
+
+/// Serves canned master playlists by URL.
+class FakeMasterSource implements HlsMasterSource {
+  FakeMasterSource([Map<String, String> masters = const {}]) : _masters = Map.of(masters);
+  final Map<String, String> _masters;
+  final List<Uri> loads = [];
+
+  void put(String url, String text) => _masters[url] = text;
+
+  @override
+  Future<HlsMaster?> load(Uri url) async {
+    loads.add(url);
+    final text = _masters[url.toString()];
+    return text == null ? null : parseHlsMaster(text, url);
+  }
 }
 
 // --- Platform fakes -------------------------------------------------------------
@@ -90,6 +133,11 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform with MockPlatformInter
   Duration initDelay = Duration.zero;
   final Map<int, Timer> _initTimers = {};
 
+  /// URL each player was created with, and failures by URL substring.
+  final Map<int, String> urls = {};
+  final Map<String, FakeFailure> failures = {};
+  List<String> get createdUrls => [for (var i = 1; i < _nextId; i++) urls[i] ?? ''];
+
   List<String> callsFor(int id) => calls.where((c) => c.endsWith(':$id')).toList();
   bool disposed(int id) => calls.contains('dispose:$id');
 
@@ -108,14 +156,27 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform with MockPlatformInter
     // VideoPlayerController.dispose() would hang before reaching the platform.
     final controller = StreamController<VideoEvent>(onCancel: () async {});
     _events[id] = controller;
+    final url = options.dataSource.uri ?? '';
+    urls[id] = url;
+    final failure = failures.entries.where((e) => url.contains(e.key)).map((e) => e.value).firstOrNull;
+    void fail() {
+      if (!controller.isClosed) controller.addError(PlatformException(code: 'VideoError', message: failure!.message));
+    }
+
     void ready() {
       if (!controller.isClosed) controller.add(VideoEvent(eventType: VideoEventType.initialized, duration: duration, size: const Size(1920, 1080)));
     }
 
-    if (initDelay == Duration.zero) {
+    if (failure != null && failure.after == null) {
+      fail();
+    } else if (initDelay == Duration.zero) {
       ready();
+      if (failure != null) _initTimers[id] = Timer(failure.after!, fail);
     } else {
-      _initTimers[id] = Timer(initDelay, ready);
+      _initTimers[id] = Timer(initDelay, () {
+        ready();
+        if (failure != null) _initTimers[id] = Timer(failure.after!, fail);
+      });
     }
     calls.add('create:$id');
     return id;
@@ -236,9 +297,10 @@ class TestRepos {
 /// Overrides for a fully mounted app or a single screen. Screens whose data
 /// calls are not stubbed render their error state, which is what the
 /// navigation audit wants: a way back must exist even when loading fails.
-List<Override> testOverrides({required AuthState auth, AppNavigation? nav, TestRepos? repos}) {
+List<Override> testOverrides({required AuthState auth, AppNavigation? nav, TestRepos? repos, HlsMasterSource? masterSource}) {
   final r = repos ?? TestRepos();
   return [
+    hlsMasterSourceProvider.overrideWithValue(masterSource ?? FakeMasterSource()),
     appConfigProvider.overrideWithValue(AppConfig.forFlavor(AppFlavor.dev)),
     authProvider.overrideWith(() => FixedAuth(auth)),
     entitlementsProvider.overrideWith((ref) async => testEntitlements),

@@ -13,6 +13,9 @@ import '../../../models/content_extras.dart';
 import '../../analytics/data/analytics_repository.dart';
 import '../../library/data/user_content_repository.dart';
 import '../../repositories.dart';
+import '../hls/hls_master.dart';
+import '../hls/hls_master_source.dart';
+import '../hls/quality_memory.dart';
 import '../state/player_support.dart';
 import 'ad_player.dart';
 import 'playback_error.dart';
@@ -73,11 +76,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
   late ProgressReporter _progress;
   final PlayerFullscreen _fs = PlayerFullscreen();
 
+  // Quality fallback: the parsed master playlist of the current title, the
+  // variant opened directly (null = Auto / master), and a decoder failure
+  // whose outcome (recovered or not) is not known yet.
+  late final HlsMasterSource _masterSource;
+  late final QualityMemory _quality;
+  HlsMaster? _master;
+  HlsVariant? _variant;
+  _PendingFailure? _pendingFailure;
+  String? _note;
+  Timer? _noteTimer;
+
   @override
   void initState() {
     super.initState();
     _analytics = ref.read(analyticsRepositoryProvider);
     _userContent = ref.read(userContentRepositoryProvider);
+    _masterSource = ref.read(hlsMasterSourceProvider);
+    _quality = ref.read(qualityMemoryProvider);
     _progress = ProgressReporter(_userContent, _req);
     WidgetsBinding.instance.addObserver(this);
     _fs.addListener(_onFullscreenChanged);
@@ -157,11 +173,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         return;
       }
     }
+    final masterFuture = _loadMaster();
     try {
       _ads = await ref.read(playbackAdsProvider(_req).future).timeout(const Duration(seconds: 6));
     } catch (_) {
       _ads = PlaybackAds.none;
     }
+    _master = await masterFuture;
     if (!mounted) return;
     if (_ads.preRoll.isNotEmpty) {
       setState(() => _phase = _Phase.preRoll);
@@ -172,7 +190,121 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
 
   Future<void> _startContent() async {
     setState(() => _phase = _Phase.content);
-    await _initController(_req.streamUrl, resumeFrom: _req.resumeFromSeconds);
+    await _initController(_startUrl(), resumeFrom: _req.resumeFromSeconds);
+  }
+
+  // --- Quality fallback -----------------------------------------------------
+
+  String get _titleKey => QualityMemory.keyFor(_req.contentType, _req.contentId);
+
+  /// Parses the master playlist (null when the URL is not a master).
+  Future<HlsMaster?> _loadMaster() async {
+    final uri = Uri.tryParse(_req.streamUrl);
+    if (uri == null || _req.streamUrl.isEmpty) return null;
+    try {
+      return await _masterSource.load(uri).timeout(const Duration(seconds: 6));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Where playback starts: a rendition remembered for this title (after a
+  /// fallback or a manual choice) is opened directly so a bad rendition is
+  /// never tried again; otherwise the master (Auto).
+  String _startUrl() {
+    final master = _master;
+    final pinned = _quality.peek(_titleKey)?.pinned;
+    if (master != null && pinned != null) {
+      final v = master.byUri(pinned);
+      if (v != null && _quality.forTitle(_titleKey).allows(v)) {
+        _variant = v;
+        return v.uri.toString();
+      }
+    }
+    _variant = null;
+    return _req.streamUrl;
+  }
+
+  String get _currentUrl => _variant?.uri.toString() ?? _req.streamUrl;
+
+  /// Renditions the quality menu may offer (excluded ones are hidden).
+  List<HlsVariant> get _qualityChoices {
+    final master = _master;
+    if (master == null) return const [];
+    return _quality.forTitle(_titleKey).allowed(master);
+  }
+
+  /// Auto (master) is offered only while nothing has been excluded: once a
+  /// rendition failed, adaptive selection could pick it again.
+  bool get _autoAllowed => !_quality.forTitle(_titleKey).hasExclusions;
+
+  /// Which rendition failed in Auto mode: from the resolution ExoPlayer prints
+  /// in the format, else the exact codec string (masters with CODECS).
+  HlsVariant? _guessFailedVariant(HlsMaster master, PlaybackError error) {
+    final m = RegExp(r'\[(\d+), (\d+), ').firstMatch(error.technical);
+    if (m != null) {
+      final h = int.tryParse(m.group(2)!);
+      final w = int.tryParse(m.group(1)!);
+      final byRes = master.variants.where((v) => v.height == h && (v.width == null || w == null || v.width == w)).firstOrNull ?? master.variants.where((v) => v.height == h).firstOrNull;
+      if (byRes != null) return byRes;
+    }
+    final codec = error.codec;
+    if (codec != null && master.hasCodecs) {
+      return master.variants.where((v) => v.videoCodec == codec).firstOrNull;
+    }
+    return null;
+  }
+
+  /// Opens [v] directly (null = back to the master / Auto) and resumes.
+  Future<void> _switchToVariant(HlsVariant? v, {Duration? resumeAt, String? note, bool manual = false}) async {
+    _variant = v;
+    if (manual) _quality.forTitle(_titleKey).pinned = v?.uri;
+    if (note != null) _showNote(note);
+    final resume = resumeAt ?? _position;
+    await _initController(v?.uri.toString() ?? _req.streamUrl, resumeFrom: _req.isLive ? null : resume.inSeconds);
+  }
+
+  void _showNote(String text) {
+    _noteTimer?.cancel();
+    setState(() => _note = text);
+    _noteTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _note = null);
+    });
+  }
+
+  /// Every decoder failure is reported exactly once, when its outcome is
+  /// known: `recovered` when the fallback rendition plays, `failed` when no
+  /// rendition remained or the fallback failed too, `abandoned` when the
+  /// viewer left before that.
+  void _emitPlaybackError(PlaybackError error, {required String outcome, HlsVariant? failed, FallbackDecision? decision}) {
+    final meta = error.toQoeMetadata(streamUrl: _req.streamUrl);
+    meta['recovered'] = outcome == 'recovered';
+    meta['outcome'] = outcome;
+    if (failed != null) meta['rendition'] = failed.label;
+    if (decision != null) {
+      meta['rule'] = decision.rule;
+      meta['excluded'] = decision.excluded.map((v) => v.label).toList();
+      if (decision.next != null) meta['fallback_to'] = decision.next!.label;
+    }
+    _analytics.qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: meta);
+  }
+
+  void _flushPendingFailure(String outcome) {
+    final p = _pendingFailure;
+    if (p == null) return;
+    _pendingFailure = null;
+    _emitPlaybackError(p.error, outcome: outcome, failed: p.decision.failed, decision: p.decision);
+  }
+
+  /// Called from the position tick: the fallback rendition counts as
+  /// recovered once it plays past the resume point (or 8 s without an error).
+  void _checkRecovered(VideoPlayerController c) {
+    final p = _pendingFailure;
+    if (p == null) return;
+    final v = c.value;
+    final advanced = v.isPlaying && !v.isBuffering && v.position > p.position + const Duration(milliseconds: 500);
+    final timedOut = DateTime.now().difference(p.at) > const Duration(seconds: 8) && v.isPlaying;
+    if (advanced || timedOut) _flushPendingFailure('recovered');
   }
 
   Future<void> _initController(String url, {int? resumeFrom}) async {
@@ -187,11 +319,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       return;
     }
     final isHls = url.contains('.m3u8');
-    final c = VideoPlayerController.networkUrl(
-      uri,
-      formatHint: isHls ? VideoFormat.hls : null,
-      videoPlayerOptions: VideoPlayerOptions(allowBackgroundPlayback: false, mixWithOthers: false),
-    );
+    final c = VideoPlayerController.networkUrl(uri, formatHint: isHls ? VideoFormat.hls : null, videoPlayerOptions: VideoPlayerOptions(allowBackgroundPlayback: false, mixWithOthers: false));
     _controller = c;
     c.addListener(_onValue);
     // The screen may be left (or the controller replaced) during any await.
@@ -215,7 +343,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       _scheduleHide();
       setState(() {});
     } catch (e) {
-      if (stale()) return;
+      // The value listener has usually reported this error already.
+      if (stale() || _error != null) return;
       _reportError('$e');
     }
   }
@@ -239,11 +368,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
 
   void _reportError(String message) {
     final error = classifyPlaybackError(message, _req.streamUrl);
+    // A fallback that was in flight has just failed too.
+    _flushPendingFailure('failed');
+
+    final master = _master;
+    if (error.kind == PlaybackErrorKind.unsupportedFormat && master != null) {
+      final failed = _variant ?? _guessFailedVariant(master, error);
+      final decision = _quality.fail(_titleKey, master, failed: failed, failedCodec: error.codec);
+      final next = decision.next;
+      if (next != null) {
+        // Not an error screen: switch down, resume, tell the viewer briefly.
+        _pendingFailure = _PendingFailure(error: error, decision: decision, position: _position, at: DateTime.now());
+        unawaited(_switchToVariant(next, resumeAt: _position, note: 'Playing in ${next.label} — this device cannot decode the higher quality'));
+        return;
+      }
+      _emitPlaybackError(error, outcome: 'failed', failed: decision.failed, decision: decision);
+    } else {
+      _emitPlaybackError(error, outcome: 'failed', failed: _variant);
+    }
     setState(() => _error = error);
     // A stream error is an exit from full screen: back to portrait + system bars.
     unawaited(_fs.exit());
-    // Codec string + content id let bad titles be found from the admin side.
-    _analytics.qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: error.toQoeMetadata(streamUrl: _req.streamUrl));
   }
 
   void _tick() {
@@ -257,6 +402,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         _duration = dur;
       });
     }
+    _checkRecovered(c);
 
     if (_req.isLive) return;
     final sec = pos.inMilliseconds / 1000;
@@ -380,8 +526,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       // Progress must be reported against the new episode, not the first one.
       _progress = ProgressReporter(_userContent, _req);
       _analytics.track('episode_nav', contentType: 'episode', contentId: ep.id);
+      _variant = null;
+      _master = await _loadMaster();
+      if (!mounted) return;
       setState(() {});
-      await _initController(_req.streamUrl);
+      await _initController(_startUrl());
     } catch (e) {
       if (mounted) _reportError('Could not load the next episode');
     }
@@ -441,7 +590,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
 
   Future<void> _retry() async {
     setState(() => _error = null);
-    await _initController(_req.streamUrl, resumeFrom: _position.inSeconds);
+    await _initController(_currentUrl, resumeFrom: _position.inSeconds);
   }
 
   @override
@@ -450,6 +599,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     _hideTimer?.cancel();
     _positionTimer?.cancel();
     _nextTimer?.cancel();
+    _noteTimer?.cancel();
+    _flushPendingFailure('abandoned');
     // First and unconditionally: no audio may outlive the screen.
     _releaseController(abandon: true);
     _progress.stop();
@@ -479,11 +630,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         stage = _content(c, playing);
     }
 
-    return PlayerShell(
-      controller: _fs,
-      stage: stage,
-      below: _below(),
-    );
+    return PlayerShell(controller: _fs, stage: stage, below: _below());
   }
 
   bool get _full => _fs.isFullscreen;
@@ -492,41 +639,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
 
   /// Ads play in the same stage; the full-screen toggle stays available.
   Widget _adStage(Widget ad) => Stack(
-        fit: StackFit.expand,
-        children: [
-          ad,
-          Positioned(right: 4, top: 4, child: SafeArea(child: FullscreenToggleButton(controller: _fs))),
-        ],
-      );
+    fit: StackFit.expand,
+    children: [
+      ad,
+      Positioned(
+        right: 4,
+        top: 4,
+        child: SafeArea(child: FullscreenToggleButton(controller: _fs)),
+      ),
+    ],
+  );
 
   Widget _loading() => Stack(
-        fit: StackFit.expand,
-        children: [
-          if (_req.posterUrl != null) Opacity(opacity: 0.35, child: AppImage(_req.posterUrl)),
-          const Center(child: CircularProgressIndicator()),
-          _backButton(),
-        ],
-      );
+    fit: StackFit.expand,
+    children: [
+      if (_req.posterUrl != null) Opacity(opacity: 0.35, child: AppImage(_req.posterUrl)),
+      const Center(child: CircularProgressIndicator()),
+      _backButton(),
+    ],
+  );
 
   Widget _backButton() => Positioned(
-        left: 8,
-        top: 8,
-        child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: _close)),
-      );
+    left: 8,
+    top: 8,
+    child: SafeArea(
+      child: IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: _close),
+    ),
+  );
 
   /// Portrait-only panel under the 16:9 stage: title, then the error message
   /// with Back/Retry, or the skip-intro / next-episode extras.
   Widget _below() {
     final error = _error;
     if (error != null) {
-      return PlayerErrorPanel(
-        error: error,
-        live: _req.isLive,
-        title: _req.title,
-        subtitle: _req.subtitle,
-        onBack: _close,
-        onRetry: error.retryable ? _retry : null,
-      );
+      return PlayerErrorPanel(error: error, live: _req.isLive, title: _req.title, subtitle: _req.subtitle, onBack: _close, onRetry: error.retryable ? _retry : null);
     }
     final extras = _extras();
     return Padding(
@@ -536,26 +682,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         children: [
           Row(
             children: [
-              Expanded(child: Text(_req.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18))),
+              Expanded(
+                child: Text(
+                  _req.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+              ),
               if (_req.isLive) _liveBadge(),
             ],
           ),
-          if (_req.subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_req.subtitle!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13))),
-          if (extras != null) ...[
-            const SizedBox(height: 16),
-            Align(alignment: Alignment.centerRight, child: extras),
-          ],
+          if (_req.subtitle != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                _req.subtitle!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+          if (extras != null) ...[const SizedBox(height: 16), Align(alignment: Alignment.centerRight, child: extras)],
         ],
       ),
     );
   }
 
   Widget _liveBadge() => Container(
-        margin: const EdgeInsets.only(left: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
-        child: const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-      );
+    margin: const EdgeInsets.only(left: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+    child: const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+  );
 
   /// Skip-intro button or next-episode countdown (over the video in full
   /// screen, under it in portrait). Null when neither applies.
@@ -610,34 +769,55 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     }
 
     final extras = _full ? _extras() : null;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _toggleControls,
-      onDoubleTapDown: (d) {
-        final w = MediaQuery.sizeOf(context).width;
-        _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (c != null && _initialized)
-            Center(child: AspectRatio(aspectRatio: c.value.aspectRatio == 0 ? 16 / 9 : c.value.aspectRatio, child: VideoPlayer(c)))
-          else
-            _loading(),
-          if (c != null && _initialized && _activeSubtitle != null)
-            Positioned(
-              left: 24,
-              right: 24,
-              bottom: _controlsVisible ? (_full ? 96 : 52) : (_full ? 32 : 12),
-              child: ClosedCaption(text: c.value.caption.text, textStyle: TextStyle(fontSize: _full ? 18 : 14, color: Colors.white, backgroundColor: Colors.black54)),
+    // The tap / double-tap detector covers the video only. Controls are a
+    // sibling layer, never a descendant: a button inside a double-tap
+    // detector competes with it and reacts 300 ms late (the double-tap
+    // timeout). Taps on empty control areas fall through to the detector.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleControls,
+          onDoubleTapDown: (d) {
+            final w = MediaQuery.sizeOf(context).width;
+            _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
+          },
+          child: c != null && _initialized
+              ? Center(
+                  child: AspectRatio(aspectRatio: c.value.aspectRatio == 0 ? 16 / 9 : c.value.aspectRatio, child: VideoPlayer(c)),
+                )
+              : const SizedBox.expand(),
+        ),
+        if (c == null || !_initialized) _loading(),
+        if (c != null && _initialized && _activeSubtitle != null)
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: _controlsVisible ? (_full ? 96 : 52) : (_full ? 32 : 12),
+            child: ClosedCaption(
+              text: c.value.caption.text,
+              textStyle: TextStyle(fontSize: _full ? 18 : 14, color: Colors.white, backgroundColor: Colors.black54),
             ),
-          if (_buffering || (c != null && !_initialized)) const Center(child: CircularProgressIndicator()),
-          if (_phase == _Phase.content && _initialized)
-            AdOverlays(context: _ads.context, settings: _ads.overlay, playing: playing && !_controlsVisible),
-          if (extras != null) Positioned(right: 24, bottom: 96, child: extras),
-          if (_controlsVisible) _controls(c, playing),
-        ],
-      ),
+          ),
+        if (_buffering || (c != null && !_initialized)) const Center(child: CircularProgressIndicator()),
+        if (_note != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            top: _full ? 64 : 52,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(16)),
+                child: Text(_note!, key: const Key('player-note'), style: const TextStyle(fontSize: 12), textAlign: TextAlign.center),
+              ),
+            ),
+          ),
+        if (_phase == _Phase.content && _initialized) AdOverlays(context: _ads.context, settings: _ads.overlay, playing: playing && !_controlsVisible),
+        if (extras != null) Positioned(right: 24, bottom: 96, child: extras),
+        if (_controlsVisible) _controls(c, playing),
+      ],
     );
   }
 
@@ -664,13 +844,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_req.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                            if (_req.subtitle != null) Text(_req.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                              _req.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                            ),
+                            if (_req.subtitle != null)
+                              Text(
+                                _req.subtitle!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                              ),
                           ],
                         )
                       : const SizedBox.shrink(),
                 ),
                 if (live && full) Padding(padding: const EdgeInsets.only(right: 8), child: _liveBadge()),
+                if (_qualityChoices.isNotEmpty) _qualityMenu(),
                 if (_req.subtitles.isNotEmpty)
                   PopupMenuButton<Subtitle?>(
                     tooltip: 'Subtitles',
@@ -681,8 +873,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
                       for (final s in _req.subtitles) PopupMenuItem<Subtitle?>(value: s, child: Text(s.languageName)),
                     ],
                   ),
-                if (_req.nextEpisode != null)
-                  IconButton(tooltip: 'Next episode', icon: const Icon(Icons.skip_next_rounded, size: 28), onPressed: _playNext),
+                if (_req.nextEpisode != null) IconButton(tooltip: 'Next episode', icon: const Icon(Icons.skip_next_rounded, size: 28), onPressed: _playNext),
               ],
             ),
             const Spacer(),
@@ -729,6 +920,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A decoder failure waiting for the outcome of its fallback.
+class _PendingFailure {
+  const _PendingFailure({required this.error, required this.decision, required this.position, required this.at});
+  final PlaybackError error;
+  final FallbackDecision decision;
+  final Duration position;
+  final DateTime at;
+}
+
+extension _QualityMenu on _PlayerScreenState {
+  static const _autoValue = 'auto';
+
+  Widget _qualityMenu() {
+    final choices = _qualityChoices;
+    final current = _variant == null ? _autoValue : _variant!.uri.toString();
+    return PopupMenuButton<String>(
+      tooltip: 'Quality',
+      icon: const Icon(Icons.tune_rounded),
+      initialValue: current,
+      onSelected: (value) {
+        if (value == _autoValue) {
+          unawaited(_switchToVariant(null, manual: true, note: 'Quality: Auto'));
+        } else {
+          final v = choices.where((c) => c.uri.toString() == value).firstOrNull;
+          if (v != null) unawaited(_switchToVariant(v, manual: true, note: 'Quality: ${v.label}'));
+        }
+        _scheduleHide();
+      },
+      itemBuilder: (_) => [
+        if (_autoAllowed) CheckedPopupMenuItem<String>(value: _autoValue, checked: _variant == null, child: const Text('Auto')),
+        for (final v in choices) CheckedPopupMenuItem<String>(value: v.uri.toString(), checked: _variant?.uri == v.uri, child: Text(v.label)),
+      ],
     );
   }
 }

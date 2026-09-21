@@ -220,7 +220,8 @@ class _AdOverlaysState extends ConsumerState<AdOverlays> with SingleTickerProvid
   int _nextBannerAt = 0;
   int _nextScrollerAt = 0;
   int? _bannerImpression;
-  late final AnimationController _marquee = AnimationController(vsync: this, duration: const Duration(seconds: 18))..repeat();
+  // Runs only while a scroller is on screen (no permanent animation while playing).
+  late final AnimationController _marquee = AnimationController(vsync: this, duration: const Duration(seconds: 18));
 
   @override
   void initState() {
@@ -258,9 +259,12 @@ class _AdOverlaysState extends ConsumerState<AdOverlays> with SingleTickerProvid
           _scroller = ad;
           _showScroller = true;
         });
+        _marquee.repeat();
         await ref.read(adsRepositoryProvider).impression(ad, widget.context);
         Future.delayed(const Duration(seconds: 20), () {
-          if (mounted) setState(() => _showScroller = false);
+          if (!mounted) return;
+          _marquee.stop();
+          setState(() => _showScroller = false);
         });
       }
       _nextScrollerAt = _seconds + s.scrollerRepeatInterval;
