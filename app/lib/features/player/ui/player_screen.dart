@@ -15,7 +15,9 @@ import '../../library/data/user_content_repository.dart';
 import '../../repositories.dart';
 import '../state/player_support.dart';
 import 'ad_player.dart';
+import 'playback_error.dart';
 import 'playback_request.dart';
+import 'player_error_panel.dart';
 import 'player_fullscreen.dart';
 
 enum _Phase { loadingAds, preRoll, content, midRoll }
@@ -50,7 +52,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
   bool _controlsVisible = true;
   Timer? _hideTimer;
   Timer? _positionTimer;
-  String? _error;
+  PlaybackError? _error;
   bool _buffering = false;
   bool _initialized = false;
   Duration _position = Duration.zero;
@@ -151,7 +153,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         final ch = await ref.read(contentRepositoryProvider).channel(_req.contentId);
         _req = _req.copyWith(streamUrl: ch.streamUrl);
       } catch (e) {
-        setState(() => _error = 'Channel not available');
+        _reportError('Channel not available (could not load the channel record)');
         return;
       }
     }
@@ -181,7 +183,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     _completedReported = false;
     final uri = Uri.tryParse(url);
     if (uri == null || url.isEmpty) {
-      setState(() => _error = 'No stream URL');
+      _reportError('No stream URL for this title');
       return;
     }
     final isHls = url.contains('.m3u8');
@@ -236,11 +238,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
   }
 
   void _reportError(String message) {
-    final friendly = PlayerScreenErrors.friendlyPlaybackError(message, _req.streamUrl);
-    setState(() => _error = friendly);
+    final error = classifyPlaybackError(message, _req.streamUrl);
+    setState(() => _error = error);
     // A stream error is an exit from full screen: back to portrait + system bars.
     unawaited(_fs.exit());
-    _analytics.qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: {'message': message, 'url_scheme': Uri.tryParse(_req.streamUrl)?.scheme});
+    // Codec string + content id let bad titles be found from the admin side.
+    _analytics.qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: error.toQoeMetadata(streamUrl: _req.streamUrl));
   }
 
   void _tick() {
@@ -514,6 +517,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
   /// Portrait-only panel under the 16:9 stage: title, then the error message
   /// with Back/Retry, or the skip-intro / next-episode extras.
   Widget _below() {
+    final error = _error;
+    if (error != null) {
+      return PlayerErrorPanel(
+        error: error,
+        live: _req.isLive,
+        title: _req.title,
+        subtitle: _req.subtitle,
+        onBack: _close,
+        onRetry: error.retryable ? _retry : null,
+      );
+    }
     final extras = _extras();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -527,20 +541,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
             ],
           ),
           if (_req.subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_req.subtitle!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13))),
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            Text(_req.isLive ? 'This channel cannot be played right now.' : 'This video cannot be played right now.', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            Text(_error!, style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 4, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                OutlinedButton(onPressed: _close, child: const Text('Back')),
-                const SizedBox(width: 12),
-                FilledButton.icon(onPressed: _retry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
-              ],
-            ),
-          ] else if (extras != null) ...[
+          if (extras != null) ...[
             const SizedBox(height: 16),
             Align(alignment: Alignment.centerRight, child: extras),
           ],
@@ -602,7 +603,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         fit: StackFit.expand,
         children: [
           if (_req.posterUrl != null) Opacity(opacity: 0.25, child: AppImage(_req.posterUrl)),
-          const Center(child: Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent)),
+          Center(child: Icon(_error!.kind == PlaybackErrorKind.unsupportedFormat ? Icons.videocam_off_outlined : Icons.error_outline_rounded, size: 48, color: Colors.redAccent)),
           _backButton(),
         ],
       );
@@ -732,25 +733,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
   }
 }
 
-/// Classifies native player errors into user-facing text. Cleartext (http://)
-/// blocks come from the per-brand network security policy (Android) or ATS (iOS).
+/// Kept for callers/tests that only need the viewer-facing sentence; the full
+/// classification lives in `playback_error.dart`.
 class PlayerScreenErrors {
-  static String friendlyPlaybackError(String raw, String url) {
-    final lower = raw.toLowerCase();
-    final host = Uri.tryParse(url)?.host ?? '';
-    final isHttp = url.startsWith('http://');
-    if (lower.contains('cleartext') || lower.contains('clear text') || lower.contains('app transport security') || (isHttp && (lower.contains('not permitted') || lower.contains('-1022')))) {
-      return 'This stream uses an insecure http:// address ($host) that this app is not allowed to play. Ask your provider for an https:// stream.';
-    }
-    if (lower.contains('certificate') || lower.contains('ssl') || lower.contains('tls') || lower.contains('trust anchor')) {
-      return 'The stream server ($host) has an invalid security certificate.';
-    }
-    if (lower.contains('404') || lower.contains('not found')) return 'The stream was not found on the server ($host).';
-    if (lower.contains('403') || lower.contains('401') || lower.contains('forbidden')) return 'The stream server ($host) refused access.';
-    if (lower.contains('unable to connect') || lower.contains('failed to connect') || lower.contains('unknownhost') || lower.contains('timeout')) {
-      return 'Could not connect to the stream server ($host). Check your connection and try again.';
-    }
-    return raw;
-  }
+  static String friendlyPlaybackError(String raw, String url) => classifyPlaybackError(raw, url).message;
 }
-
