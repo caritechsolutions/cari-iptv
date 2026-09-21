@@ -89,7 +89,7 @@ printf 'storePassword=…\nkeyPassword=…\nkeyAlias=upload\nstoreFile=upload-ke
 You do not need a local toolchain to try the app. The workflow `.github/workflows/android-debug.yml` runs on every push to the mobile-app branch that changes `app/**`:
 
 1. It builds the dev debug APK (`./tool/build_brand.sh caritv apk dev --debug`) and the prod release APK on Flutter 3.47.5 with Java 21 (pub and Gradle caches keep repeat runs short).
-2. **Emulator smoke test**: each APK is installed on an Android 16 (API 36, x86_64 Google APIs) emulator, launched, and after 20 s the job checks that the process is alive, our activity is in the foreground, no `FATAL EXCEPTION` was logged and the login screen reported itself (`CARI_SMOKE screen=login`). Logcat and a screenshot are uploaded as artifacts whether it passes or not (`tool/smoke_test.sh`).
+2. **Emulator smoke test**: each APK is installed on an Android 16 (API 36, x86_64 Google APIs) emulator, launched, and after 20 s the job checks that the process is alive, our activity is in the foreground, no `FATAL EXCEPTION` was logged and the login screen reported itself (`CARI_SMOKE screen=login`). Logcat (captured continuously from before launch) and a screenshot are uploaded as artifacts whether it passes or not (`tool/smoke_test.sh`).
 3. Only if both smoke tests pass does it publish a GitHub **prerelease** tagged `dev-<short sha>` under the repository's Releases page with `caritv-dev-debug-<sha>.apk` (and `SHA256SUMS.txt`) attached as a direct download.
 4. The APKs are also uploaded as a workflow artifact (Actions → the run → Artifacts) as a fallback; artifacts expire after 14 days.
 

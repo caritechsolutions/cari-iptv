@@ -8,6 +8,10 @@
 # Exit codes: 0 = app running, our activity resumed, no FATAL EXCEPTION, and the
 #                 login screen reported itself ("CARI_SMOKE screen=login" in logcat);
 #             1 = crash / not running / FATAL EXCEPTION / login screen not reached.
+#
+# Logcat is captured continuously from before the launch (not dumped afterwards):
+# on a busy Google APIs image the 1 MB main ring buffer wraps in ~10 s, which
+# silently drops the app's own startup lines, including the login marker.
 set -uo pipefail
 
 APK="${1:?apk path}"
@@ -27,6 +31,9 @@ adb shell getprop ro.product.cpu.abi | sed 's/^/ABI /'
 
 step "install $APK"
 adb logcat -c || true
+adb logcat -G 16M >/dev/null 2>&1 || true
+adb logcat -v threadtime > "$LOG" 2>/dev/null &
+LOGCAT_PID=$!
 adb uninstall "$PKG" >/dev/null 2>&1 || true
 if ! adb install -r -t "$APK"; then
   echo "SMOKE RESULT: FAIL (install failed)"
@@ -47,7 +54,13 @@ echo "resumed: ${RESUMED:-<none>}"
 adb shell screencap -p /sdcard/smoke.png >/dev/null 2>&1 && adb pull /sdcard/smoke.png "$OUT_DIR/screenshot.png" >/dev/null 2>&1 || echo "(screenshot failed)"
 
 step "logcat"
-adb logcat -d > "$LOG" 2>/dev/null || true
+sleep 1
+kill "$LOGCAT_PID" 2>/dev/null || true
+wait "$LOGCAT_PID" 2>/dev/null || true
+if [[ ! -s "$LOG" ]]; then
+  echo "(continuous capture produced nothing; falling back to a buffer dump)"
+  adb logcat -d > "$LOG" 2>/dev/null || true
+fi
 echo "logcat lines: $(wc -l < "$LOG")"
 FATAL="$(grep -n -A 40 'FATAL EXCEPTION' "$LOG" | head -120 || true)"
 ANR="$(grep -n 'ANR in' "$LOG" | head -5 || true)"
