@@ -277,6 +277,9 @@ class _EpgGridState extends State<EpgGrid> {
                     programme: p,
                     now: widget.now,
                     timeFmt: timeFmt,
+                    hScroll: _h,
+                    left: b.left,
+                    width: b.width,
                     onTap: widget.onProgrammeTap == null ? null : () => widget.onProgrammeTap!(ch, p),
                   ),
                 ),
@@ -286,12 +289,34 @@ class _EpgGridState extends State<EpgGrid> {
   }
 }
 
+/// A programme block. Its title and time stay pinned inside the visible part
+/// of the block while the timeline scrolls: when the block's start is off the
+/// left edge, the text shifts right by the hidden amount (keeping at least
+/// [_minTextWidth] of the block for it), so the airing programme's name is
+/// readable on a phone-width screen.
 class _ProgrammeBlock extends StatelessWidget {
-  const _ProgrammeBlock({required this.programme, required this.now, required this.timeFmt, this.onTap});
+  const _ProgrammeBlock({required this.programme, required this.now, required this.timeFmt, required this.hScroll, required this.left, required this.width, this.onTap});
   final EpgProgramme programme;
   final DateTime now;
   final DateFormat timeFmt;
+
+  /// Horizontal timeline scroll; the block listens to it to pin its text.
+  final ScrollController hScroll;
+
+  /// Block position and width in timeline pixels.
+  final double left;
+  final double width;
   final VoidCallback? onTap;
+
+  static const double _padding = 6;
+  static const double _minTextWidth = 48;
+
+  /// How far the text moves right so it starts at the visible edge.
+  double _textShift() {
+    final offset = hScroll.hasClients ? hScroll.offset : 0.0;
+    final maxShift = (width - _padding * 2 - _minTextWidth).clamp(0.0, double.infinity);
+    return (offset - left).clamp(0.0, maxShift);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -311,13 +336,17 @@ class _ProgrammeBlock extends StatelessWidget {
         child: InkWell(
           key: Key('epg-block-${p.key}'),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
+          child: ListenableBuilder(
+            listenable: hScroll,
+            builder: (context, child) => Padding(
+              padding: EdgeInsets.fromLTRB(_padding + _textShift(), 3, _padding, 3),
+              child: child,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.isPlaceholder ? Colors.white60 : Colors.white)),
+                Text(p.title, key: Key('epg-title-${p.key}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.isPlaceholder ? Colors.white60 : Colors.white)),
                 Text(timeFmt.format(p.start!.toLocal()), maxLines: 1, style: const TextStyle(fontSize: 10, color: Colors.white54)),
                 if (airing) ...[
                   const Spacer(),

@@ -114,6 +114,38 @@ void main() {
     expect(tester.getTopLeft(find.text('Channel 20')).dy, closeTo(tester.getTopLeft(find.text('Channel 20 Content').first).dy, 20));
   });
 
+  testWidgets('a block that starts off the left edge keeps its title pinned inside the visible part', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = EpgGridController();
+    await tester.pumpWidget(harness(c));
+    await tester.pump();
+
+    final show = programmes()[1]!.firstWhere((p) => p.title == 'Morning Show');
+    final block = find.byKey(Key('epg-block-${show.key}'));
+    final title = find.byKey(Key('epg-title-${show.key}'));
+    // On open the block (13:30–14:30) starts left of the viewport edge (112).
+    expect(tester.getRect(block).left, lessThan(112));
+    expect(tester.getRect(block).right, greaterThan(112));
+    expect(tester.getTopLeft(title).dx, closeTo(112 + 6, 0.5), reason: 'title moved to the visible edge');
+    expect(tester.getRect(title).right, lessThanOrEqualTo(tester.getRect(block).right));
+
+    // Scroll back one hour: the block start is on screen, the title sits at its normal place.
+    c.scrollHours(-1);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(title).dx, closeTo(tester.getRect(block).left + 6, 0.5));
+
+    // Scroll far enough that only the tail of the block is visible: the title
+    // stops at the block's end instead of leaving it.
+    c.scrollHours(1.5);
+    await tester.pumpAndSettle();
+    final r = tester.getRect(block);
+    expect(r.right - 112, lessThan(60));
+    expect(tester.getTopLeft(title).dx, lessThanOrEqualTo(r.right - 6 - 48 + 0.5));
+    expect(tester.getTopLeft(title).dx, greaterThan(r.left));
+  });
+
   testWidgets('every block is tappable and reports the exact programme, placeholders included', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
