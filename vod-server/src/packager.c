@@ -1,8 +1,10 @@
 #include "packager.h"
 #include "drm.h"
 #include "logger.h"
+#include "cjson/cJSON.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -152,6 +154,190 @@ static void estimate_stream_info(const char *label, int *bandwidth,
     } else if (strstr(label, "2160") != NULL) {
         *bandwidth = 18000000; *width = 3840; *height = 2160;
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * CODECS (RFC 6381) derived from the encoded renditions themselves.
+ *
+ * The master playlist must tell players the exact profile/level of every
+ * variant so an undecodable one (e.g. H.264 High 10 on phones) is skipped at
+ * selection time. Values are read from the rendition files' decoder
+ * configuration (avcC / hvcC / av1C) and the audio file's codec + profile —
+ * never assumed. If any rendition cannot be read, CODECS is omitted for the
+ * whole master (a wrong string would make players skip good renditions).
+ * ------------------------------------------------------------------------- */
+
+/* Run a command and return its stdout (malloc'd) or NULL on failure */
+static char *run_capture(const char *cmd)
+{
+    FILE *fp = popen(cmd, "r");
+    if (!fp) return NULL;
+    size_t cap = 8192, len = 0;
+    char *buf = malloc(cap);
+    if (!buf) { pclose(fp); return NULL; }
+    char tmp[4096];
+    size_t n;
+    while ((n = fread(tmp, 1, sizeof tmp, fp)) > 0) {
+        if (len + n + 1 > cap) {
+            cap *= 2;
+            char *t = realloc(buf, cap);
+            if (!t) { free(buf); pclose(fp); return NULL; }
+            buf = t;
+        }
+        memcpy(buf + len, tmp, n);
+        len += n;
+    }
+    buf[len] = '\0';
+    int rc = pclose(fp);
+    if (rc == -1 || !WIFEXITED(rc) || WEXITSTATUS(rc) != 0) { free(buf); return NULL; }
+    return buf;
+}
+
+static int hexval(int c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* ffprobe -show_data prints extradata as a hexdump:
+ *   "00000000: 0164 0028 ffe1 0019 6764 0028 acd9 4078  .d.(....gd.(..@x"
+ * Collect the hex bytes of every line (offset prefix and ASCII column skipped). */
+static size_t parse_hexdump(const char *dump, unsigned char *out, size_t max)
+{
+    size_t n = 0;
+    const char *p = dump;
+    while (p && *p) {
+        const char *line_end = strchr(p, '\n');
+        if (!line_end) line_end = p + strlen(p);
+        const char *colon = memchr(p, ':', (size_t)(line_end - p));
+        const char *q = colon ? colon + 1 : p;
+        int pending = -1;
+        while (q < line_end) {
+            if (*q == ' ') {
+                if (q + 1 < line_end && q[1] == ' ') break; /* ASCII column follows */
+                q++;
+                continue;
+            }
+            int v = hexval((unsigned char)*q);
+            if (v < 0) break;
+            if (pending < 0) {
+                pending = v;
+            } else {
+                if (n < max) out[n++] = (unsigned char)((pending << 4) | v);
+                pending = -1;
+            }
+            q++;
+        }
+        if (*line_end == '\0') break;
+        p = line_end + 1;
+    }
+    return n;
+}
+
+/* avc1.PPCCLL / hvc1.… / av01.… from the first video stream of `path` */
+static int video_codec_string(const vod_config_t *config, const char *path,
+                              char *out, size_t out_len)
+{
+    char cmd[MAX_PATH_LEN + 512];
+    snprintf(cmd, sizeof cmd,
+             "%s -v error -select_streams v:0 -show_streams -show_data -print_format json \"%s\" 2>/dev/null",
+             config->ffprobe_path, path);
+    char *json = run_capture(cmd);
+    if (!json) return -1;
+    cJSON *root = cJSON_Parse(json);
+    free(json);
+    if (!root) return -1;
+
+    int rc = -1;
+    cJSON *streams = cJSON_GetObjectItemCaseSensitive(root, "streams");
+    cJSON *st = (streams && cJSON_IsArray(streams)) ? cJSON_GetArrayItem(streams, 0) : NULL;
+    cJSON *codec = st ? cJSON_GetObjectItemCaseSensitive(st, "codec_name") : NULL;
+    cJSON *extra = st ? cJSON_GetObjectItemCaseSensitive(st, "extradata") : NULL;
+    if (codec && cJSON_IsString(codec) && extra && cJSON_IsString(extra)) {
+        unsigned char b[512];
+        size_t n = parse_hexdump(extra->valuestring, b, sizeof b);
+        const char *name = codec->valuestring;
+        if (strcmp(name, "h264") == 0 && n >= 4 && b[0] == 1) {
+            /* avcC: version, AVCProfileIndication, profile_compatibility (constraint flags), AVCLevelIndication */
+            snprintf(out, out_len, "avc1.%02X%02X%02X", b[1], b[2], b[3]);
+            rc = 0;
+        } else if (strcmp(name, "hevc") == 0 && n >= 13 && b[0] == 1) {
+            /* hvcC: b[1] = profile_space(2) tier(1) profile_idc(5); b[2..5] = compatibility flags;
+             * b[6..11] = constraint flags; b[12] = level_idc */
+            int space   = (b[1] >> 6) & 3;
+            int tier    = (b[1] >> 5) & 1;
+            int profile =  b[1] & 0x1f;
+            uint32_t compat = ((uint32_t)b[2] << 24) | ((uint32_t)b[3] << 16) |
+                              ((uint32_t)b[4] << 8) | (uint32_t)b[5];
+            uint32_t rev = 0; /* the codec string wants the flags in reversed bit order */
+            for (int i = 0; i < 32; i++) if (compat & (1u << i)) rev |= 1u << (31 - i);
+            char sp[2] = { space ? (char)('A' + space - 1) : '\0', '\0' };
+            int pos = snprintf(out, out_len, "hvc1.%s%d.%X.%c%d", sp, profile, rev, tier ? 'H' : 'L', b[12]);
+            int last = 11;
+            while (last >= 6 && b[last] == 0) last--; /* trailing zero constraint bytes omitted */
+            for (int i = 6; i <= last && pos > 0 && (size_t)pos < out_len; i++)
+                pos += snprintf(out + pos, out_len - (size_t)pos, ".%02X", b[i]);
+            rc = 0;
+        } else if (strcmp(name, "av1") == 0 && n >= 4 && (b[0] & 0x80)) {
+            /* av1C: b[1] = seq_profile(3) seq_level_idx(5); b[2] = tier(1) high_bitdepth(1) twelve_bit(1) ... */
+            int profile = (b[1] >> 5) & 7, level = b[1] & 0x1f;
+            int tier = (b[2] >> 7) & 1, high = (b[2] >> 6) & 1, twelve = (b[2] >> 5) & 1;
+            int depth = high ? (twelve ? 12 : 10) : 8;
+            snprintf(out, out_len, "av01.%d.%02d%c.%02d", profile, level, tier ? 'H' : 'M', depth);
+            rc = 0;
+        } else {
+            log_warn("CODECS: unsupported video codec '%s' or unreadable decoder config in %s (%zu bytes)",
+                     name, path, n);
+        }
+    } else {
+        log_warn("CODECS: ffprobe gave no codec_name/extradata for %s", path);
+    }
+    cJSON_Delete(root);
+    return rc;
+}
+
+/* mp4a.40.x / ac-3 / ec-3 / opus from the audio file's real codec and profile */
+static int audio_codec_string(const vod_config_t *config, const char *path,
+                              char *out, size_t out_len)
+{
+    char cmd[MAX_PATH_LEN + 512];
+    snprintf(cmd, sizeof cmd,
+             "%s -v error -select_streams a:0 -show_entries stream=codec_name,profile -print_format json \"%s\" 2>/dev/null",
+             config->ffprobe_path, path);
+    char *json = run_capture(cmd);
+    if (!json) return -1;
+    cJSON *root = cJSON_Parse(json);
+    free(json);
+    if (!root) return -1;
+
+    int rc = -1;
+    cJSON *streams = cJSON_GetObjectItemCaseSensitive(root, "streams");
+    cJSON *st = (streams && cJSON_IsArray(streams)) ? cJSON_GetArrayItem(streams, 0) : NULL;
+    cJSON *codec = st ? cJSON_GetObjectItemCaseSensitive(st, "codec_name") : NULL;
+    cJSON *prof  = st ? cJSON_GetObjectItemCaseSensitive(st, "profile") : NULL;
+    const char *name = (codec && cJSON_IsString(codec)) ? codec->valuestring : NULL;
+    const char *profile = (prof && cJSON_IsString(prof)) ? prof->valuestring : NULL;
+    if (name) {
+        if (strcmp(name, "aac") == 0) {
+            /* AAC object type from the actual profile; unknown profile = not guessed */
+            if (profile && strcmp(profile, "LC") == 0)             { snprintf(out, out_len, "mp4a.40.2");  rc = 0; }
+            else if (profile && strcmp(profile, "HE-AAC") == 0)    { snprintf(out, out_len, "mp4a.40.5");  rc = 0; }
+            else if (profile && strcmp(profile, "HE-AACv2") == 0)  { snprintf(out, out_len, "mp4a.40.29"); rc = 0; }
+            else if (profile && strcmp(profile, "Main") == 0)      { snprintf(out, out_len, "mp4a.40.1");  rc = 0; }
+            else log_warn("CODECS: AAC profile '%s' in %s not recognised", profile ? profile : "(none)", path);
+        } else if (strcmp(name, "mp3") == 0)  { snprintf(out, out_len, "mp4a.40.34"); rc = 0; }
+        else if (strcmp(name, "ac3") == 0)    { snprintf(out, out_len, "ac-3");       rc = 0; }
+        else if (strcmp(name, "eac3") == 0)   { snprintf(out, out_len, "ec-3");       rc = 0; }
+        else if (strcmp(name, "opus") == 0)   { snprintf(out, out_len, "opus");       rc = 0; }
+        else if (strcmp(name, "flac") == 0)   { snprintf(out, out_len, "flac");       rc = 0; }
+        else log_warn("CODECS: audio codec '%s' in %s not recognised", name, path);
+    } else {
+        log_warn("CODECS: ffprobe gave no audio codec_name for %s", path);
+    }
+    cJSON_Delete(root);
+    return rc;
 }
 
 /* ---------------------------------------------------------------------------
@@ -353,6 +539,25 @@ int packager_run(package_state_t *state, const vod_config_t *config)
 
     fprintf(master, "\n");
 
+    /* CODECS for every variant, from the encoded files (see derivation above).
+     * Written only when it could be derived for all of them. */
+    char vcodecs[MAX_RENDITIONS][96];
+    char acodecs[64] = {0};
+    bool codecs_ok = true;
+    for (int i = 0; i < video_count; i++) {
+        vcodecs[i][0] = '\0';
+        if (video_codec_string(config, video_paths[i], vcodecs[i], sizeof(vcodecs[i])) != 0) {
+            codecs_ok = false;
+        }
+    }
+    if (has_audio && audio_codec_string(config, audio_path, acodecs, sizeof(acodecs)) != 0) {
+        codecs_ok = false;
+    }
+    if (!codecs_ok) {
+        log_warn("Job %d: CODECS omitted from master.m3u8 — could not be derived for every rendition (never guessed)",
+                 state->job_id);
+    }
+
     for (int i = 0; i < video_count; i++) {
         char cmd[16384];
         char variant_playlist[64];
@@ -426,16 +631,22 @@ int packager_run(package_state_t *state, const vod_config_t *config)
         int bandwidth, width, height;
         estimate_stream_info(video_labels[i], &bandwidth, &width, &height);
 
-        if (has_subs) {
-            fprintf(master,
-                    "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\",SUBTITLES=\"subs\"\n",
-                    bandwidth, width, height, video_labels[i]);
-        } else {
-            fprintf(master,
-                    "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
-                    bandwidth, width, height, video_labels[i]);
+        char line[512];
+        int lp = snprintf(line, sizeof line,
+                          "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"",
+                          bandwidth, width, height, video_labels[i]);
+        if (codecs_ok && lp > 0 && (size_t)lp < sizeof line) {
+            if (has_audio && acodecs[0]) {
+                lp += snprintf(line + lp, sizeof line - (size_t)lp, ",CODECS=\"%s,%s\"", vcodecs[i], acodecs);
+            } else {
+                lp += snprintf(line + lp, sizeof line - (size_t)lp, ",CODECS=\"%s\"", vcodecs[i]);
+            }
         }
-        fprintf(master, "%s\n", variant_playlist);
+        if (has_subs && lp > 0 && (size_t)lp < sizeof line) {
+            lp += snprintf(line + lp, sizeof line - (size_t)lp, ",SUBTITLES=\"subs\"");
+        }
+        fprintf(master, "%s\n%s\n", line, variant_playlist);
+        log_info("Job %d master line: %s -> %s", state->job_id, line, variant_playlist);
 
         state->progress = 10.0 + ((double)(i + 1) / video_count) * 80.0;
         log_info("HLS: packaged rendition %s (%d/%d)%s",

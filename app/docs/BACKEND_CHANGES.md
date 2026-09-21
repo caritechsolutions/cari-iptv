@@ -130,3 +130,28 @@ Also set **Settings → Hardware acceleration** in the VOD GUI to a value the se
 4. Re-run the audit script; the list should be empty. The app now reports decoder failures as `playback_error` QoE events with `codec` (e.g. `avc1.6E0028`) and the content id, so any title missed by the audit shows up in analytics.
 
 Files: `vod-server/src/transcoder.c`, `vod-server/src/transcoder.h`, `vod-server/tools/audit_pixfmt.sh` (+ `test_audit_pixfmt.sh`, run with `bash vod-server/tools/test_audit_pixfmt.sh`).
+
+## 5. VOD server: CODECS on every master playlist variant (`vod:` commit)
+
+**Why.** `master.m3u8` carried only `BANDWIDTH`, `RESOLUTION` and `NAME`. Without `CODECS` ExoPlayer/AVPlayer cannot check decoder support before choosing a variant, so adaptive selection climbed into a High 10 rendition and failed at the first decoded segment. With `CODECS="avc1.6E0028,mp4a.40.2"` the player excludes that variant by itself, and the mobile app can match failures by exact codec string instead of the resolution rule.
+
+**What changed (`vod-server/src/packager.c`).** Before the master lines are written, every rendition MP4 is probed (`ffprobe -show_streams -show_data`) and the RFC 6381 string is built from the file's own decoder configuration, never from assumed values:
+
+| Codec | Source bytes | String |
+|---|---|---|
+| H.264 | `avcC`: profile_idc, constraint flags byte, level_idc | `avc1.PPCCLL` e.g. `avc1.640028` (High 4.0), `avc1.6E0028` (High 10 4.0) |
+| HEVC | `hvcC`: profile space/tier/idc, compatibility flags (bit-reversed hex), level, constraint bytes (trailing zeros dropped) | `hvc1.1.6.L120.90` |
+| AV1 | `av1C`: seq_profile, seq_level_idx, tier, bit depth | `av01.0.08M.08` |
+| Audio | `audio.m4a` codec_name + profile: AAC LC → `mp4a.40.2`, HE-AAC → `mp4a.40.5`, HE-AACv2 → `mp4a.40.29`, Main → `mp4a.40.1`; mp3 `mp4a.40.34`, ac3 `ac-3`, eac3 `ec-3`, opus, flac | appended after the video string |
+
+If any rendition (or the audio) cannot be derived, `CODECS` is omitted from the whole master and a warning is logged; a wrong string would make players skip good renditions. Each generated line is logged: `Job N master line: #EXT-X-STREAM-INF:BANDWIDTH=…,CODECS="…" -> stream_720p.m3u8`.
+
+**Deploy.** Same build/swap steps as section 4 (both changes are in the same binary). Verification after one job:
+
+```bash
+grep -n CODECS /var/lib/vod-server/library/<content_id>/master.m3u8
+journalctl -u vod-server --no-pager | grep "master line"
+#   expected after the 8-bit fix: CODECS="avc1.6400xx,mp4a.40.2" on every line
+```
+
+Existing titles keep their old master until re-packaged (section 4 procedure); the app's fallback handles them with the resolution rule in the meantime.
