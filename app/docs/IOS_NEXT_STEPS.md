@@ -9,11 +9,11 @@ What is needed to build and ship for iOS:
 3. **Flavours on iOS**: create two Xcode schemes/configurations (`dev`, `prod`) or use `--dart-define` instead; Flutter's `--flavor` needs matching Xcode build configurations (`Debug-dev`, `Release-prod`, …). The Dart side already switches on the entry point (`main_dev.dart` / `main_prod.dart`).
 4. **Info.plist additions**:
    - `NSAppTransportSecurity`: mirror the brand's `CLEARTEXT_HOSTS` (from `brands/<brand>/brand.json`). Empty list → no ATS exception (HTTPS only, the caritv default). Non-empty → add an `NSExceptionDomains` entry per host with `NSExceptionAllowsInsecureHTTPLoads = true` (preferred over the blanket `NSAllowsArbitraryLoadsForMedia`). `tool/apply_brand.dart` prints the exact plist snippet for the brand; an http host not listed will fail to play. HTTPS streams are the recommended fix.
-   - `UISupportedInterfaceOrientations` must include landscape (the player forces landscape).
+   - `UISupportedInterfaceOrientations` must include portrait and both landscape values (the app is portrait-locked; the player's full-screen button requests landscape at runtime).
    - Background audio is intentionally off (`allowBackgroundPlayback: false`).
 5. **Launcher icons and splash**: `dart run flutter_launcher_icons` and `dart run flutter_native_splash:create` already generate iOS assets from `assets/branding/`.
 6. **HLS/AES-128**: AVPlayer fetches `#EXT-X-KEY` keys natively from the public key URL; nothing to change. If ClearKey/DASH is ever needed on iOS it is *not* supported by AVPlayer (FairPlay only) — stay on HLS.
 7. **App Store compliance** (same as Play): privacy policy URL, account deletion (in-app flow exists; App Review also requires it to be discoverable), no external purchase links (already none), App Privacy "nutrition label" answers from `STORE_READINESS.md`.
 8. **Sign-in with Apple**: only required if a third-party login is added. Email/password login does not trigger the requirement.
 9. **Build**: `flutter build ipa --release --flavor prod -t lib/main_prod.dart` after configuring signing in Xcode, then upload with Transporter or `xcrun altool`.
-10. **Test on a real device**: HLS playback, landscape rotation, wake lock, Keychain persistence across restarts, deep links (if added later via Universal Links).
+10. **Test on a real device**: HLS playback, full-screen rotation and restore (button, back gesture, stream end, error), wake lock, Keychain persistence across restarts, deep links (if added later via Universal Links).

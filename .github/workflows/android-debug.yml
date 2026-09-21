@@ -1,7 +1,7 @@
 name: Android debug APK
 
 # build  → builds the caritv dev debug APK and the caritv prod release APK
-# smoke  → boots an emulator (KVM), installs each APK, launches it, waits 20 s,
+# smoke  → boots an API 36 (Android 16) emulator (KVM), installs each APK, launches it, waits 20 s,
 #          fails if the process died / FATAL EXCEPTION / activity not resumed;
 #          logcat + screenshot are uploaded either way
 # publish→ only after both smoke tests pass: prerelease dev-<short sha> with
@@ -130,13 +130,13 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-google_apis
+          key: avd-api36-x86_64-google_apis
 
       - name: Create AVD snapshot (cache miss only)
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 36
           arch: x86_64
           target: google_apis
           profile: pixel_6
@@ -148,7 +148,7 @@ jobs:
       - name: Run smoke test on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 36
           arch: x86_64
           target: google_apis
           profile: pixel_6

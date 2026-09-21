@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
@@ -15,11 +14,17 @@ import '../../repositories.dart';
 import '../state/player_support.dart';
 import 'ad_player.dart';
 import 'playback_request.dart';
+import 'player_fullscreen.dart';
 
 enum _Phase { loadingAds, preRoll, content, midRoll }
 
-/// Full-screen landscape player for live channels and VOD.
+/// Player for live channels and VOD.
 ///
+/// - Portrait by default (the app is portrait-locked): the video sits at the
+///   top of the screen in a 16:9 stage, title and extras underneath. The
+///   full-screen button rotates to landscape + immersive; back, playback
+///   ending, a stream error or leaving the player always restore portrait.
+///   Pre-roll / mid-roll ads play in the same stage under the same rules.
 /// - HLS via video_player (ExoPlayer / AVPlayer); AES-128 keys are fetched by
 ///   the native player from the public key URL inside the playlist.
 /// - Resume position, progress posting every 10 s, skip-intro / next-episode
@@ -57,14 +62,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   bool _startupReported = false;
   bool _completedReported = false;
   late final ProgressReporter _progress = ProgressReporter(ref.read(userContentRepositoryProvider), _req);
+  final PlayerFullscreen _fs = PlayerFullscreen();
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _fs.addListener(_onFullscreenChanged);
     WakelockPlus.enable();
     _start();
+  }
+
+  void _onFullscreenChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _start() async {
@@ -159,6 +168,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   void _reportError(String message) {
     final friendly = PlayerScreenErrors.friendlyPlaybackError(message, _req.streamUrl);
     setState(() => _error = friendly);
+    // A stream error is an exit from full screen: back to portrait + system bars.
+    unawaited(_fs.exit());
     ref.read(analyticsRepositoryProvider).qoe('playback_error', contentType: _req.contentType, contentId: _req.contentId, metadata: {'message': message, 'url_scheme': Uri.tryParse(_req.streamUrl)?.scheme});
   }
 
@@ -201,7 +212,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       _completedReported = true;
       _progress.report(dur, dur);
       ref.read(analyticsRepositoryProvider).track('watch_complete', contentType: _req.contentType, contentId: _req.contentId);
-      if (_req.nextEpisode != null && !_showNextCountdown) _beginNextCountdown();
+      if (_req.nextEpisode != null && !_showNextCountdown) {
+        _beginNextCountdown();
+      } else {
+        // Playback ended with nothing queued: leave full screen.
+        unawaited(_fs.exit());
+      }
     }
   }
 
@@ -253,6 +269,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _nextTimer?.cancel();
     _nextTimer = null;
     setState(() => _showNextCountdown = false);
+    // Cancelling after the end of the episode means playback is over.
+    if (_completedReported) unawaited(_fs.exit());
   }
 
   Future<void> _playNext() async {
@@ -368,8 +386,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     c?.dispose();
     unawaited(ref.read(analyticsRepositoryProvider).flush());
     WakelockPlus.disable();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
+    // Unconditional: whatever state we were in, the app leaves the player in portrait.
+    _fs.removeListener(_onFullscreenChanged);
+    _fs.dispose();
+    unawaited(PlayerFullscreen.restorePortrait());
     super.dispose();
   }
 
@@ -378,26 +398,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final c = _controller;
     final playing = c?.value.isPlaying ?? false;
 
-    Widget body;
+    Widget stage;
     switch (_phase) {
       case _Phase.loadingAds:
-        body = _loading();
+        stage = _loading();
       case _Phase.preRoll:
-        body = AdPlayer(ads: _ads.preRoll, context: _ads.context, onFinished: _startContent);
+        stage = _adStage(AdPlayer(ads: _ads.preRoll, context: _ads.context, onFinished: _startContent));
       case _Phase.midRoll:
-        body = AdPlayer(ads: _midRollAds, context: _ads.context, onFinished: _endMidRoll);
+        stage = _adStage(AdPlayer(ads: _midRollAds, context: _ads.context, onFinished: _endMidRoll));
       case _Phase.content:
-        body = _content(c, playing);
+        stage = _content(c, playing);
     }
 
-    return PopScope(
-      canPop: true,
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: body,
-      ),
+    return PlayerShell(
+      controller: _fs,
+      stage: stage,
+      below: _below(),
     );
   }
+
+  bool get _full => _fs.isFullscreen;
+
+  void _close() => context.canPop() ? context.pop() : context.go('/home');
+
+  /// Ads play in the same stage; the full-screen toggle stays available.
+  Widget _adStage(Widget ad) => Stack(
+        fit: StackFit.expand,
+        children: [
+          ad,
+          Positioned(right: 4, top: 4, child: SafeArea(child: FullscreenToggleButton(controller: _fs))),
+        ],
+      );
 
   Widget _loading() => Stack(
         fit: StackFit.expand,
@@ -411,43 +442,107 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   Widget _backButton() => Positioned(
         left: 8,
         top: 8,
-        child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: () => context.canPop() ? context.pop() : context.go('/home'))),
+        child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: _close)),
       );
+
+  /// Portrait-only panel under the 16:9 stage: title, then the error message
+  /// with Back/Retry, or the skip-intro / next-episode extras.
+  Widget _below() {
+    final extras = _extras();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(_req.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18))),
+              if (_req.isLive) _liveBadge(),
+            ],
+          ),
+          if (_req.subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_req.subtitle!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13))),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            Text(_req.isLive ? 'This channel cannot be played right now.' : 'This video cannot be played right now.', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text(_error!, style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 4, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                OutlinedButton(onPressed: _close, child: const Text('Back')),
+                const SizedBox(width: 12),
+                FilledButton.icon(onPressed: _retry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+              ],
+            ),
+          ] else if (extras != null) ...[
+            const SizedBox(height: 16),
+            Align(alignment: Alignment.centerRight, child: extras),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _liveBadge() => Container(
+        margin: const EdgeInsets.only(left: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+        child: const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+      );
+
+  /// Skip-intro button or next-episode countdown (over the video in full
+  /// screen, under it in portrait). Null when neither applies.
+  Widget? _extras() {
+    if (_showNextCountdown) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(10)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Next episode in $_nextCountdown s', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            Text(_req.nextEpisode?.title ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(onPressed: _cancelNextCountdown, child: const Text('Cancel')),
+                FilledButton(onPressed: _playNext, child: const Text('Play now')),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    if (_showSkipIntro) {
+      return FilledButton.tonal(
+        onPressed: () {
+          final end = _marker('intro_end')?.positionSeconds;
+          if (end != null) _controller?.seekTo(Duration(milliseconds: (end * 1000).round()));
+          ref.read(analyticsRepositoryProvider).track('skip_intro', contentType: _req.contentType, contentId: _req.contentId);
+        },
+        child: const Text('Skip intro'),
+      );
+    }
+    return null;
+  }
 
   Widget _content(VideoPlayerController? c, bool playing) {
     if (_error != null) {
+      // Details and the Back/Retry buttons are in the panel under the stage
+      // (portrait; a stream error always leaves full screen).
       return Stack(
         fit: StackFit.expand,
         children: [
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent),
-                const SizedBox(height: 12),
-                Text(_req.isLive ? 'This channel cannot be played right now.' : 'This video cannot be played right now.', style: const TextStyle(fontSize: 16)),
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 3, overflow: TextOverflow.ellipsis),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    OutlinedButton(onPressed: () => context.canPop() ? context.pop() : context.go('/home'), child: const Text('Back')),
-                    const SizedBox(width: 12),
-                    FilledButton.icon(onPressed: _retry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          if (_req.posterUrl != null) Opacity(opacity: 0.25, child: AppImage(_req.posterUrl)),
+          const Center(child: Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent)),
           _backButton(),
         ],
       );
     }
 
+    final extras = _full ? _extras() : null;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleControls,
@@ -466,50 +561,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             Positioned(
               left: 24,
               right: 24,
-              bottom: _controlsVisible ? 96 : 32,
-              child: ClosedCaption(text: c.value.caption.text, textStyle: const TextStyle(fontSize: 18, color: Colors.white, backgroundColor: Colors.black54)),
+              bottom: _controlsVisible ? (_full ? 96 : 52) : (_full ? 32 : 12),
+              child: ClosedCaption(text: c.value.caption.text, textStyle: TextStyle(fontSize: _full ? 18 : 14, color: Colors.white, backgroundColor: Colors.black54)),
             ),
           if (_buffering || (c != null && !_initialized)) const Center(child: CircularProgressIndicator()),
           if (_phase == _Phase.content && _initialized)
             AdOverlays(context: _ads.context, settings: _ads.overlay, playing: playing && !_controlsVisible),
-          if (_showSkipIntro && !_showNextCountdown)
-            Positioned(
-              right: 24,
-              bottom: 96,
-              child: FilledButton.tonal(
-                onPressed: () {
-                  final end = _marker('intro_end')?.positionSeconds;
-                  if (end != null) c?.seekTo(Duration(milliseconds: (end * 1000).round()));
-                  ref.read(analyticsRepositoryProvider).track('skip_intro', contentType: _req.contentType, contentId: _req.contentId);
-                },
-                child: const Text('Skip intro'),
-              ),
-            ),
-          if (_showNextCountdown)
-            Positioned(
-              right: 24,
-              bottom: 96,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(10)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Next episode in $_nextCountdown s', style: const TextStyle(fontSize: 12, color: Colors.white70)),
-                    Text(_req.nextEpisode?.title ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        TextButton(onPressed: _cancelNextCountdown, child: const Text('Cancel')),
-                        FilledButton(onPressed: _playNext, child: const Text('Play now')),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          if (extras != null) Positioned(right: 24, bottom: 96, child: extras),
           if (_controlsVisible) _controls(c, playing),
         ],
       ),
@@ -518,32 +576,34 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   Widget _controls(VideoPlayerController? c, bool playing) {
     final live = _req.isLive;
+    final full = _full;
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black87, Colors.transparent, Colors.transparent, Colors.black87], stops: [0, 0.25, 0.7, 1]),
       ),
       child: SafeArea(
+        // In portrait the stage sits inside the shell's SafeArea already.
+        top: full,
+        bottom: full,
+        left: full,
+        right: full,
         child: Column(
           children: [
             Row(
               children: [
-                IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: () => context.canPop() ? context.pop() : context.go('/home')),
+                IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: _close),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_req.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                      if (_req.subtitle != null) Text(_req.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    ],
-                  ),
+                  child: full
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_req.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            if (_req.subtitle != null) Text(_req.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                if (live)
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
-                    child: const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-                  ),
+                if (live && full) Padding(padding: const EdgeInsets.only(right: 8), child: _liveBadge()),
                 if (_req.subtitles.isNotEmpty)
                   PopupMenuButton<Subtitle?>(
                     tooltip: 'Subtitles',
@@ -562,19 +622,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (!live) IconButton(iconSize: 36, icon: const Icon(Icons.replay_10_rounded), onPressed: () => _seekBy(-10)),
-                const SizedBox(width: 24),
-                IconButton(iconSize: 64, icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded), onPressed: _togglePlay),
-                const SizedBox(width: 24),
-                if (!live) IconButton(iconSize: 36, icon: const Icon(Icons.forward_10_rounded), onPressed: () => _seekBy(10)),
+                if (!live) IconButton(iconSize: full ? 36 : 30, icon: const Icon(Icons.replay_10_rounded), onPressed: () => _seekBy(-10)),
+                SizedBox(width: full ? 24 : 16),
+                IconButton(iconSize: full ? 64 : 48, icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded), onPressed: _togglePlay),
+                SizedBox(width: full ? 24 : 16),
+                if (!live) IconButton(iconSize: full ? 36 : 30, icon: const Icon(Icons.forward_10_rounded), onPressed: () => _seekBy(10)),
               ],
             ),
             const Spacer(),
-            if (!live && c != null && _initialized)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 4),
+              child: Row(
+                children: [
+                  if (!live && c != null && _initialized) ...[
                     Text(formatDuration(_position), style: const TextStyle(fontSize: 12)),
                     Expanded(
                       child: SliderTheme(
@@ -593,10 +653,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       ),
                     ),
                     Text(formatDuration(_duration), style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
+                  ] else
+                    const Spacer(),
+                  FullscreenToggleButton(controller: _fs),
+                ],
               ),
-            if (live) const SizedBox(height: 16),
+            ),
           ],
         ),
       ),

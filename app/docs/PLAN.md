@@ -105,7 +105,7 @@ Decisions (and why):
 - [x] Quality gates pass; commit
 
 ### P7 Player
-- [x] Playback screen (video_player), landscape fullscreen, wakelock, custom controls
+- [x] Playback screen (video_player), portrait 16:9 stage with full-screen (landscape) toggle, wakelock, custom controls
 - [x] Resume prompt + progress POST every 10 s, completed handling
 - [x] Markers: skip intro, next-episode countdown at credits; `next_episode` chaining
 - [x] Subtitles (VTT from `subtitles[]`) toggle
