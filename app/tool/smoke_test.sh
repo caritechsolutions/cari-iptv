@@ -16,6 +16,19 @@ set -uo pipefail
 
 APK="${1:?apk path}"
 PKG="${2:?package name}"
+
+# Prints the FATAL EXCEPTION blocks (40 lines each) that belong to $2 in logcat $1.
+fatal_for_package() {
+  awk -v pkg="$2" '
+    /FATAL EXCEPTION/ { hold = $0; want = 1; next }
+    want == 1 {
+      want = 0
+      if ($0 ~ ("Process: " pkg ",")) { print hold; print $0; n = 40; next }
+      next
+    }
+    n > 0 { print; n-- }
+  ' "$1"
+}
 OUT_DIR="${3:-smoke-out}"
 WAIT="${4:-20}"
 mkdir -p "$OUT_DIR"
@@ -62,12 +75,17 @@ if [[ ! -s "$LOG" ]]; then
   adb logcat -d > "$LOG" 2>/dev/null || true
 fi
 echo "logcat lines: $(wc -l < "$LOG")"
-FATAL="$(grep -n -A 40 'FATAL EXCEPTION' "$LOG" | head -120 || true)"
+# Only crashes of OUR process count. Other processes on the emulator (e.g.
+# com.google.android.gms.persistent) crash on their own; logcat shows the
+# owner on the line right after "FATAL EXCEPTION": "Process: <pkg>, PID: n".
+FATAL="$(fatal_for_package "$LOG" "$PKG" || true)"
+OTHER_FATAL="$(grep -A1 'FATAL EXCEPTION' "$LOG" | grep -o 'Process: [^,]*' | grep -v "Process: $PKG\$" | sort | uniq -c || true)"
 ANR="$(grep -n 'ANR in' "$LOG" | head -5 || true)"
 FLUTTER_ERR="$(grep -nE 'flutter.*(Unhandled Exception|Exception:|Error:)|E/flutter' "$LOG" | head -40 || true)"
 MARKER="$(grep -n 'CARI_SMOKE' "$LOG" | head -5 || true)"
 
-if [[ -n "$FATAL" ]]; then echo "--- FATAL EXCEPTION ---"; echo "$FATAL"; fi
+if [[ -n "$FATAL" ]]; then echo "--- FATAL EXCEPTION ($PKG) ---"; echo "$FATAL"; fi
+if [[ -n "$OTHER_FATAL" ]]; then echo "--- FATAL EXCEPTION in other processes (ignored) ---"; echo "$OTHER_FATAL"; fi
 if [[ -n "$ANR" ]]; then echo "--- ANR ---"; echo "$ANR"; fi
 if [[ -n "$FLUTTER_ERR" ]]; then echo "--- flutter errors ---"; echo "$FLUTTER_ERR"; fi
 if [[ -n "$MARKER" ]]; then echo "--- app markers ---"; echo "$MARKER"; fi
@@ -77,7 +95,7 @@ grep -E "$PKG|flutter|AndroidRuntime" "$LOG" | tail -60 || true
 step "verdict"
 OK=1
 [[ -z "$PID" ]] && { echo "process not running"; OK=0; }
-[[ -n "$FATAL" ]] && { echo "FATAL EXCEPTION in logcat"; OK=0; }
+[[ -n "$FATAL" ]] && { echo "FATAL EXCEPTION in $PKG"; OK=0; }
 if ! echo "$RESUMED" | grep -q "$PKG"; then echo "our activity is not the resumed activity"; OK=0; fi
 if ! grep -q 'CARI_SMOKE screen=login' "$LOG"; then echo "login screen marker not found in logcat"; OK=0; fi
 if [[ "$OK" == 1 ]]; then
