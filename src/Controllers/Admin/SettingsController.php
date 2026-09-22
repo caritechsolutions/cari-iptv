@@ -626,6 +626,29 @@ class SettingsController
     }
 
     /**
+     * Update Mobile App settings (feature switches read by the app via
+     * GET /api/v1/app/config/{platform} → features)
+     */
+    public function updateApp(): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        $this->settings->setMany([
+            'mobile_billing_enabled' => isset($_POST['mobile_billing_enabled']) ? '1' : '0',
+        ], 'app');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'app']);
+
+        Session::flash('success', 'Mobile app settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
+    /**
      * Test OpenSubtitles API connection
      */
     public function testOpenSubtitles(): void

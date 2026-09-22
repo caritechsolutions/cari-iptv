@@ -23,6 +23,9 @@
     <button class="settings-tab" data-tab="ads">
         <i class="lucide-megaphone"></i> Advertising
     </button>
+    <button class="settings-tab" data-tab="app">
+        <i class="lucide-smartphone"></i> Mobile App
+    </button>
 </div>
 
 <!-- General Tab -->
@@ -833,6 +836,42 @@
 </div>
 
 <!-- Advertising Tab -->
+<!-- Mobile App Tab -->
+<div class="settings-tab-content" id="tab-app">
+    <div class="settings-grid">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="lucide-smartphone"></i>
+                    Mobile App Features
+                </h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">Feature switches the mobile app reads at start-up and on every manifest check (<code>GET /api/v1/app/config/mobile</code> &rarr; <code>features</code>). Changing them here needs no app update.</p>
+
+                <form action="/admin/settings/app" method="POST">
+                    <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="mobile_billing_enabled" value="1"
+                                   <?= !empty($settings['app']['mobile_billing_enabled']) ? 'checked' : '' ?>>
+                            <span class="checkbox-text">
+                                <strong>Show billing in the mobile app</strong>
+                                <small>Packages page and navigation item, package rows in Profile, package sections in layouts, and package activate/cancel actions. Off (default): the app hides all of them and shows a neutral "not available" message. Entitlement locks are not affected.</small>
+                            </span>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="lucide-save"></i> Save Mobile App Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="settings-tab-content" id="tab-ads">
     <div class="settings-grid">
         <div class="card">

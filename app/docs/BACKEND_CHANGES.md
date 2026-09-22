@@ -188,3 +188,15 @@ To apply it before running `update.sh`, also install the unit by hand: `sudo ins
 
 **Pending re-packages.** Black Sails episodes with content ids **759 to 766** (season 1, the eight titles the audit found with High 10 720p/1080p renditions) are still awaiting the section 4 re-package procedure. The step is blocked on locating their source files: the VOD server does not keep sources after a job, and the re-submit needs the original file or URL. Until then the app plays them through the quality fallback (360p) and their masters carry no CODECS.
 
+## 7. Mobile billing feature switch (`backend:` commit)
+
+**Setting.** Admin → Settings → new **Mobile App** tab → "Show billing in the mobile app" (`mobile_billing_enabled`, settings group `app`, stored `'1'`/`'0'` like the advertising switches, default off when the row does not exist). Handler `SettingsController::updateApp()`, route `POST /admin/settings/app`, CSRF-checked and logged like the other settings forms.
+
+**API.** `GET /api/v1/app/config/{platform}` gains `features: {billing: bool}` next to `navigation`, `pages` and `layout`, read from the setting on every request (`(bool)(int)` of the stored value). The endpoint keeps its `Cache-Control: public, max-age=300`, so a flip reaches clients within five minutes plus the app's own manifest poll.
+
+**App behaviour** (see `app/docs/WHITE_LABEL.md` for the brand override): off hides the packages page and navigation item, package rows in Profile, `packages_list` layout sections, activate/cancel actions, and turns the 402 message into "Not available."; on shows everything as before. Entitlement locks are unchanged.
+
+**Files.** `src/Controllers/Admin/SettingsController.php`, `src/Controllers/Api/AppController.php`, `public/admin/index.php`, `templates/admin/settings/index.php`. No migration: the `settings` table is a key-value store and the row is created on first save.
+
+**Deploy.** Part of the IPTV backend, not the VOD server: the root `update.sh` copies `src/`, `public/`, `templates/`. Not deployed.
+

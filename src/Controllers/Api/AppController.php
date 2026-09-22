@@ -7,6 +7,7 @@
 namespace CariIPTV\Controllers\Api;
 
 use CariIPTV\Services\ContentApiService;
+use CariIPTV\Services\SettingsService;
 
 class AppController extends BaseApiController
 {
@@ -119,10 +120,16 @@ class AppController extends BaseApiController
             return;
         }
 
+        // Feature switches set in Admin → Settings → Mobile App (group "app").
+        // Absent or unset means off; the app also defaults to off.
+        $settings = new SettingsService();
         $config = [
             'navigation' => $this->service->getNavigation($platform, 'main'),
             'pages' => $this->service->getPages($platform),
             'layout' => $this->service->getLayout($platform),
+            'features' => [
+                'billing' => (bool) (int) $settings->get('mobile_billing_enabled', 0, 'app'),
+            ],
         ];
 
         header('Cache-Control: public, max-age=300, stale-while-revalidate=600');
