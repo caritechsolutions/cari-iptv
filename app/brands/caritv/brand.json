@@ -12,5 +12,6 @@
   "TERMS_URL": "https://player.caritech.net/privacy#terms",
   "DELETE_ACCOUNT_URL": "https://player.caritech.net/delete-account",
   "PLATFORM_TAG_PROD": "mobile",
-  "CLEARTEXT_HOSTS": ""
+  "CLEARTEXT_HOSTS": "",
+  "BILLING_UI": "auto"
 }

@@ -13,6 +13,7 @@ import '../../../core/widgets/legal_links.dart';
 import '../../../models/layout.dart';
 import '../../../models/media_card.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../billing/billing_provider.dart';
 import '../../player/ui/playback_request.dart';
 import '../state/layout_providers.dart';
 
@@ -469,6 +470,8 @@ class PackagesListSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Hidden entirely while billing is off (server switch or brand override).
+    if (!ref.watch(billingEnabledProvider)) return const SizedBox.shrink();
     final ent = ref.watch(entitlementsProvider);
     return ent.maybeWhen(
       data: (e) {

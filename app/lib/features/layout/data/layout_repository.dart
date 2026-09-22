@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../models/app_features.dart';
 import '../../../models/layout.dart';
 import '../../../models/manifest.dart';
 import '../../../models/navigation.dart';
@@ -46,6 +47,12 @@ class LayoutRepository {
       if (e.isNotFound) return null;
       rethrow;
     }
+  }
+
+  /// Server feature switches (`features` of `/app/config/{platform}`).
+  Future<AppFeatures> features({bool preferCache = false}) async {
+    final res = await _api.get('/app/config/$platform', cacheScope: 'navigation', preferCache: preferCache);
+    return AppFeatures.fromConfig(res.envelope.dataAsJson);
   }
 
   Future<List<AppPage>> pages({bool preferCache = false}) async {

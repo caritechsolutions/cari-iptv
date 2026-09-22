@@ -237,6 +237,10 @@ class AccessNotice extends ConsumerWidget {
   }
 }
 
-/// Neutral message for 402 responses — no purchase flows in the app.
-String friendlyPaymentMessage(Object e) =>
-    (e is ApiException && e.isPaymentRequired) ? 'This package is not available in the app.' : describeError(e);
+/// Neutral message for 402 responses — no purchase flows in the app. With
+/// billing off it says only that the option is not available: no plans,
+/// prices, buying or websites.
+String friendlyPaymentMessage(Object e, {bool billing = true}) {
+  if (e is ApiException && e.isPaymentRequired) return billing ? 'This package is not available in the app.' : 'Not available.';
+  return describeError(e);
+}

@@ -16,6 +16,7 @@ import 'package:cari_tv/features/ads/data/ads_repository.dart';
 import 'package:cari_tv/features/analytics/data/analytics_repository.dart';
 import 'package:cari_tv/features/auth/data/auth_repository.dart';
 import 'package:cari_tv/features/auth/state/auth_notifier.dart';
+import 'package:cari_tv/features/billing/billing_provider.dart';
 import 'package:cari_tv/features/content/data/content_repository.dart';
 import 'package:cari_tv/features/layout/data/layout_repository.dart';
 import 'package:cari_tv/features/layout/state/layout_providers.dart';
@@ -27,6 +28,7 @@ import 'package:cari_tv/features/player/hls/hls_master_source.dart';
 import 'package:cari_tv/features/player/state/player_support.dart';
 import 'package:cari_tv/features/recommendations/data/recommendation_repository.dart';
 import 'package:cari_tv/features/repositories.dart';
+import 'package:cari_tv/models/app_features.dart';
 import 'package:cari_tv/models/entitlements.dart';
 import 'package:cari_tv/models/navigation.dart';
 import 'package:cari_tv/models/user.dart';
@@ -297,11 +299,13 @@ class TestRepos {
 /// Overrides for a fully mounted app or a single screen. Screens whose data
 /// calls are not stubbed render their error state, which is what the
 /// navigation audit wants: a way back must exist even when loading fails.
-List<Override> testOverrides({required AuthState auth, AppNavigation? nav, TestRepos? repos, HlsMasterSource? masterSource, Override? entitlements}) {
+List<Override> testOverrides({required AuthState auth, AppNavigation? nav, TestRepos? repos, HlsMasterSource? masterSource, Override? entitlements, AppFeatures features = AppFeatures.none, AppConfig? config}) {
   final r = repos ?? TestRepos();
   return [
     hlsMasterSourceProvider.overrideWithValue(masterSource ?? FakeMasterSource()),
-    appConfigProvider.overrideWithValue(AppConfig.forFlavor(AppFlavor.dev)),
+    appConfigProvider.overrideWithValue(config ?? AppConfig.forFlavor(AppFlavor.dev)),
+    // Server feature switches (billing etc.); off unless a test turns them on.
+    remoteFeaturesProvider.overrideWith((ref) async => features),
     authProvider.overrideWith(() => FixedAuth(auth)),
     // A duplicate override of the same provider is not allowed, so tests that
     // drive entitlements pass their own override here.

@@ -12,5 +12,6 @@
   "TERMS_URL": "https://tv.islandtv.example/privacy#terms",
   "DELETE_ACCOUNT_URL": "https://tv.islandtv.example/delete-account",
   "PLATFORM_TAG_PROD": "mobile",
-  "CLEARTEXT_HOSTS": "legacy-headend.islandtv.example"
+  "CLEARTEXT_HOSTS": "legacy-headend.islandtv.example",
+  "BILLING_UI": "auto"
 }

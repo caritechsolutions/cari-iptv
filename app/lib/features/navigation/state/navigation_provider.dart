@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/navigation.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../billing/billing_provider.dart';
 import '../../repositories.dart';
 
 /// A resolved bottom-tab destination.
@@ -83,12 +84,16 @@ const defaultDestinations = [
   NavDestination(label: 'My List', icon: Icons.bookmark_rounded, path: '/my-list'),
 ];
 
-List<NavDestination> destinationsFrom(AppNavigation? nav) {
+/// Page types that only exist to sell or manage packages.
+bool isBillingPageType(String? pageType) => pageType == 'subscription' || pageType == 'packages';
+
+List<NavDestination> destinationsFrom(AppNavigation? nav, {bool billing = true}) {
   if (nav == null || nav.items.isEmpty) return defaultDestinations;
   final items = [...nav.items]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   final out = <NavDestination>[];
   for (final item in items) {
     if (item.target == 'page') {
+      if (!billing && isBillingPageType(item.pageType)) continue;
       final path = pathForPageType(item.pageType, slug: item.pageSlug);
       if (path == null) continue;
       out.add(NavDestination(label: item.label, icon: iconFor(item.icon, item.pageType), path: path, layoutId: item.layoutId));
@@ -111,8 +116,10 @@ final navigationProvider = FutureProvider<AppNavigation?>((ref) async {
 
 final pagesProvider = FutureProvider<List<AppPage>>((ref) async {
   if (ref.watch(currentUserProvider) == null) return const [];
+  final billing = ref.watch(billingEnabledProvider);
   try {
-    return await ref.watch(layoutRepositoryProvider).pages();
+    final pages = await ref.watch(layoutRepositoryProvider).pages();
+    return billing ? pages : pages.where((p) => !isBillingPageType(p.pageType)).toList(growable: false);
   } catch (_) {
     return const [];
   }
@@ -120,5 +127,5 @@ final pagesProvider = FutureProvider<List<AppPage>>((ref) async {
 
 final destinationsProvider = Provider<List<NavDestination>>((ref) {
   final nav = ref.watch(navigationProvider).value;
-  return destinationsFrom(nav);
+  return destinationsFrom(nav, billing: ref.watch(billingEnabledProvider));
 });

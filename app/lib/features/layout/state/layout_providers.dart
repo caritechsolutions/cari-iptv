@@ -11,6 +11,7 @@ import '../../../models/layout.dart';
 import '../../../models/recommendation.dart';
 import '../../../models/watch.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../billing/billing_provider.dart';
 import '../../navigation/state/navigation_provider.dart';
 import '../../repositories.dart';
 
@@ -109,6 +110,9 @@ class ManifestPoller extends Notifier<DateTime?> with WidgetsBindingObserver {
   }
 
   void _invalidate(List<String> scopes) {
+    // Feature switches are not versioned in the manifest: re-read them with
+    // every change so an admin toggle reaches the app on the next poll.
+    ref.invalidate(remoteFeaturesProvider);
     for (final scope in scopes) {
       switch (scope) {
         case 'layouts':

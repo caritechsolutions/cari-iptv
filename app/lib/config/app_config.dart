@@ -3,6 +3,20 @@ import 'package:flutter/material.dart';
 /// Build flavour (environment). Selected by the entry point (`main_dev.dart` / `main_prod.dart`).
 enum AppFlavor { dev, prod }
 
+/// Brand-level billing override (`BILLING_UI` in brand.json): `auto` follows
+/// the server's `features.billing`, `on` / `off` force it for the build.
+enum BillingUi {
+  auto,
+  on,
+  off;
+
+  static BillingUi parse(String v) => switch (v.trim().toLowerCase()) {
+        'on' || 'true' || '1' => BillingUi.on,
+        'off' || 'false' || '0' => BillingUi.off,
+        _ => BillingUi.auto,
+      };
+}
+
 /// Single source of truth for branding and environment.
 ///
 /// Every value is a **build-time input** supplied with
@@ -26,6 +40,7 @@ class AppConfig {
     required this.deleteAccountUrl,
     required this.platformTag,
     required this.cleartextHosts,
+    this.billingUi = BillingUi.auto,
   });
 
   final AppFlavor flavor;
@@ -64,6 +79,10 @@ class AppConfig {
   /// for diagnostics only.
   final List<String> cleartextHosts;
 
+  /// Billing surfaces: follow the server (`auto`), or force on / off for this
+  /// brand (a store build can set `off` regardless of the server).
+  final BillingUi billingUi;
+
   String get apiV1 => '$apiBaseUrl/api/v1';
   bool get isDev => flavor == AppFlavor.dev;
 
@@ -84,6 +103,7 @@ class AppConfig {
   static const _delete = String.fromEnvironment('DELETE_ACCOUNT_URL', defaultValue: 'https://player.caritech.net/delete-account');
   static const _platformProd = String.fromEnvironment('PLATFORM_TAG_PROD', defaultValue: 'mobile');
   static const _cleartext = String.fromEnvironment('CLEARTEXT_HOSTS', defaultValue: '');
+  static const _billingUi = String.fromEnvironment('BILLING_UI', defaultValue: 'auto');
 
   /// Builds the config for [flavor] from the build-time defines.
   factory AppConfig.forFlavor(AppFlavor flavor) {
@@ -104,8 +124,29 @@ class AppConfig {
       deleteAccountUrl: _delete,
       platformTag: isDev ? '$_platformProd-dev' : _platformProd,
       cleartextHosts: parseHostList(_cleartext),
+      billingUi: BillingUi.parse(_billingUi),
     );
   }
+
+  /// Same config with another billing override (tests, previews).
+  AppConfig withBillingUi(BillingUi value) => AppConfig(
+        flavor: flavor,
+        brandKey: brandKey,
+        appName: appName,
+        applicationId: applicationId,
+        apiBaseUrl: apiBaseUrl,
+        primaryColor: primaryColor,
+        accentColor: accentColor,
+        backgroundColor: backgroundColor,
+        surfaceColor: surfaceColor,
+        logoAsset: logoAsset,
+        privacyUrl: privacyUrl,
+        termsUrl: termsUrl,
+        deleteAccountUrl: deleteAccountUrl,
+        platformTag: platformTag,
+        cleartextHosts: cleartextHosts,
+        billingUi: value,
+      );
 
   /// Development placeholder brand (what `flutter run` uses).
   static AppConfig get dev => AppConfig.forFlavor(AppFlavor.dev);

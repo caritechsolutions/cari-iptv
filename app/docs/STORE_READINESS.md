@@ -39,6 +39,7 @@ Answer from the content you distribute, not the app code. Points to consider:
 - The app can show adult-rated titles when the subscriber enables adult content (account-level toggle with an optional 4-digit PIN). If you host such content, answer the "sexual content"/"mature" questions accordingly and describe the PIN control.
 - Ads are shown (pre-roll/mid-roll video, banners, text) → answer "contains ads": yes.
 - No user-generated content, no user-to-user communication, no gambling, no in-app purchases.
+- Billing surfaces (packages page, package rows and sections, activate/cancel actions) are behind a server switch that defaults to **off** (Admin → Settings → Mobile App → `mobile_billing_enabled`) and a per-brand override (`BILLING_UI` in `brand.json`, see WHITE_LABEL.md). For a store submission set `BILLING_UI` to `off` so the build cannot show them whatever the server says; the 402 response then reads only "Not available." with no plan, price, purchase or website wording. Entitlement padlocks and "Not included in your plan" remain, they sell nothing.
 
 ## 4. Store listing assets (not produced by code)
 

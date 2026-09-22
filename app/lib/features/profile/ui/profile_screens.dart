@@ -9,6 +9,7 @@ import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/legal_links.dart';
 import '../../../models/entitlements.dart';
 import '../../auth/state/auth_notifier.dart';
+import '../../billing/billing_provider.dart';
 import '../../content/ui/detail_widgets.dart';
 import '../../repositories.dart';
 import '../../shell/ui/app_shell.dart';
@@ -21,6 +22,8 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final ent = ref.watch(entitlementsProvider);
+    // Server/brand billing switch: package rows only when billing is shown.
+    final billing = ref.watch(billingEnabledProvider);
     if (user == null) return const Scaffold(body: LoadingView());
     return Scaffold(
       appBar: const TabAppBar(title: 'Profile'),
@@ -57,6 +60,7 @@ class ProfileScreen extends ConsumerWidget {
             title: const Text('Simultaneous devices'),
             subtitle: Text('${user.maxConnections} allowed. Signing in on another device signs out the oldest session.'),
           ),
+          if (billing) ...[
           const Divider(),
           const SectionHeaderText('Your packages'),
           ent.when(
@@ -72,6 +76,7 @@ class ProfileScreen extends ConsumerWidget {
               ],
             ),
           ),
+          ],
           const Divider(),
           ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/settings')),
         ],
@@ -125,6 +130,13 @@ class PackagesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ent = ref.watch(entitlementsProvider);
+    if (!ref.watch(billingEnabledProvider)) {
+      // Reached by a deep link or a stale menu: neutral, nothing to buy here.
+      return const Scaffold(
+        appBar: TabAppBar(title: 'Packages'),
+        body: EmptyView(key: Key('billing-unavailable'), message: 'This page is not available.', icon: Icons.block_outlined),
+      );
+    }
     return Scaffold(
       appBar: const TabAppBar(title: 'Packages'),
       body: AsyncView<Entitlements>(
@@ -157,7 +169,7 @@ class _PackageCard extends ConsumerWidget {
         ref.invalidate(entitlementsProvider);
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       } catch (e) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyPaymentMessage(e))));
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyPaymentMessage(e, billing: ref.read(billingEnabledProvider)))));
       }
     }
 

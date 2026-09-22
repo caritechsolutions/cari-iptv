@@ -109,7 +109,7 @@ Mixed and un-normalised: locally processed art is root-relative (`/uploads/vod/1
 ## 5. Server-driven UI (`src/Controllers/Api/AppController.php`, `ContentApiService.php:974-1275`)
 
 - `{platform}` must be `web|mobile|tv|stb` else 400 `INVALID_PLATFORM`. **No fallback to another platform anywhere.**
-- `GET /app/config/{platform}` → `{data:{navigation, pages:[…], layout}, meta:{platform}}`; any part may be `null`/`[]`, never 404.
+- `GET /app/config/{platform}` → `{data:{navigation, pages:[…], layout}, meta:{platform}}`; any part may be `null`/`[]`, never 404. Since the `backend:` billing-switch commit the payload also carries `features: {billing: bool}` (Admin → Settings → Mobile App; absent on older backends = off). The app reads only `features` from this endpoint (cache scope `navigation`, re-read on every manifest change).
 - `GET /app/layout/{platform}?id=` → default published layout for the platform (`is_default=1 AND status='published'`), or by id (any status). 404 `NOT_FOUND` "No default published layout for platform: mobile" when none. `meta.version = md5(updated_at)`.
 - `GET /app/navigation/{platform}?position=main` → `{id, platform, position, settings{style, show_icons, show_labels, max_items}, items[{id, label, icon, target ∈ page|url|deeplink, url, sort_order, page_slug, page_type, layout_id}]}`; 404 when missing.
 - `GET /app/pages/{platform}` → `[{id, name, slug, page_type, icon, layout_id, is_system, sort_order}]`.

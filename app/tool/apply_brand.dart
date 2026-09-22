@@ -8,6 +8,7 @@
 //      which android/app/build.gradle.kts reads
 //   3. generates android/app/src/main/res/xml/network_security_config.xml from
 //      CLEARTEXT_HOSTS (empty = HTTPS only)
+//      BILLING_UI (auto = follow the server switch, on, off)
 //   4. writes tool/generated/icons.yaml + splash.yaml and runs
 //      flutter_launcher_icons and flutter_native_splash (skip with --no-icons)
 //   5. sets CFBundleDisplayName in ios/Runner/Info.plist and prints the ATS
@@ -47,6 +48,8 @@ void main(List<String> args) async {
   }
   final appName = cfg['APP_NAME']!.trim();
   final hosts = _hosts(cfg['CLEARTEXT_HOSTS'] ?? '');
+  final billingUi = (cfg['BILLING_UI'] ?? 'auto').trim().toLowerCase();
+  if (!const {'auto', 'on', 'off'}.contains(billingUi)) _fail('BILLING_UI must be auto, on or off (got "$billingUi")');
 
   // 1. images
   final branding = Directory('$root/assets/branding')..createSync(recursive: true);
