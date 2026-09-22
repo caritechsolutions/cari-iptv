@@ -11,7 +11,7 @@ import 'app_image.dart';
 /// Opens the right screen for any [MediaCard]. Restricted / adult gating is
 /// applied here so every rail, grid and search result behaves the same.
 Future<void> openCard(BuildContext context, WidgetRef ref, MediaCard card) async {
-  if (!await _gate(context, ref, card)) return;
+  if (!await gateAllows(context, ref, card)) return;
   if (!context.mounted) return;
   switch (card.type) {
     case 'movie':
@@ -45,7 +45,7 @@ Future<void> openCard(BuildContext context, WidgetRef ref, MediaCard card) async
 }
 
 /// Returns true when the item may be opened. Shows a dialog otherwise.
-Future<bool> _gate(BuildContext context, WidgetRef ref, MediaCard card) async {
+Future<bool> gateAllows(BuildContext context, WidgetRef ref, MediaCard card) async {
   final user = ref.read(currentUserProvider);
   if (card.isAdult && !(user?.adultEnabled ?? false)) {
     await _info(context, 'Adult content', 'This title is marked as adult content. Enable adult content in Profile to watch it.');

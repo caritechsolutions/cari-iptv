@@ -31,6 +31,22 @@ Nothing time-shifts yet. When it is added:
 2. Add a "Watch from HH:mm" action there that builds a `PlaybackRequest` with a start offset (or a catch-up URL) from `programme.start`.
 3. The grid, model and placeholder generation need no change; `EpgProgramme.key` identifies a block across reloads.
 
+## Live player panel (`lib/features/player/ui/live_info_panel.dart`)
+
+Under the live player in portrait, matching the web live page (`playLiveChannel` in `app.js`); full screen stays video only:
+
+1. Channel name, **LIVE** badge, and a **Channels** button.
+2. **Now Playing**: title (web fallback `Live` when nothing airs), `HH:mm - HH:mm`, progress bar, description. Placeholder blocks work the same (`<Channel> Content` / `Regular programming on <Channel>`).
+3. **Up Next**: start time and title.
+4. **Schedule**: the channel's blocks for the guide window as a vertical list, past dimmed, airing highlighted with a progress bar, future normal, scrolled so the airing block is the first row once the guide has loaded.
+5. **Channels** opens a sheet listing every channel with its airing programme, current one highlighted and scrolled into view. Picking one replaces the stream in the same player (`PlayerScreen._switchChannel`, same adult / package gate as the channel list) and the panel follows the new channel.
+
+Refresh: progress bars tick every 30 s; a one-shot timer fires just after the airing block ends so now/next move on by themselves. Time comes from `package:clock` so tests can advance it.
+
+Every block (Now Playing, Up Next, schedule rows) opens the same details sheet as the guide, without "Watch now" (the channel is already playing), so time-shift plugs in here too.
+
+Tests: `test/features/player/live_panel_test.dart` (now/next at an exact block boundary, self-refresh when the block ends, schedule auto-scroll and dimming, details sheet, channel switch updating stream and panel).
+
 ## Screens
 
 - `/guide` — `GuideScreen`: the grid with chips and paging. Optional `highlightChannelId` marks a row.

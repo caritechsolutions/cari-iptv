@@ -14,7 +14,9 @@ import '../../../models/epg.dart';
 /// `programme.start` / `programme.end`, so a future "Watch from HH:mm"
 /// action only needs a stream URL with a start offset — the guide itself
 /// does not change.
-void showProgrammeSheet(BuildContext context, WidgetRef ref, EpgProgramme programme, Channel? channel) {
+/// [showWatch] false hides "Watch now" (inside the player the channel is
+/// already playing).
+void showProgrammeSheet(BuildContext context, WidgetRef ref, EpgProgramme programme, Channel? channel, {bool showWatch = true}) {
   final p = programme;
   final now = DateTime.now().toUtc();
   final dayFmt = DateFormat('EEE d MMM');
@@ -40,7 +42,7 @@ void showProgrammeSheet(BuildContext context, WidgetRef ref, EpgProgramme progra
             const SizedBox(height: 8),
             const Text('No programme information for this slot.', style: TextStyle(color: Colors.white38, fontSize: 12)),
           ],
-          if (channel != null && airing) ...[
+          if (showWatch && channel != null && airing) ...[
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: () {

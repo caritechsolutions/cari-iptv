@@ -8,6 +8,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/util/time.dart';
 import '../../../core/widgets/app_back_button.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/cards.dart';
+import '../../../models/channel.dart';
 import '../../../models/ad.dart';
 import '../../../models/content_extras.dart';
 import '../../analytics/data/analytics_repository.dart';
@@ -18,6 +20,7 @@ import '../hls/hls_master_source.dart';
 import '../hls/quality_memory.dart';
 import '../state/player_support.dart';
 import 'ad_player.dart';
+import 'live_info_panel.dart';
 import 'playback_error.dart';
 import 'playback_request.dart';
 import 'player_error_panel.dart';
@@ -536,6 +539,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     }
   }
 
+  /// Replaces the stream with another channel in the same player (portrait
+  /// "Channels" button). The same adult / package gate as the channel list
+  /// applies; the info panel follows the new channel id.
+  Future<void> _switchChannel(Channel ch) async {
+    if (!await gateAllows(context, ref, ch.toCard())) return;
+    if (!mounted) return;
+    _releaseController();
+    _analytics.track('channel_switch', contentType: 'channel', contentId: ch.id, metadata: {'from': _req.contentId});
+    _req = PlaybackRequest.channel(id: ch.id, title: ch.name, streamUrl: ch.streamUrl, logoUrl: ch.logoUrl, categoryId: ch.categoryId);
+    _progress = ProgressReporter(_userContent, _req);
+    _playedBreaks.clear();
+    _activeSubtitle = null;
+    _variant = null;
+    _error = null;
+    _position = Duration.zero;
+    setState(() {});
+    _master = await _loadMaster();
+    if (!mounted) return;
+    await _initController(_startUrl());
+  }
+
   Future<void> _setSubtitle(Subtitle? sub) async {
     _activeSubtitle = sub;
     final c = _controller;
@@ -673,6 +697,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     final error = _error;
     if (error != null) {
       return PlayerErrorPanel(error: error, live: _req.isLive, title: _req.title, subtitle: _req.subtitle, onBack: _close, onRetry: error.retryable ? _retry : null);
+    }
+    if (_req.isLive) {
+      return LiveInfoPanel(channelId: _req.contentId, channelName: _req.title, onSwitchChannel: _switchChannel);
     }
     final extras = _extras();
     return Padding(
