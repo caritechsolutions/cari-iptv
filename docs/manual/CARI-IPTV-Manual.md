@@ -1,7 +1,7 @@
 ---
 title: "CARI-IPTV Operator and Admin Manual"
 subtitle: "Platform version 1.0.0"
-author: "Prepared for <OPERATOR>"
+author: 'Prepared for \<OPERATOR\>'
 date: "September 2026"
 lang: en-GB
 ---
