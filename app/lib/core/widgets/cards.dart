@@ -6,6 +6,7 @@ import '../../features/auth/state/auth_notifier.dart';
 import '../../features/player/ui/playback_request.dart';
 import '../../models/media_card.dart';
 import 'legal_links.dart';
+import 'access_badge.dart';
 import 'app_image.dart';
 
 /// Opens the right screen for any [MediaCard]. Restricted / adult gating is
@@ -55,13 +56,16 @@ Future<bool> gateAllows(BuildContext context, WidgetRef ref, MediaCard card) asy
     final ok = await askParentalPin(context, user!.parentalPin!);
     if (!ok) return false;
   }
-  if (card.isRestricted) {
-    final ent = await ref.read(entitlementsProvider.future);
-    if (!ent.allows(card.type, card.id, categoryId: card.categoryId)) {
-      if (!context.mounted) return false;
+  // Same rule as the padlock badges (web: isContentLocked).
+  final ent = await ref.read(entitlementsProvider.future);
+  if (ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted)) {
+    if (!context.mounted) return false;
+    if (!ent.hasSubscription) {
+      await _info(context, 'Subscription required', 'An active subscription is needed to watch this.');
+    } else {
       await _info(context, 'Not included in your plan', 'This title is not part of your current package.');
-      return false;
     }
+    return false;
   }
   return true;
 }
@@ -123,16 +127,7 @@ class PosterCard extends ConsumerWidget {
             Stack(
               children: [
                 AspectRatio(aspectRatio: 2 / 3, child: AppImage(card.primaryImage, borderRadius: BorderRadius.circular(10))),
-                if (card.isRestricted || card.isAdult)
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-                      child: Icon(card.isAdult ? Icons.eighteen_up_rating_outlined : Icons.lock_outline, size: 14, color: Colors.white),
-                    ),
-                  ),
+                AccessBadge.overlay(card),
                 if (card.progress != null && card.progress! > 0)
                   Positioned(
                     left: 0,

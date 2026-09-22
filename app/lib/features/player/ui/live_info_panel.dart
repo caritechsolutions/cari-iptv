@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/widgets/access_badge.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../models/channel.dart';
 import '../../../models/epg.dart';
@@ -351,7 +352,7 @@ class _ChannelPickerState extends State<_ChannelPicker> {
                 selectedTileColor: theme.colorScheme.primary.withValues(alpha: 0.12),
                 onTap: () => widget.onPick(ch),
                 leading: SizedBox(width: 56, height: 34, child: AppImage(ch.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined)),
-                title: Text(ch.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: current ? FontWeight.w700 : FontWeight.w600, fontSize: 14)),
+                title: Row(children: [Expanded(child: Text(ch.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: current ? FontWeight.w700 : FontWeight.w600, fontSize: 14))), AccessBadge(ch.toCard())]),
                 subtitle: Text(now == null ? (ch.categoryName ?? '') : 'Now: ${now.title}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
                 trailing: current ? const Icon(Icons.volume_up_rounded, size: 18) : null,
               );

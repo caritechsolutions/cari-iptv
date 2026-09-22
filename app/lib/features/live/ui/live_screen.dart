@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/widgets/access_badge.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
@@ -129,7 +130,7 @@ class ChannelTile extends ConsumerWidget {
           if (channel.channelNumber != null) Text('${channel.channelNumber}  ', style: const TextStyle(color: Colors.white54, fontSize: 12)),
           Expanded(child: Text(channel.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
           if (channel.isHd) const Padding(padding: EdgeInsets.only(left: 6), child: Text('HD', style: TextStyle(fontSize: 10, color: Colors.white54))),
-          if (channel.isRestricted || channel.isAdult) Padding(padding: const EdgeInsets.only(left: 6), child: Icon(channel.isAdult ? Icons.eighteen_up_rating_outlined : Icons.lock_outline, size: 14, color: Colors.white54)),
+          AccessBadge(channel.toCard()),
         ],
       ),
       subtitle: now == null

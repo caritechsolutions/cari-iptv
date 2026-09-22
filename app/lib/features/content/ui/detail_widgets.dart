@@ -224,15 +224,15 @@ class AccessNotice extends ConsumerWidget {
     String? text;
     if (card.isAdult && !(user?.adultEnabled ?? false)) {
       text = 'Adult content is hidden. Enable it in Profile to watch.';
-    } else if (card.isRestricted && ent != null && !ent.allows(card.type, card.id, categoryId: card.categoryId)) {
-      text = 'Not included in your current package.';
+    } else if (ent != null && ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted)) {
+      text = ent.hasSubscription ? 'Not included in your current package.' : 'An active subscription is needed to watch this.';
     }
     if (text == null) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-      child: Row(children: [const Icon(Icons.lock_outline, size: 18, color: Colors.amber), const SizedBox(width: 8), Expanded(child: Text(text, style: const TextStyle(fontSize: 13)))]),
+      child: Row(children: [const Icon(Icons.lock_outline, key: Key('access-notice-lock'), size: 18, color: Colors.amber), const SizedBox(width: 8), Expanded(child: Text(text, style: const TextStyle(fontSize: 13)))]),
     );
   }
 }

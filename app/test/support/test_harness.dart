@@ -297,13 +297,15 @@ class TestRepos {
 /// Overrides for a fully mounted app or a single screen. Screens whose data
 /// calls are not stubbed render their error state, which is what the
 /// navigation audit wants: a way back must exist even when loading fails.
-List<Override> testOverrides({required AuthState auth, AppNavigation? nav, TestRepos? repos, HlsMasterSource? masterSource}) {
+List<Override> testOverrides({required AuthState auth, AppNavigation? nav, TestRepos? repos, HlsMasterSource? masterSource, Override? entitlements}) {
   final r = repos ?? TestRepos();
   return [
     hlsMasterSourceProvider.overrideWithValue(masterSource ?? FakeMasterSource()),
     appConfigProvider.overrideWithValue(AppConfig.forFlavor(AppFlavor.dev)),
     authProvider.overrideWith(() => FixedAuth(auth)),
-    entitlementsProvider.overrideWith((ref) async => testEntitlements),
+    // A duplicate override of the same provider is not allowed, so tests that
+    // drive entitlements pass their own override here.
+    entitlements ?? entitlementsProvider.overrideWith((ref) async => testEntitlements),
     isOfflineProvider.overrideWith((ref) => Stream.value(false)),
     manifestPollerProvider.overrideWith(NoPoller.new),
     navigationProvider.overrideWith((ref) async => nav),

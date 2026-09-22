@@ -27,12 +27,12 @@ Future<bool> playWithGate(BuildContext context, WidgetRef ref, {required MediaCa
   if (card.isAdult && (user?.parentalPin?.isNotEmpty ?? false)) {
     if (!await askParentalPin(context, user!.parentalPin!)) return false;
   }
-  if (card.isRestricted) {
-    final ent = await ref.read(entitlementsProvider.future);
-    if (!ent.allows(card.type, card.id, categoryId: card.categoryId)) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This title is not included in your current package.')));
-      return false;
+  final ent = await ref.read(entitlementsProvider.future);
+  if (ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted)) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ent.hasSubscription ? 'This title is not included in your current package.' : 'An active subscription is needed to watch this.')));
     }
+    return false;
   }
   if (!context.mounted) return false;
 

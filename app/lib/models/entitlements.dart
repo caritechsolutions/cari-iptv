@@ -94,6 +94,16 @@ class Entitlements {
         adultEnabled: asBool(j['adult_enabled']),
       );
 
+  /// The web player's lock rule (`isContentLocked` in app.js): with no
+  /// active subscription everything is locked; otherwise only restricted
+  /// content whose id (or category) is absent from the entitled sets. The
+  /// same rule drives the padlock badges and the play gate.
+  bool locks({required String type, required int id, int? categoryId, required bool isRestricted}) {
+    if (!hasSubscription) return true;
+    if (!isRestricted) return false;
+    return !allows(type, id, categoryId: categoryId);
+  }
+
   /// True when a restricted item of [type] with [id] is included in an active package.
   bool allows(String type, int id, {int? categoryId}) {
     if (categoryId != null && categoryIds.contains(categoryId)) return true;

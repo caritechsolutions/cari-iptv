@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/widgets/access_badge.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../models/channel.dart';
 import '../../../models/epg.dart';
@@ -251,6 +252,7 @@ class _EpgGridState extends State<EpgGrid> {
             SizedBox(width: 34, height: 22, child: AppImage(ch.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined)),
             const SizedBox(width: 6),
             Expanded(child: Text(ch.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: active ? FontWeight.w700 : FontWeight.w600))),
+            AccessBadge(ch.toCard()),
           ],
         ),
       ),
