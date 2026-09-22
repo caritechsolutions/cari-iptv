@@ -88,7 +88,7 @@ templates/player/login.php                                                      
 
 Profiles in `vod-server.conf` need no change. Nothing has been deployed.
 
-**Build and deploy (VOD server, as root).** `vod-server/scripts/update.sh` is pinned to `BRANCH="claude/fix-opensubtitle-connection-TvyOH"` (left unchanged on purpose), so it will not pick this change up until the branch is merged or that line is updated. Manual build from this branch:
+**Build and deploy (VOD server, as root).** Since section 6 both VOD scripts pull from `claude/intelligent-knuth-xzkkd7`, so `update.sh` picks this up. Manual build from this branch:
 
 ```bash
 # 1. build
@@ -155,3 +155,36 @@ journalctl -u vod-server --no-pager | grep "master line"
 ```
 
 Existing titles keep their old master until re-packaged (section 4 procedure); the app's fallback handles them with the resolution rule in the meantime.
+
+## 6. VOD server 1.1.1 on vod1: scripts, PID file, pending re-packages (`vod:` commit)
+
+**State.** vod1 runs 1.1.1 built from this branch and swapped in by hand; the previous binary is `/usr/local/bin/vod-server.bak`.
+
+**Branch pins.** `vod-server/scripts/update.sh` (`BRANCH=`) and `vod-server/scripts/install.sh` (`BRANCH="${BRANCH:-...}"`) now point at `claude/intelligent-knuth-xzkkd7`. The IPTV backend scripts (`install.sh` / `update.sh` in the repo root) are unchanged.
+
+**What `update.sh` does on vod1** (read before running; everything as root):
+1. Installs cmake / gcc / make and the dev libraries only if missing (apt or dnf/yum).
+2. Installs certbot via snap or pip only if missing; writes `/etc/letsencrypt/renewal-hooks/deploy/vod-server.sh` if absent; **rewrites `/etc/sudoers.d/vod-server`** every run (systemd-run, systemctl daemon-reload / restart, the renew timer, and `sed -i` on the config, for the `vod-server` user).
+3. Clones the branch (depth 1) to a temp dir and reads the new version from `CMakeLists.txt`.
+4. Pauses transcode jobs with SIGUSR1 (main PID from systemd, PID file as fallback) and stops the service.
+5. Copies the current binary to `vod-server.bak` (this overwrites the 1.1.0 backup you kept; copy it elsewhere first if you want to keep it).
+6. Builds; on a cmake or make failure restores the backup and starts the service again.
+7. Installs the binary, replaces the Web GUI under `/usr/local/share/vod-server/www/`, creates `/var/lib/vod-server/acme/...` and chowns only that acme directory, installs the systemd unit and runs `daemon-reload`.
+8. Starts the service, checks `/api/status` on port 8090, and restores the backup binary if the service does not come up.
+
+It does **not** touch `/var/lib/vod-server/library`, `/var/lib/vod-server/vod-server.db`, or `/etc/vod-server/vod-server.conf`. The only database activity is the server's own startup migration, which the deployed 1.1.1 has already run.
+
+`install.sh` is for fresh machines: it also builds FFmpeg 8 from source when the installed one is older, creates the user and directories, runs `chown -R vod-server:vod-server /var/lib/vod-server` (ownership only, no deletion), keeps an existing config, and generates an API key only when the placeholder is still there. Do not run it on vod1; use `update.sh`.
+
+**PID file.** `Cannot write PID file: /var/run/vod-server.pid (Permission denied)` at start-up: `/run` is root-only and the service runs as `vod-server`. The unit now sets `RuntimeDirectory=vod-server`, so systemd creates `/run/vod-server` owned by the service user at every start, and the default `pid_file` (config template and built-in default) is `/run/vod-server/vod-server.pid`. The message is a `log_error` only; the server keeps running without the file, so this is cosmetic until the change lands.
+
+vod1 keeps its existing config file, so after the next `update.sh` (which installs the new unit) the one-line change is:
+
+```
+sudo sed -i 's|^pid_file = .*|pid_file = /run/vod-server/vod-server.pid|' /etc/vod-server/vod-server.conf && sudo systemctl restart vod-server
+```
+
+To apply it before running `update.sh`, also install the unit by hand: `sudo install -m 644 vod-server/scripts/vod-server.service /etc/systemd/system/vod-server.service && sudo systemctl daemon-reload` (from a checkout of this branch), then the line above. Verify with `journalctl -u vod-server -n 20` (no PID-file error) and `cat /run/vod-server/vod-server.pid`.
+
+**Pending re-packages.** Black Sails episodes with content ids **759 to 766** (season 1, the eight titles the audit found with High 10 720p/1080p renditions) are still awaiting the section 4 re-package procedure. The step is blocked on locating their source files: the VOD server does not keep sources after a job, and the re-submit needs the original file or URL. Until then the app plays them through the quality fallback (360p) and their masters carry no CODECS.
+

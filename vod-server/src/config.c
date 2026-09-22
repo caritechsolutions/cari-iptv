@@ -209,7 +209,7 @@ void config_set_defaults(vod_config_t *config)
     snprintf(config->api_key, sizeof(config->api_key), "%s", "change-me-on-first-run");
     snprintf(config->log_file, sizeof(config->log_file), "%s", "/var/log/vod-server/vod-server.log");
     snprintf(config->log_level, sizeof(config->log_level), "%s", "info");
-    snprintf(config->pid_file, sizeof(config->pid_file), "%s", "/var/run/vod-server.pid");
+    snprintf(config->pid_file, sizeof(config->pid_file), "%s", "/run/vod-server/vod-server.pid");
     snprintf(config->www_root, sizeof(config->www_root), "%s", "/usr/local/share/vod-server/www");
 
     /* SSL */

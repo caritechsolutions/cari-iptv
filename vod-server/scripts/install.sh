@@ -212,7 +212,7 @@ fi
 log "Building VOD Server..."
 
 # Branch to pull from
-BRANCH="${BRANCH:-claude/fix-opensubtitle-connection-TvyOH}"
+BRANCH="${BRANCH:-claude/intelligent-knuth-xzkkd7}"
 
 # Determine source directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo /tmp)"

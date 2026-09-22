@@ -7,7 +7,7 @@
 set -eo pipefail
 
 # Branch to pull updates from
-BRANCH="claude/fix-opensubtitle-connection-TvyOH"
+BRANCH="claude/intelligent-knuth-xzkkd7"
 
 # Colors
 RED='\033[0;31m'
@@ -166,7 +166,11 @@ log "New version: ${NEW_VERSION:-unknown}"
 # ========================
 if systemctl is-active --quiet vod-server; then
     log "Pausing active transcode jobs..."
-    kill -USR1 "$(cat /var/run/vod-server.pid 2>/dev/null)" 2>/dev/null || true
+    # The main PID comes from systemd; the PID file is only a fallback
+    # (it lives in /run/vod-server/ since 1.1.1, /var/run/ before).
+    MAIN_PID=$(systemctl show -p MainPID --value vod-server 2>/dev/null || true)
+    [ -z "$MAIN_PID" ] || [ "$MAIN_PID" = "0" ] && MAIN_PID=$(cat /run/vod-server/vod-server.pid /var/run/vod-server.pid 2>/dev/null | head -1)
+    [ -n "$MAIN_PID" ] && kill -USR1 "$MAIN_PID" 2>/dev/null || true
     sleep 2
     log "Stopping VOD Server..."
     systemctl stop vod-server 2>/dev/null || true
