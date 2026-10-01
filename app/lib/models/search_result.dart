@@ -3,7 +3,7 @@ import 'media_card.dart';
 
 /// One row of `/search` (flat, normalised to `image_url`).
 class SearchResult {
-  const SearchResult({required this.id, required this.title, required this.slug, required this.imageUrl, required this.contentType, required this.year, required this.voteAverage});
+  const SearchResult({required this.id, required this.title, required this.slug, required this.imageUrl, required this.contentType, required this.year, required this.voteAverage, this.isRestricted = false, this.isAdult = false, this.categoryId});
   final int id;
   final String title;
   final String slug;
@@ -11,6 +11,11 @@ class SearchResult {
   final String contentType;
   final int? year;
   final double? voteAverage;
+
+  /// `/search` rows do not carry these today (docs/API_GAPS.md); parsed when present.
+  final bool isRestricted;
+  final bool isAdult;
+  final int? categoryId;
 
   factory SearchResult.fromJson(Json j) => SearchResult(
         id: asInt(j['id']),
@@ -20,6 +25,9 @@ class SearchResult {
         contentType: asString(j['content_type']),
         year: asIntOrNull(j['year']),
         voteAverage: asDoubleOrNull(j['vote_average']),
+        isRestricted: asBool(j['is_restricted']),
+        isAdult: asBool(j['is_adult']),
+        categoryId: asIntOrNull(j['category_id']),
       );
 
   MediaCard toCard() => MediaCard(
@@ -31,5 +39,8 @@ class SearchResult {
         year: year,
         rating: voteAverage,
         subtitle: year?.toString(),
+        isRestricted: isRestricted,
+        isAdult: isAdult,
+        categoryId: categoryId,
       );
 }

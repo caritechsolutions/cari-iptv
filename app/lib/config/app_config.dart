@@ -41,6 +41,8 @@ class AppConfig {
     required this.platformTag,
     required this.cleartextHosts,
     this.billingUi = BillingUi.auto,
+    this.logoHasName = true,
+    this.hasDarkLogo = false,
   });
 
   final AppFlavor flavor;
@@ -83,6 +85,15 @@ class AppConfig {
   /// brand (a store build can set `off` regardless of the server).
   final BillingUi billingUi;
 
+  /// `LOGO_HAS_NAME` (default true): the logo artwork already contains the
+  /// brand name, so the app name is not printed beside it.
+  final bool logoHasName;
+
+  /// `BRAND_LOGO_DARK`: the brand ships `logo_dark.png` for dark backgrounds
+  /// (set by tool/build_brand.sh from the file's presence). Without it the
+  /// logo is shown on a light plate.
+  final bool hasDarkLogo;
+
   String get apiV1 => '$apiBaseUrl/api/v1';
   bool get isDev => flavor == AppFlavor.dev;
 
@@ -104,6 +115,8 @@ class AppConfig {
   static const _platformProd = String.fromEnvironment('PLATFORM_TAG_PROD', defaultValue: 'mobile');
   static const _cleartext = String.fromEnvironment('CLEARTEXT_HOSTS', defaultValue: '');
   static const _billingUi = String.fromEnvironment('BILLING_UI', defaultValue: 'auto');
+  static const _logoHasName = String.fromEnvironment('LOGO_HAS_NAME', defaultValue: 'true');
+  static const _hasDarkLogo = bool.fromEnvironment('BRAND_LOGO_DARK', defaultValue: false);
 
   /// Builds the config for [flavor] from the build-time defines.
   factory AppConfig.forFlavor(AppFlavor flavor) {
@@ -125,8 +138,39 @@ class AppConfig {
       platformTag: isDev ? '$_platformProd-dev' : _platformProd,
       cleartextHosts: parseHostList(_cleartext),
       billingUi: BillingUi.parse(_billingUi),
+      logoHasName: parseFlag(_logoHasName, true),
+      hasDarkLogo: _hasDarkLogo,
     );
   }
+
+  /// `true`/`false`/`1`/`0`/`yes`/`no`, else [fallback].
+  static bool parseFlag(String v, bool fallback) => switch (v.trim().toLowerCase()) {
+        'true' || '1' || 'yes' || 'on' => true,
+        'false' || '0' || 'no' || 'off' => false,
+        _ => fallback,
+      };
+
+  /// Same config with other brand switches (tests, previews).
+  AppConfig copyWith({BillingUi? billingUi, bool? logoHasName, bool? hasDarkLogo}) => AppConfig(
+        flavor: flavor,
+        brandKey: brandKey,
+        appName: appName,
+        applicationId: applicationId,
+        apiBaseUrl: apiBaseUrl,
+        primaryColor: primaryColor,
+        accentColor: accentColor,
+        backgroundColor: backgroundColor,
+        surfaceColor: surfaceColor,
+        logoAsset: logoAsset,
+        privacyUrl: privacyUrl,
+        termsUrl: termsUrl,
+        deleteAccountUrl: deleteAccountUrl,
+        platformTag: platformTag,
+        cleartextHosts: cleartextHosts,
+        billingUi: billingUi ?? this.billingUi,
+        logoHasName: logoHasName ?? this.logoHasName,
+        hasDarkLogo: hasDarkLogo ?? this.hasDarkLogo,
+      );
 
   /// Same config with another billing override (tests, previews).
   AppConfig withBillingUi(BillingUi value) => AppConfig(
@@ -146,6 +190,8 @@ class AppConfig {
         platformTag: platformTag,
         cleartextHosts: cleartextHosts,
         billingUi: value,
+        logoHasName: logoHasName,
+        hasDarkLogo: hasDarkLogo,
       );
 
   /// Development placeholder brand (what `flutter run` uses).

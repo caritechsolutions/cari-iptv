@@ -29,3 +29,8 @@ Stream URL schemes/formats on live data (2026-09-20): 26/26 `https://`; channels
 
 | 21 | A movie's `stream_url` can be a YouTube watch URL | Not playable by a native player | **Worked around** — URLs on youtube.com/youtu.be/vimeo.com (or without a media extension) open in the browser with a "Watch on YouTube" button |
 | 22 | No EPG data on the live install; `/movies/featured` empty; no mobile layout published | Empty guide, no hero | **Worked around** — fallback home uses latest titles; guide shows an empty state. Publish a mobile layout in Admin → App Layout to take over the home screen |
+
+## Padlock data on list rows
+
+`/search` rows and `/auth/continue-watching` rows carry no `is_restricted`, `is_adult` or `category_id`, so cards built from them cannot show the padlock and the play gate sees them as unrestricted until the detail endpoint is opened (movie and series detail pages re-check; a restricted **channel** opened straight from a search result plays without the gate). The app parses the three fields whenever the API adds them (`SearchResult`, `ContinueWatchingItem`); adding them to `ContentApiService::search()` and the continue-watching query is a one-line change per query, same subquery as the list endpoints. Not changed: outside the approved backend list.
+

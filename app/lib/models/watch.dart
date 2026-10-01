@@ -62,6 +62,9 @@ class ContinueWatchingItem {
     required this.resumeSeasonNumber,
     required this.resumeEpisodeNumber,
     required this.resumeEpisodeTitle,
+    this.isRestricted = false,
+    this.isAdult = false,
+    this.categoryId,
   });
 
   final String contentType;
@@ -78,6 +81,11 @@ class ContinueWatchingItem {
   final int? resumeSeasonNumber;
   final int? resumeEpisodeNumber;
   final String? resumeEpisodeTitle;
+
+  /// Carried when the API sends them (docs/API_GAPS.md: continue-watching rows lack them today).
+  final bool isRestricted;
+  final bool isAdult;
+  final int? categoryId;
 
   factory ContinueWatchingItem.fromJson(Json j) {
     final type = asString(j['content_type'], 'movie');
@@ -96,6 +104,9 @@ class ContinueWatchingItem {
       resumeSeasonNumber: asIntOrNull(j['resume_season_number']),
       resumeEpisodeNumber: asIntOrNull(j['resume_episode_number']),
       resumeEpisodeTitle: asStringOrNull(j['resume_episode_title']),
+      isRestricted: asBool(j['is_restricted']),
+      isAdult: asBool(j['is_adult']),
+      categoryId: asIntOrNull(j['category_id']),
     );
   }
 
@@ -111,6 +122,9 @@ class ContinueWatchingItem {
             ? 'S$resumeSeasonNumber E$resumeEpisodeNumber'
             : year?.toString(),
         progress: progress.fraction,
+        isRestricted: isRestricted,
+        isAdult: isAdult,
+        categoryId: categoryId,
       );
 }
 

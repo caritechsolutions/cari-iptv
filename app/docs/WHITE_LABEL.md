@@ -14,6 +14,8 @@ The app is brand-agnostic. Everything that identifies a brand is a **build-time 
 | Legal pages | `PRIVACY_URL`, `TERMS_URL`, `DELETE_ACCOUNT_URL` | dart-define; opened in the browser from login, register, settings |
 | Analytics/ads platform tag | `PLATFORM_TAG_PROD` (default `mobile`; dev builds send `<tag>-dev`) | dart-define |
 | Cleartext (plain http) stream hosts | `CLEARTEXT_HOSTS` (comma-separated; **empty = HTTPS only**) | `android/app/src/main/res/xml/network_security_config.xml` (generated); iOS ATS snippet printed by the tool |
+| Logo on dark backgrounds | optional `logo_dark.png` (same artwork with light lettering) | copied to `assets/branding/`; `tool/build_brand.sh` passes `BRAND_LOGO_DARK` from the file's presence. Without it the app draws `logo.png` on a light rounded plate (`BrandLogo`), so dark lettering never disappears on the dark theme |
+| Logo carries the name | `LOGO_HAS_NAME` (`true` default, `false`) | dart-define → `AppConfig.logoHasName`; when true the app name is not printed beside the logo (login, splash, any `BrandHeader`) |
 | Billing surfaces | `BILLING_UI` (`auto` = follow the server's `features.billing`, `on`, `off`; default `auto`) | dart-define → `AppConfig.billingUi`; `off` hides the packages page and nav item, package rows and sections, activate/cancel actions and any plan/price wording whatever the server says (use it for store builds that must not show billing) |
 | Signing key | `key.properties` + `upload-keystore.jks` in the brand folder (gitignored) | `android/brand.properties` → Gradle release signing |
 
@@ -22,9 +24,9 @@ Shared across brands: all code, the Android `namespace` (`net.caritech.caritv`, 
 ## Add a brand
 
 1. Copy a brand folder: `cp -r brands/islandtv brands/<newbrand>`.
-2. Edit `brands/<newbrand>/brand.json`. Required keys: `BRAND_KEY`, `APP_NAME`, `APPLICATION_ID`, `API_BASE_URL_DEV`, `API_BASE_URL_PROD`, the four colours, the three legal URLs. Optional: `PLATFORM_TAG_PROD`, `CLEARTEXT_HOSTS`, `BILLING_UI` (`auto` / `on` / `off`, see the table; the tool rejects other values).
+2. Edit `brands/<newbrand>/brand.json`. Required keys: `BRAND_KEY`, `APP_NAME`, `APPLICATION_ID`, `API_BASE_URL_DEV`, `API_BASE_URL_PROD`, the four colours, the three legal URLs. Optional: `PLATFORM_TAG_PROD`, `CLEARTEXT_HOSTS`, `BILLING_UI` (`auto` / `on` / `off`), `LOGO_HAS_NAME` (`true` / `false`; see the table; the tool rejects other values), and a `logo_dark.png` file next to `logo.png`.
    - `APPLICATION_ID` must be reverse-DNS the operator controls (e.g. `com.operator.tv`). **It cannot change after the first Play/App Store upload.**
-3. Replace the four PNGs with the operator's artwork (same sizes; the icon must not rely on transparency, the foreground must be transparent outside the glyph).
+3. Replace the four PNGs with the operator's artwork (add `logo_dark.png` if the wordmark has dark lettering; otherwise the app plates the logo) (same sizes; the icon must not rely on transparency, the foreground must be transparent outside the glyph).
 4. Create the brand's signing key (see below).
 5. Build:
    ```bash

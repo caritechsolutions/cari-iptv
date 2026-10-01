@@ -2,6 +2,8 @@
 
 Install: `https://freetvapp.freetv.ng` (API at `/api/v1`, behind a TLS proxy). Application id `ng.freetv.app`, label "Free TV", primary colour `#ED0000` sampled from the logo. The logo on white is the source for all four assets (`icon.png` white background, `icon_foreground.png` transparent mark inside the adaptive safe circle, `logo.png` the original wordmark trimmed at full resolution, `splash.png` the mark on a white rounded square so the black lettering stays readable on the dark splash colour).
 
+`logo_dark.png` is the same wordmark with the black lettering inverted to white (red kept) for the app's dark screens, and `LOGO_HAS_NAME` is true because the wordmark already says FREE TV, so the app does not print the name beside it.
+
 Build: `./tool/build_brand.sh freetv apk prod` (release-signed when `key.properties` is present, see below). CI builds the prod release APK alongside caritv on every push (`EXTRA_BRANDS` in `.github/workflows/android-debug.yml`) and attaches it to the `dev-<sha>` prerelease. Nothing is uploaded to any store.
 
 ## Signing key (not in the repo)

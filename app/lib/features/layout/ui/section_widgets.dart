@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/util/json.dart';
+import '../../../core/widgets/access_badge.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
@@ -145,6 +146,7 @@ class _HeroSlideshowState extends ConsumerState<HeroSlideshow> {
                     top: 12,
                     child: Text('${i + 1}/${cards.length}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                   ),
+                Positioned(left: 10, top: 6, child: AccessBadge.boxed(card)),
               ],
             ),
           );
@@ -209,7 +211,7 @@ class _ChannelTile extends ConsumerWidget {
         padding: const EdgeInsets.all(10),
         child: Column(
           children: [
-            Expanded(child: AppImage(card.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined)),
+            Expanded(child: Stack(children: [Positioned.fill(child: AppImage(card.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined)), AccessBadge.overlay(card)])),
             const SizedBox(height: 4),
             Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
           ],
@@ -330,7 +332,7 @@ class SpotlightSection extends ConsumerWidget {
           decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(12)),
           child: Row(
             children: [
-              SizedBox(width: 110, child: AspectRatio(aspectRatio: 2 / 3, child: AppImage(card.primaryImage, borderRadius: const BorderRadius.horizontal(left: Radius.circular(12))))),
+              SizedBox(width: 110, child: AspectRatio(aspectRatio: 2 / 3, child: Stack(children: [Positioned.fill(child: AppImage(card.primaryImage, borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)))), AccessBadge.overlay(card)]))),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -454,7 +456,7 @@ class EpgScheduleSection extends ConsumerWidget {
           ListTile(
             dense: true,
             leading: SizedBox(width: 44, height: 32, child: AppImage(byId[s.channelId]!.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined)),
-            title: Text(s.nowAt(now)?.title ?? 'No programme information', maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Row(children: [Expanded(child: Text(s.nowAt(now)?.title ?? 'No programme information', maxLines: 1, overflow: TextOverflow.ellipsis)), AccessBadge(byId[s.channelId]!.toCard())]),
             subtitle: Text('${byId[s.channelId]!.name} · Next: ${s.nextAfter(now)?.title ?? '—'}', maxLines: 1, overflow: TextOverflow.ellipsis),
             onTap: () => openCard(context, ref, byId[s.channelId]!.toCard()),
           ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/providers.dart';
+import '../../../core/widgets/brand_logo.dart';
 import '../../../core/widgets/legal_links.dart';
 
 /// Shared frame for the login / register / forgot-password screens.
@@ -16,7 +16,6 @@ class AuthScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final config = ref.watch(appConfigProvider);
     final theme = Theme.of(context);
     // A screen reached with `go` (e.g. verify-pending) has nothing under it:
     // both the arrow and system back then lead to Sign In instead of exiting.
@@ -42,14 +41,7 @@ class AuthScaffold extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(config.logoAsset, width: 40, height: 40),
-                        const SizedBox(width: 10),
-                        Text(config.appName, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                      ],
-                    ),
+                    const Center(child: BrandHeader()),
                     const SizedBox(height: 28),
                     Text(title, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
                     if (subtitle != null) ...[const SizedBox(height: 6), Text(subtitle!, style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70))],

@@ -30,6 +30,8 @@ done
 dart run tool/apply_brand.dart "$BRAND" "${EXTRA[@]}"
 
 DEFINES="--dart-define-from-file=brands/$BRAND/brand.json"
+# Optional dark-background logo: its presence is a build fact, not a brand.json key.
+if [[ -f "brands/$BRAND/logo_dark.png" ]]; then DEFINES="$DEFINES --dart-define=BRAND_LOGO_DARK=true"; else DEFINES="$DEFINES --dart-define=BRAND_LOGO_DARK=false"; fi
 ENTRY="lib/main_$ENV.dart"
 case "$TARGET" in
   apk)       flutter build apk       $MODE --flavor "$ENV" -t "$ENTRY" $DEFINES ;;

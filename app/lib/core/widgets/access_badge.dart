@@ -17,13 +17,21 @@ bool? isCardLocked(WidgetRef ref, MediaCard card) {
 /// Adult content always shows 18+; the padlock appears only when the play
 /// gate would refuse, and follows entitlement changes.
 class AccessBadge extends ConsumerWidget {
-  const AccessBadge(this.card, {super.key, this.overlay = false});
+  const AccessBadge(this.card, {super.key, this.overlay = false, this.boxed = false});
 
-  /// Boxed overlay for image cards; plain small icon for list rows.
-  const AccessBadge.overlay(this.card, {super.key}) : overlay = true;
+  /// Boxed badge positioned in the top-right corner of a card's `Stack`.
+  const AccessBadge.overlay(this.card, {super.key})
+      : overlay = true,
+        boxed = true;
+
+  /// The same boxed badge without positioning (place it yourself).
+  const AccessBadge.boxed(this.card, {super.key})
+      : overlay = false,
+        boxed = true;
 
   final MediaCard card;
   final bool overlay;
+  final bool boxed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,15 +44,12 @@ class AccessBadge extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     final key = Key(icon == Icons.lock_outline ? 'locked-${card.type}-${card.id}' : 'adult-${card.type}-${card.id}');
-    if (!overlay) return Padding(padding: const EdgeInsets.only(left: 6), child: Icon(icon, key: key, size: 14, color: Colors.white54));
-    return Positioned(
-      top: 6,
-      right: 6,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-        child: Icon(icon, key: key, size: 14, color: Colors.white),
-      ),
+    if (!boxed) return Padding(padding: const EdgeInsets.only(left: 6), child: Icon(icon, key: key, size: 14, color: Colors.white54));
+    final box = Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+      child: Icon(icon, key: key, size: 14, color: Colors.white),
     );
+    return overlay ? Positioned(top: 6, right: 6, child: box) : box;
   }
 }

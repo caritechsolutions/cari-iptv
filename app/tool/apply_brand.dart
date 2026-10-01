@@ -9,6 +9,8 @@
 //   3. generates android/app/src/main/res/xml/network_security_config.xml from
 //      CLEARTEXT_HOSTS (empty = HTTPS only)
 //      BILLING_UI (auto = follow the server switch, on, off)
+//      LOGO_HAS_NAME (true = the logo carries the brand name, so it is not printed beside it)
+//      logo_dark.png (optional) = logo for dark backgrounds; without it the logo sits on a light plate
 //   4. writes tool/generated/icons.yaml + splash.yaml and runs
 //      flutter_launcher_icons and flutter_native_splash (skip with --no-icons)
 //   5. sets CFBundleDisplayName in ios/Runner/Info.plist and prints the ATS
@@ -58,7 +60,18 @@ void main(List<String> args) async {
     if (!src.existsSync()) _fail('missing ${src.path}');
     src.copySync('${branding.path}/$img');
   }
-  stdout.writeln('✓ assets/branding/ ← brands/$brand/');
+  // Optional logo_dark.png (dark backgrounds). Copied when present, and a stale
+  // copy from another brand is removed so the plate fallback is used instead.
+  final darkLogo = File('${dir.path}/logo_dark.png');
+  final darkTarget = File('${branding.path}/logo_dark.png');
+  if (darkLogo.existsSync()) {
+    darkLogo.copySync(darkTarget.path);
+  } else if (darkTarget.existsSync()) {
+    darkTarget.deleteSync();
+  }
+  final logoHasName = (cfg['LOGO_HAS_NAME'] ?? 'true').trim().toLowerCase();
+  if (!const {'true', 'false', '1', '0', 'yes', 'no'}.contains(logoHasName)) _fail('LOGO_HAS_NAME must be true or false (got "$logoHasName")');
+  stdout.writeln('✓ assets/branding/ ← brands/$brand/ (logo_dark.png: ${darkLogo.existsSync() ? 'yes' : 'no, light plate'}; LOGO_HAS_NAME=$logoHasName)');
 
   // 2. android/brand.properties
   final keyProps = File('${dir.path}/key.properties');

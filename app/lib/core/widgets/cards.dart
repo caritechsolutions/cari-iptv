@@ -182,6 +182,7 @@ class LandscapeCard extends ConsumerWidget {
                         )
                       : AppImage(card.landscapeImage, borderRadius: BorderRadius.circular(10)),
                 ),
+                AccessBadge.overlay(card),
                 if (card.progress != null && card.progress! > 0)
                   Positioned(
                     left: 0,
