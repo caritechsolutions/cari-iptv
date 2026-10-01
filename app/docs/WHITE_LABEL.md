@@ -36,6 +36,8 @@ Shared across brands: all code, the Android `namespace` (`net.caritech.caritv`, 
    Add `--no-icons` to skip regenerating icons/splash on repeat builds.
 6. Verify: `aapt dump badging build/app/outputs/flutter-apk/app-prod-release.apk | grep -E "package:|application-label"`.
 
+CI: `.github/workflows/android-debug.yml` builds caritv plus every brand listed in `EXTRA_BRANDS` (prod release APK each) and attaches them to the `dev-<sha>` prerelease. A client brand is release-signed in CI when the repository secrets `<BRAND>_KEYSTORE_BASE64` and `<BRAND>_KEY_PROPERTIES` exist (brand name upper-cased); otherwise it is debug-signed and `SIGNING.txt` on the release says so. Nothing is uploaded to a store by CI.
+
 `tool/build_brand.sh` runs `dart run tool/apply_brand.dart <brand>` and then `flutter build … --dart-define-from-file=brands/<brand>/brand.json`. You can run `apply_brand.dart` alone to switch the working tree to a brand (for `flutter run` from an IDE, add the same `--dart-define-from-file` to the run configuration).
 
 The last applied brand leaves generated files in the tree (`assets/branding/`, launcher icons, splash resources, `network_security_config.xml`, `ios/Runner/Info.plist` display name). The committed state is `caritv`; run `dart run tool/apply_brand.dart caritv` before committing unrelated changes so the diff stays clean.

@@ -1,0 +1,17 @@
+{
+  "BRAND_KEY": "freetv",
+  "APP_NAME": "Free TV",
+  "APPLICATION_ID": "ng.freetv.app",
+  "API_BASE_URL_DEV": "https://freetvapp.freetv.ng",
+  "API_BASE_URL_PROD": "https://freetvapp.freetv.ng",
+  "PRIMARY_COLOR": "#ED0000",
+  "ACCENT_COLOR": "#FFFFFF",
+  "BACKGROUND_COLOR": "#101014",
+  "SURFACE_COLOR": "#1C1C22",
+  "PRIVACY_URL": "https://freetvapp.freetv.ng/privacy",
+  "TERMS_URL": "https://freetvapp.freetv.ng/privacy#terms",
+  "DELETE_ACCOUNT_URL": "https://freetvapp.freetv.ng/delete-account",
+  "PLATFORM_TAG_PROD": "mobile",
+  "CLEARTEXT_HOSTS": "",
+  "BILLING_UI": "auto"
+}

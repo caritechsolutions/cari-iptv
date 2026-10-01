@@ -1,6 +1,10 @@
 name: Android debug APK
 
-# build  → builds the caritv dev debug APK and the caritv prod release APK
+# build  → builds the caritv dev debug APK and the caritv prod release APK,
+#          plus the prod release APK of every brand in EXTRA_BRANDS (freetv).
+#          A brand's release APK is signed with its upload key when the secrets
+#          <BRAND>_KEYSTORE_BASE64 and <BRAND>_KEY_PROPERTIES exist (brand name
+#          upper-cased), otherwise with the debug key (and the release notes say so).
 # smoke  → boots an API 36 (Android 16) emulator (KVM), installs each APK, launches it, waits 20 s,
 #          fails if the process died / FATAL EXCEPTION / activity not resumed;
 #          logcat + screenshot are uploaded either way
@@ -27,6 +31,8 @@ concurrency:
 env:
   FLUTTER_VERSION: "3.47.5"
   BRAND: caritv
+  # Client brands built alongside caritv (space-separated, prod release APK each).
+  EXTRA_BRANDS: freetv
 
 jobs:
   build:
@@ -87,6 +93,30 @@ jobs:
           mkdir -p out
           cp build/app/outputs/flutter-apk/app-dev-debug.apk   "out/${BRAND}-dev-debug-${SHORT_SHA}.apk"
           cp build/app/outputs/flutter-apk/app-prod-release.apk "out/${BRAND}-prod-release-${SHORT_SHA}.apk"
+
+      - name: Build client brands (prod release, own icons and signing)
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          : > out/SIGNING.txt
+          for b in $EXTRA_BRANDS; do
+            U=$(echo "$b" | tr '[:lower:]' '[:upper:]')
+            KS=$(echo "$SECRETS_JSON" | jq -r --arg k "${U}_KEYSTORE_BASE64" '.[$k] // empty')
+            KP=$(echo "$SECRETS_JSON" | jq -r --arg k "${U}_KEY_PROPERTIES" '.[$k] // empty')
+            if [ -n "$KS" ] && [ -n "$KP" ]; then
+              echo "$KS" | base64 -d > "brands/$b/upload-keystore.jks"
+              printf '%s\n' "$KP" > "brands/$b/key.properties"
+              echo "$b: release-signed with the brand upload key" | tee -a out/SIGNING.txt
+            else
+              echo "$b: debug-signed (no ${U}_KEYSTORE_BASE64 / ${U}_KEY_PROPERTIES secrets)" | tee -a out/SIGNING.txt
+            fi
+            ./tool/build_brand.sh "$b" apk prod
+            cp build/app/outputs/flutter-apk/app-prod-release.apk "out/${b}-prod-release-${SHORT_SHA}.apk"
+            rm -f "brands/$b/upload-keystore.jks" "brands/$b/key.properties"
+          done
+          # leave the tree on the committed brand
+          dart run tool/apply_brand.dart "$BRAND" --no-icons
           (cd out && sha256sum *.apk | tee SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v4
@@ -189,8 +219,12 @@ jobs:
             Debug APK of the **${{ env.BRAND }}** brand, **dev** flavour (application id `net.caritech.caritv.dev`, label "CARI TV Dev").
             Built from `${{ github.sha }}` on branch `${{ github.ref_name }}`. Passed the emulator smoke test (debug and release variants launched and reached the foreground).
 
-            Install: download the `.apk` below on the phone, open it and allow installing from this source. Signed with the debug key — not for stores.
+            Install: download the `.apk` below on the phone, open it and allow installing from this source. The caritv APKs are signed with the debug key — not for stores.
+
+            Client brands (`*-prod-release-*.apk`, see `SIGNING.txt` for how each was signed): ${{ env.EXTRA_BRANDS }}. Nothing is uploaded to any store by this workflow.
           files: |
             apks/${{ env.BRAND }}-dev-debug-${{ needs.build.outputs.short_sha }}.apk
+            apks/*-prod-release-${{ needs.build.outputs.short_sha }}.apk
             apks/SHA256SUMS.txt
+            apks/SIGNING.txt
           token: ${{ secrets.GITHUB_TOKEN }}
