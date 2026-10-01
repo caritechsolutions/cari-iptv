@@ -177,7 +177,7 @@ class LandscapeCard extends ConsumerWidget {
                   child: isChannel
                       ? Container(
                           decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.all(14),
+                          padding: EdgeInsets.all((width * 0.07).clamp(6.0, 14.0)),
                           child: AppImage(card.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined),
                         )
                       : AppImage(card.landscapeImage, borderRadius: BorderRadius.circular(10)),
@@ -235,6 +235,10 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
+/// Width of a channel card in a rail so that about three fit across the
+/// viewport (16 px rail padding each side, 10 px gaps).
+double channelCardWidth(double viewportWidth) => ((viewportWidth - 32 - 20) / 3).clamp(96.0, 150.0);
+
 /// Horizontal rail of cards. `style` ∈ poster | backdrop | square.
 class ContentRail extends StatelessWidget {
   const ContentRail({super.key, required this.cards, this.style = 'poster', this.title, this.subtitle, this.onSeeAll});
@@ -247,8 +251,12 @@ class ContentRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cards.isEmpty) return const SizedBox.shrink();
-    final landscape = style == 'backdrop' || cards.first.type == 'channel';
-    final height = landscape ? 160.0 : 232.0;
+    final channels = cards.first.type == 'channel';
+    final landscape = style == 'backdrop' || channels;
+    // Channel rails: about three logo cards per screen width; movie and
+    // series cards keep their widths.
+    final channelWidth = channelCardWidth(MediaQuery.sizeOf(context).width);
+    final height = channels ? channelWidth * 9 / 16 + 44 : (landscape ? 160.0 : 232.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -260,7 +268,7 @@ class ContentRail extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: cards.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (_, i) => landscape ? LandscapeCard(card: cards[i]) : PosterCard(card: cards[i]),
+            itemBuilder: (_, i) => landscape ? LandscapeCard(card: cards[i], width: channels ? channelWidth : 200) : PosterCard(card: cards[i]),
           ),
         ),
       ],
