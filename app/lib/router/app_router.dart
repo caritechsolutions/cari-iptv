@@ -55,7 +55,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/verify-pending',
         builder: (_, state) {
           final extra = state.extra is Map ? state.extra as Map : const {};
-          return VerifyPendingScreen(email: '${extra['email'] ?? ''}', message: extra['message'] as String?);
+          return VerifyPendingScreen(email: '${extra['email'] ?? ''}', message: extra['message'] as String?, emailSent: extra['email_sent'] != false);
         },
       ),
 

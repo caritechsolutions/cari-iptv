@@ -20,7 +20,7 @@ Items marked **LIVE** were later checked against `https://player.caritech.net`; 
 
 | Method / path | Auth | Body / params | Success | Errors |
 |---|---|---|---|---|
-| `POST /auth/register` | – | `first_name, last_name, email, password (≥8), password_confirm, phone?, country?, birthday? (Y-m-d)` | 201 `{data:{requires_verification:true, message}}` | 422 `VALIDATION_ERROR` |
+| `POST /auth/register` | – | `first_name, last_name, email, password (≥8), password_confirm, phone?, country?, birthday? (Y-m-d)` | 201 `{data:{email_sent (since the backend commit that logs failed sends; absent = sent), requires_verification:true, message}}` | 422 `VALIDATION_ERROR` |
 | `GET /auth/verify-email/{token}` | – | – | `{data:{message}}` | 400 `VERIFICATION_FAILED` |
 | `POST /auth/resend-verification` | – | `email` | 200 generic message | 400 |
 | `POST /auth/login` | – | `identity` (username **or** email), `password`, `device_name?`, `device_type?` ∈ `web|mobile|tv|stb` (default `web`) | 200 `{data:{access_token, refresh_token, expires_in:3600, token_type:"Bearer", user}}` | 400 `VALIDATION_ERROR`; 401 `AUTH_FAILED`; 401 `EMAIL_NOT_VERIFIED` + `needs_verification:true`, `email` |

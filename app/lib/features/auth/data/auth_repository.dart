@@ -28,7 +28,7 @@ class AuthRepository {
     return LoginResult(tokens, User.fromJson(asJson(data['user'])));
   }
 
-  Future<String> register({
+  Future<RegisterResult> register({
     required String firstName,
     required String lastName,
     required String email,
@@ -48,7 +48,7 @@ class AuthRepository {
       if (country != null && country.isNotEmpty) 'country': country,
       if (birthday != null && birthday.isNotEmpty) 'birthday': birthday,
     });
-    return asString(env.dataAsJson['message'], 'Account created. Please check your email to verify your account.');
+    return RegisterResult.fromData(env.dataAsJson);
   }
 
   Future<String> resendVerification(String email) async {
@@ -108,3 +108,18 @@ class AuthRepository {
     return asString(env.dataAsJson['message'], 'Subscription cancelled');
   }
 }
+
+/// Outcome of `POST /auth/register`. `email_sent` arrived with the backend
+/// commit that logs failed sends; older installs omit it, which counts as
+/// sent so the screen keeps its usual wording.
+class RegisterResult {
+  const RegisterResult({required this.message, required this.emailSent});
+  final String message;
+  final bool emailSent;
+
+  factory RegisterResult.fromData(Json data) => RegisterResult(
+        message: asString(data['message'], 'Account created. Please check your email to verify your account.'),
+        emailSent: data.containsKey('email_sent') ? asBool(data['email_sent']) : true,
+      );
+}
+

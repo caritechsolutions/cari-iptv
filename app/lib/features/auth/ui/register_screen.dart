@@ -47,7 +47,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _error = null;
     });
     try {
-      final message = await ref.read(authRepositoryProvider).register(
+      final result = await ref.read(authRepositoryProvider).register(
             firstName: _first.text.trim(),
             lastName: _last.text.trim(),
             email: _email.text.trim(),
@@ -58,7 +58,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             birthday: _birthday == null ? null : '${_birthday!.year}-${_birthday!.month.toString().padLeft(2, '0')}-${_birthday!.day.toString().padLeft(2, '0')}',
           );
       if (!mounted) return;
-      context.go('/verify-pending', extra: {'email': _email.text.trim(), 'message': message});
+      context.go('/verify-pending', extra: {'email': _email.text.trim(), 'message': result.message, 'email_sent': result.emailSent});
     } catch (e) {
       setState(() => _error = describeError(e));
     } finally {
