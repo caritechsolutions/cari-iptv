@@ -104,13 +104,17 @@ class SubscriberAuthService
             return ['success' => false, 'error' => 'Registration failed. Please try again.'];
         }
 
-        // Send verification email
-        $this->sendVerificationEmail($email, $firstName, $verificationToken);
+        // Send verification email. The account is new, so telling the caller
+        // that the mail did not go out reveals nothing about other accounts.
+        $emailSent = $this->sendVerificationEmail($email, $firstName, $verificationToken);
 
         return [
             'success' => true,
             'requires_verification' => true,
-            'message' => 'Account created! Please check your email to verify your account.',
+            'email_sent' => $emailSent,
+            'message' => $emailSent
+                ? 'Account created! Please check your email to verify your account.'
+                : 'Your account was created, but the verification email could not be sent. Use "Resend" to try again.',
         ];
     }
 
@@ -166,6 +170,8 @@ class SubscriberAuthService
         );
 
         $name = $subscriber['first_name'] ?: $subscriber['username'];
+        // A failure is logged by the helper; the response stays generic so the
+        // endpoint cannot be used to tell whether an unverified account exists.
         $this->sendVerificationEmail($email, $name, $verificationToken);
 
         return [
@@ -175,13 +181,17 @@ class SubscriberAuthService
     }
 
     /**
-     * Send verification email helper
+     * Send verification email helper. Returns whether the mail was handed to
+     * the SMTP server; every failure is written to the PHP error log (recipient
+     * and reason, never the token) because the caller's response is generic.
      */
-    private function sendVerificationEmail(string $email, string $name, string $verificationToken): void
+    private function sendVerificationEmail(string $email, string $name, string $verificationToken): bool
     {
         $settings = new SettingsService();
         $siteUrl = $settings->get('site_url', '', 'general');
         if (empty($siteUrl)) {
+            // Behind a TLS-terminating proxy that does not set HTTPS this yields
+            // an http:// link; set site_url in Admin → Settings to avoid relying on it.
             $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
             $siteUrl = "{$protocol}://{$_SERVER['HTTP_HOST']}";
         }
@@ -189,9 +199,17 @@ class SubscriberAuthService
 
         $emailService = new EmailService();
 
-        if ($emailService->isConfigured()) {
-            $emailService->sendEmailVerification($email, $name, $verifyUrl);
+        if (!$emailService->isConfigured()) {
+            error_log("Verification email to {$email} not sent: SMTP is not configured (Admin → Settings → Email)");
+            return false;
         }
+
+        if (!$emailService->sendEmailVerification($email, $name, $verifyUrl)) {
+            error_log("Verification email to {$email} failed: " . ($emailService->getLastError() ?? 'unknown SMTP error'));
+            return false;
+        }
+
+        return true;
     }
 
     /**

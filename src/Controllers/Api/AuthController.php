@@ -44,6 +44,7 @@ class AuthController extends BaseApiController
         $this->json([
             'data' => [
                 'requires_verification' => true,
+                'email_sent' => (bool) ($result['email_sent'] ?? false),
                 'message' => $result['message'],
             ],
         ], 201);

@@ -204,3 +204,15 @@ To apply it before running `update.sh`, also install the unit by hand: `sudo ins
 
 `/search` rows (channel, movie, series) and `/auth/continue-watching` rows (movies, and series presented from an episode) now carry `is_restricted`, `is_adult` and `category_id`, computed exactly as on the list endpoints (`content_group_items` subquery, booleans cast). Without them the app could not show a padlock on those cards and a restricted channel opened straight from a search result played without the gate. Files: `src/Services/ContentApiService.php` (`search()`), `src/Services/SubscriberAuthService.php` (`getContinueWatching()`). No migration. Part of the IPTV backend (root `update.sh`). Not deployed.
 
+## 9. Verification email: failures logged, `email_sent` on register (`backend:` commit)
+
+**Finding.** The web register page and the app both call `POST /api/v1/auth/register`; there is one path (`SubscriberAuthService::register()` → `sendVerificationEmail()` → `EmailService::sendEmailVerification()`), so a mail that arrives from the web and not from the app is a failure of that one send at that moment, not a code difference. Before this commit nothing recorded such failures: the helper skipped silently when SMTP was not configured and ignored `send()` returning false, and the API answered "check your email" regardless. Resend behaved the same.
+
+**Change.** `sendVerificationEmail()` returns whether the mail was handed to SMTP and writes one `error_log` line on failure (recipient and `EmailService::getLastError()`, or "SMTP is not configured"; never the token). `register()` returns `email_sent`; the API's 201 response carries `email_sent: bool` and, when false, the message "Your account was created, but the verification email could not be sent. Use \"Resend\" to try again." The app (`RegisterResult`, `VerifyPendingScreen`) shows the resend wording in that case; older backends without the field count as sent. `resendVerification()` logs the same way but keeps its generic response, so the endpoint still cannot be used to tell whether an unverified account exists.
+
+**Where to look on an install.** `storage/logs/php-error.log` (or the PHP-FPM error log) for lines starting `Verification email to`. Admin → Settings → Email holds the SMTP settings and the test-send button.
+
+**site_url fallback (unchanged, noted).** When Admin → Settings → General `site_url` is empty, the link is built from the request: `https` only if PHP sees `$_SERVER['HTTPS']`, otherwise `http://<Host>`. Behind a TLS-terminating proxy that does not pass that on, verification and password-reset links come out as `http://`. Set `site_url` on each install (the Free TV install sits behind such a proxy).
+
+Files: `src/Services/SubscriberAuthService.php`, `src/Controllers/Api/AuthController.php`. No migration. Not deployed.
+
