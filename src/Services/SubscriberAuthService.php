@@ -444,11 +444,15 @@ class SubscriberAuthService
                     continue;
                 }
                 $movie = $this->db->fetch(
-                    "SELECT id, title, slug, year, poster_url, backdrop_url, runtime, vote_average, stream_url
+                    "SELECT id, title, slug, year, poster_url, backdrop_url, runtime, vote_average, stream_url,
+                            is_adult, category_id,
+                            (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = movies.id LIMIT 1) IS NOT NULL as is_restricted
                      FROM movies WHERE id = ? AND status = 'published'",
                     [$item['content_id']]
                 );
                 if ($movie) {
+                    $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
+                    $movie['is_adult'] = (bool) ($movie['is_adult'] ?? false);
                     $item = array_merge($item, $movie);
                 } else {
                     $item['title'] = 'Unknown Movie';
@@ -463,7 +467,9 @@ class SubscriberAuthService
                     "SELECT e.id as episode_id, e.name as episode_title, e.episode_number, e.still_url,
                             e.stream_url, e.runtime, e.vote_average,
                             sn.id as season_id, sn.season_number,
-                            s.title, s.slug, s.year, s.poster_url, s.backdrop_url, s.id as series_id
+                            s.title, s.slug, s.year, s.poster_url, s.backdrop_url, s.id as series_id,
+                            s.is_adult as series_is_adult, s.category_id as series_category_id,
+                            (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as series_is_restricted
                      FROM series_episodes e
                      LEFT JOIN series_seasons sn ON e.season_id = sn.id
                      LEFT JOIN series s ON e.series_id = s.id
@@ -489,6 +495,10 @@ class SubscriberAuthService
                 $item['year'] = $episode['year'] ?? '';
                 $item['poster_url'] = $episode['poster_url'] ?? '';
                 $item['backdrop_url'] = $episode['backdrop_url'] ?? '';
+                // Entitlement fields of the series, as on the series list
+                $item['is_restricted'] = (bool) ($episode['series_is_restricted'] ?? false);
+                $item['is_adult'] = (bool) ($episode['series_is_adult'] ?? false);
+                $item['category_id'] = $episode['series_category_id'] ?? null;
                 // Include resume episode details so player knows where to pick up
                 $item['resume_episode_id'] = $episode['episode_id'];
                 $item['resume_season_id'] = $episode['season_id'];

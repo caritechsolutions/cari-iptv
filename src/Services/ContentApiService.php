@@ -1282,7 +1282,9 @@ class ContentApiService
 
         if ($types === 'all' || $types === 'channel') {
             $channels = $this->safeQuery(fn() => $this->db->fetchAll(
-                "SELECT id, name as title, slug, logo_url as image_url, 'channel' as content_type
+                "SELECT id, name as title, slug, logo_url as image_url, 'channel' as content_type,
+                        is_adult, category_id,
+                        (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = channels.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM channels
                  WHERE is_active = 1 AND (name LIKE ? OR slug LIKE ?)
                  ORDER BY name ASC LIMIT ?",
@@ -1293,7 +1295,9 @@ class ContentApiService
 
         if ($types === 'all' || $types === 'movie') {
             $movies = $this->safeQuery(fn() => $this->db->fetchAll(
-                "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'movie' as content_type
+                "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'movie' as content_type,
+                        is_adult, category_id,
+                        (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = movies.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM movies
                  WHERE status = 'published' AND (title LIKE ? OR slug LIKE ? OR synopsis LIKE ?)
                  ORDER BY vote_average DESC LIMIT ?",
@@ -1304,7 +1308,9 @@ class ContentApiService
 
         if ($types === 'all' || $types === 'series') {
             $series = $this->safeQuery(fn() => $this->db->fetchAll(
-                "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'series' as content_type
+                "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'series' as content_type,
+                        is_adult, category_id,
+                        (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = series.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM series
                  WHERE status = 'published' AND (title LIKE ? OR slug LIKE ? OR synopsis LIKE ?)
                  ORDER BY vote_average DESC LIMIT ?",
@@ -1312,6 +1318,13 @@ class ContentApiService
             ), []);
             $results = array_merge($results, $series);
         }
+
+        // Same entitlement fields as the list endpoints, same booleans.
+        foreach ($results as &$row) {
+            $row['is_restricted'] = (bool) ($row['is_restricted'] ?? false);
+            $row['is_adult'] = (bool) ($row['is_adult'] ?? false);
+        }
+        unset($row);
 
         return $results;
     }

@@ -200,3 +200,7 @@ To apply it before running `update.sh`, also install the unit by hand: `sudo ins
 
 **Deploy.** Part of the IPTV backend, not the VOD server: the root `update.sh` copies `src/`, `public/`, `templates/`. Not deployed.
 
+## 8. Entitlement fields on search and continue-watching rows (`backend:` commit)
+
+`/search` rows (channel, movie, series) and `/auth/continue-watching` rows (movies, and series presented from an episode) now carry `is_restricted`, `is_adult` and `category_id`, computed exactly as on the list endpoints (`content_group_items` subquery, booleans cast). Without them the app could not show a padlock on those cards and a restricted channel opened straight from a search result played without the gate. Files: `src/Services/ContentApiService.php` (`search()`), `src/Services/SubscriberAuthService.php` (`getContinueWatching()`). No migration. Part of the IPTV backend (root `update.sh`). Not deployed.
+
