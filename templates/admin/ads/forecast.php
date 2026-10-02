@@ -34,6 +34,25 @@
         <button class="btn btn-primary" id="btnGenerate" onclick="generateForecast()">
             <i class="lucide-sparkles"></i> Generate Forecast
         </button>
+        <button class="btn btn-secondary" id="btnAiTest" onclick="testForecastAi()" title="Test AI connectivity and dump prompt" style="border:1px solid #334155;">
+            <i class="lucide-stethoscope"></i> Test AI
+        </button>
+    </div>
+</div>
+
+<!-- AI Diagnostics Panel (hidden by default) -->
+<div id="aiDiagPanel" style="display:none;margin-bottom:1.5rem;">
+    <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:1.25rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+            <h3 style="margin:0;font-size:0.95rem;color:#e2e8f0;"><i class="lucide-stethoscope"></i> AI Diagnostics</h3>
+            <button onclick="document.getElementById('aiDiagPanel').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1.2rem;">&times;</button>
+        </div>
+        <div id="aiDiagContent" style="font-family:monospace;font-size:0.8rem;color:#cbd5e1;white-space:pre-wrap;max-height:500px;overflow-y:auto;">Running diagnostics...</div>
+        <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #334155;">
+            <p style="margin:0 0 0.5rem;font-size:0.8rem;color:#64748b;">To test the prompt at the command line:</p>
+            <code id="aiDiagCurlCmd" style="display:block;font-size:0.75rem;color:#94a3b8;background:#0f172a;padding:0.75rem;border-radius:4px;word-break:break-all;max-height:100px;overflow-y:auto;"></code>
+            <button onclick="navigator.clipboard.writeText(document.getElementById('aiDiagCurlCmd').textContent).then(function(){this.textContent='Copied!'}.bind(this))" style="margin-top:0.5rem;padding:0.25rem 0.75rem;background:#334155;color:#e2e8f0;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;">Copy curl command</button>
+        </div>
     </div>
 </div>
 
@@ -169,6 +188,61 @@ if (zoneData.length) {
         },
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } } } }
     });
+}
+
+function testForecastAi() {
+    var panel = document.getElementById('aiDiagPanel');
+    var content = document.getElementById('aiDiagContent');
+    var curlCmd = document.getElementById('aiDiagCurlCmd');
+    panel.style.display = 'block';
+    content.textContent = 'Running diagnostics...\n\n1. Testing AI connectivity (simple ping)...';
+    curlCmd.textContent = '';
+
+    var formData = new FormData();
+    formData.append('csrf_token', csrfToken);
+
+    fetch('/admin/ads/forecast/ai-test', { method: 'POST', body: formData })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+            if (!json.success) {
+                content.textContent = 'Error: ' + (json.message || 'Unknown error');
+                return;
+            }
+
+            var d = json.diagnostics;
+            var out = '=== AI PROVIDER ===\n';
+            out += 'Provider: ' + d.provider_name + '\n';
+            out += 'Model: ' + d.model + '\n';
+            out += 'Available: ' + (d.available ? 'YES' : 'NO') + '\n\n';
+
+            out += '=== PING TEST (tiny prompt) ===\n';
+            if (d.ping.response) {
+                out += 'Status: OK\n';
+                out += 'Response: ' + d.ping.response + '\n';
+                out += 'Time: ' + d.ping.time_seconds + 's\n';
+            } else {
+                out += 'Status: FAILED\n';
+                out += 'Error: ' + (d.ping.error || 'No response') + '\n';
+                out += 'Time: ' + d.ping.time_seconds + 's\n';
+            }
+
+            out += '\n=== FORECAST PROMPT STATS ===\n';
+            out += 'Characters: ' + d.prompt.length_chars.toLocaleString() + '\n';
+            out += 'Words: ' + d.prompt.length_words.toLocaleString() + '\n';
+            out += 'Lines: ' + d.prompt.length_lines + '\n';
+            out += 'Approx tokens: ~' + Math.round(d.prompt.length_words * 1.3).toLocaleString() + '\n';
+            out += '\n=== FULL PROMPT ===\n' + d.prompt.text;
+
+            content.textContent = out;
+
+            // Build curl command for CLI testing
+            var escapedPrompt = d.prompt.text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+            var curl = "curl -s http://localhost:11434/api/generate -d '{\"model\":\"" + d.model + "\",\"prompt\":\"" + escapedPrompt.replace(/'/g, "'\\''") + "\",\"stream\":false,\"options\":{\"temperature\":0.6,\"num_predict\":2000}}' | python3 -m json.tool";
+            curlCmd.textContent = curl;
+        })
+        .catch(function(e) {
+            content.textContent = 'Network error: ' + e.message;
+        });
 }
 
 function generateForecast() {

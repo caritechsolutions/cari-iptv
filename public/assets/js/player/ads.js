@@ -328,48 +328,205 @@ const CariAdManager = (function() {
     }
 
     function playVastAd(vastUrl, onComplete) {
-        // Simple VAST 4.2 parser
+        // VAST 4.2 parser with full tracking support
         fetch(vastUrl)
             .then(function(r) { return r.text(); })
             .then(function(xml) {
                 var parser = new DOMParser();
                 var doc = parser.parseFromString(xml, 'application/xml');
                 var mediaFile = doc.querySelector('MediaFile');
-                if (mediaFile) {
-                    var url = mediaFile.textContent.trim();
-                    var skipEl = doc.querySelector('Linear');
-                    var skipOffset = skipEl ? skipEl.getAttribute('skipoffset') : null;
-                    var skipSec = 0;
-                    if (skipOffset) {
-                        var parts = skipOffset.split(':');
-                        skipSec = parseInt(parts[parts.length - 1]) || 5;
-                    }
+                if (!mediaFile) { onComplete(); return; }
 
-                    var fakeAd = {
-                        type: 'pre_roll',
-                        video_url: url,
-                        skip_after: skipSec,
-                        campaign_id: 0,
-                        id: 0,
-                    };
-
-                    var overlay = _playerContainer.querySelector('.cari-ad-overlay');
-                    if (!overlay) {
-                        onComplete();
-                        return;
-                    }
-
-                    var adVideo = overlay.querySelector('.cari-ad-video');
-                    var skipBtn = overlay.querySelector('.cari-ad-skip');
-                    var clickLayer = overlay.querySelector('.cari-ad-click-layer');
-                    var companionDiv = overlay.querySelector('.cari-ad-companion');
-
-                    playVideoAd(fakeAd, adVideo, skipBtn, clickLayer, companionDiv, onComplete);
-                } else {
-                    onComplete();
+                var url = mediaFile.textContent.trim();
+                var linearEl = doc.querySelector('Linear');
+                var skipOffset = linearEl ? linearEl.getAttribute('skipoffset') : null;
+                var skipSec = 0;
+                if (skipOffset) {
+                    var parts = skipOffset.split(':');
+                    skipSec = parseInt(parts[parts.length - 1]) || 5;
                 }
+
+                // Extract all VAST tracking URLs
+                var vastTracking = {
+                    impression: [],
+                    error: [],
+                    clickThrough: null,
+                    clickTracking: [],
+                    events: {}
+                };
+
+                // Impression pixels
+                doc.querySelectorAll('Impression').forEach(function(el) {
+                    var u = el.textContent.trim();
+                    if (u) vastTracking.impression.push(u);
+                });
+
+                // Error tracking
+                doc.querySelectorAll('Error').forEach(function(el) {
+                    var u = el.textContent.trim();
+                    if (u) vastTracking.error.push(u);
+                });
+
+                // Tracking events (start, firstQuartile, midpoint, thirdQuartile, complete, skip, etc.)
+                doc.querySelectorAll('Tracking').forEach(function(el) {
+                    var event = el.getAttribute('event');
+                    var u = el.textContent.trim();
+                    if (event && u) {
+                        if (!vastTracking.events[event]) vastTracking.events[event] = [];
+                        vastTracking.events[event].push(u);
+                    }
+                });
+
+                // Click tracking
+                var clickThrough = doc.querySelector('ClickThrough');
+                if (clickThrough) vastTracking.clickThrough = clickThrough.textContent.trim();
+                doc.querySelectorAll('ClickTracking').forEach(function(el) {
+                    var u = el.textContent.trim();
+                    if (u) vastTracking.clickTracking.push(u);
+                });
+
+                // Companion ads
+                var companions = [];
+                doc.querySelectorAll('Companion').forEach(function(el) {
+                    var res = el.querySelector('StaticResource');
+                    if (res) {
+                        companions.push({
+                            image_url: res.textContent.trim(),
+                            width: el.getAttribute('width'),
+                            height: el.getAttribute('height'),
+                        });
+                    }
+                });
+
+                console.log('[CariAds] VAST parsed - media:', url, 'impressions:', vastTracking.impression.length, 'events:', Object.keys(vastTracking.events).length);
+
+                // Fire impression pixels immediately
+                vastTracking.impression.forEach(function(u) { firePixel(u); });
+
+                // Build ad object with VAST tracking data
+                var vastAd = {
+                    type: 'pre_roll',
+                    video_url: url,
+                    skip_after: skipSec,
+                    campaign_id: 0,
+                    id: 0,
+                    click_url: vastTracking.clickThrough,
+                    click_target: '_blank',
+                    _vast_tracking: vastTracking,
+                    companions: companions.length > 0 ? companions : null,
+                };
+
+                var overlay = _playerContainer.querySelector('.cari-ad-overlay');
+                if (!overlay) { onComplete(); return; }
+
+                var adVideo = overlay.querySelector('.cari-ad-video');
+                var skipBtn = overlay.querySelector('.cari-ad-skip');
+                var clickLayer = overlay.querySelector('.cari-ad-click-layer');
+                var companionDiv = overlay.querySelector('.cari-ad-companion');
+
+                playVastVideoAd(vastAd, adVideo, skipBtn, clickLayer, companionDiv, onComplete);
             })
-            .catch(function() { onComplete(); });
+            .catch(function(err) {
+                console.warn('[CariAds] VAST fetch/parse failed:', err);
+                onComplete();
+            });
+    }
+
+    /**
+     * Play a video ad from a parsed VAST response, firing VAST tracking pixels
+     */
+    function playVastVideoAd(ad, videoEl, skipBtn, clickLayer, companionDiv, onDone) {
+        var tracking = ad._vast_tracking || {};
+
+        videoEl.src = ad.video_url;
+        videoEl.style.display = 'block';
+        videoEl.play().catch(function() {
+            fireVastEvent(tracking, 'error');
+            onDone();
+        });
+
+        // Skip button
+        var skipAfter = parseInt(ad.skip_after) || 0;
+        if (skipAfter > 0) {
+            skipBtn.style.display = 'none';
+            var skipTimer = setInterval(function() {
+                var elapsed = Math.floor(videoEl.currentTime);
+                if (elapsed >= skipAfter) {
+                    skipBtn.style.display = 'flex';
+                    clearInterval(skipTimer);
+                }
+            }, 500);
+
+            skipBtn.onclick = function() {
+                fireVastEvent(tracking, 'skip');
+                videoEl.pause();
+                videoEl.src = '';
+                onDone();
+            };
+        }
+
+        // Click-through
+        if (ad.click_url) {
+            clickLayer.style.display = 'block';
+            clickLayer.onclick = function(e) {
+                e.preventDefault();
+                // Fire VAST click tracking pixels
+                (tracking.clickTracking || []).forEach(function(u) { firePixel(u); });
+                window.open(ad.click_url, '_blank');
+            };
+        }
+
+        // Companion banner
+        if (ad.companions && ad.companions.length > 0) {
+            showCompanionBanner(ad.companions[0]);
+        }
+
+        // Quartile + start tracking
+        var firedStart = false;
+        var quartiles = { firstQuartile: false, midpoint: false, thirdQuartile: false };
+        videoEl.addEventListener('timeupdate', function onQ() {
+            if (videoEl.duration <= 0) return;
+            var pct = (videoEl.currentTime / videoEl.duration) * 100;
+            if (!firedStart && videoEl.currentTime > 0) {
+                firedStart = true;
+                fireVastEvent(tracking, 'start');
+            }
+            if (pct >= 25 && !quartiles.firstQuartile) { quartiles.firstQuartile = true; fireVastEvent(tracking, 'firstQuartile'); }
+            if (pct >= 50 && !quartiles.midpoint) { quartiles.midpoint = true; fireVastEvent(tracking, 'midpoint'); }
+            if (pct >= 75 && !quartiles.thirdQuartile) { quartiles.thirdQuartile = true; fireVastEvent(tracking, 'thirdQuartile'); }
+        });
+
+        videoEl.onended = function() {
+            fireVastEvent(tracking, 'complete');
+            videoEl.src = '';
+            clickLayer.style.display = 'none';
+            skipBtn.style.display = 'none';
+            onDone();
+        };
+
+        videoEl.onerror = function() {
+            fireVastEvent(tracking, 'error');
+            (tracking.error || []).forEach(function(u) { firePixel(u); });
+            onDone();
+        };
+    }
+
+    /**
+     * Fire VAST tracking event pixels for a given event name
+     */
+    function fireVastEvent(tracking, eventName) {
+        var urls = (tracking.events || {})[eventName] || [];
+        urls.forEach(function(u) { firePixel(u); });
+        console.log('[CariAds] VAST event fired:', eventName, '(' + urls.length + ' pixels)');
+    }
+
+    /**
+     * Fire a tracking pixel (1x1 image beacon or fetch)
+     */
+    function firePixel(url) {
+        if (!url) return;
+        var img = new Image();
+        img.src = url;
     }
 
     // =========================================
@@ -402,14 +559,24 @@ const CariAdManager = (function() {
     function showOverlayBanner(ad) {
         if (!_playerContainer) return;
 
+        // Remove any existing banner overlay before showing a new one
+        var existingBanners = _playerContainer.querySelectorAll('.cari-ad-banner-overlay');
+        existingBanners.forEach(function(el) { el.remove(); });
+
         var banner = document.createElement('div');
         banner.className = 'cari-ad-banner-overlay cari-ad-banner-' + (ad.banner_position || 'overlay_bottom');
-        banner.innerHTML = '<img src="' + ad.image_url + '" alt="' + (ad.alt_text || 'Ad') + '">' +
+        banner.innerHTML = '<img src="' + (ad.image_url || '') + '" alt="' + (ad.alt_text || 'Ad') + '">' +
             '<button class="cari-ad-close" onclick="this.parentNode.remove()">&times;</button>';
 
+        var img = banner.querySelector('img');
+        img.onerror = function() {
+            console.warn('[CariAds] Banner image failed to load:', ad.image_url);
+            banner.remove();
+        };
+
         if (ad.click_url) {
-            banner.querySelector('img').style.cursor = 'pointer';
-            banner.querySelector('img').onclick = function() {
+            img.style.cursor = 'pointer';
+            img.onclick = function() {
                 trackEvent(ad, 'click');
                 window.open(ad.click_url, ad.click_target || '_blank');
             };
@@ -418,11 +585,15 @@ const CariAdManager = (function() {
         trackImpression(ad);
         _playerContainer.appendChild(banner);
         _activeOverlays.push(banner);
+        console.log('[CariAds] Banner overlay appended to DOM, image:', ad.image_url, 'position:', ad.banner_position || 'overlay_bottom', 'container children:', _playerContainer.children.length);
 
         // Auto-dismiss after configured display duration
         var displayDuration = (_overlaySettings.banner_display_duration || 15) * 1000;
         setTimeout(function() {
-            if (banner.parentNode) banner.remove();
+            if (banner.parentNode) {
+                banner.remove();
+                console.log('[CariAds] Banner overlay auto-dismissed after ' + (displayDuration / 1000) + 's');
+            }
         }, displayDuration);
     }
 
@@ -433,11 +604,13 @@ const CariAdManager = (function() {
     function showTextScroller(ad) {
         if (!_playerContainer) return;
 
+        // Remove any existing scroller before showing a new one
+        var existingScrollers = _playerContainer.querySelectorAll('.cari-ad-scroller');
+        existingScrollers.forEach(function(el) { el.remove(); });
+
         var scroller = document.createElement('div');
         scroller.className = 'cari-ad-scroller';
-        scroller.style.backgroundColor = ad.bg_color || '#000';
-        scroller.style.opacity = ad.bg_opacity || 0.8;
-        scroller.style.color = ad.text_color || '#fff';
+        scroller.style.cssText = 'background-color:' + (ad.bg_color || '#000') + ';opacity:' + (ad.bg_opacity || 0.8) + ';color:' + (ad.text_color || '#fff') + ';';
 
         // Font size mapping
         var fontSizeMap = { small: '0.75rem', medium: '0.85rem', large: '1.15rem', xlarge: '1.4rem' };
@@ -450,12 +623,19 @@ const CariAdManager = (function() {
         trackImpression(ad);
         _playerContainer.appendChild(scroller);
         _activeOverlays.push(scroller);
+        console.log('[CariAds] Text scroller appended to DOM, text:', text.substring(0, 50), 'speed:', speed, 'container children:', _playerContainer.children.length);
 
         // Auto-dismiss after 2 full scrolls
         setTimeout(function() {
             if (scroller.parentNode) {
-                scroller.classList.add('cari-scroller-fade');
-                setTimeout(function() { if (scroller.parentNode) scroller.remove(); }, 500);
+                scroller.style.opacity = '0';
+                scroller.style.transition = 'opacity 0.5s';
+                setTimeout(function() {
+                    if (scroller.parentNode) {
+                        scroller.remove();
+                        console.log('[CariAds] Text scroller auto-dismissed');
+                    }
+                }, 500);
             }
         }, speed * 2 * 1000);
     }

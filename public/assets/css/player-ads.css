@@ -76,7 +76,7 @@
     left: 50%;
     transform: translateX(-50%);
     z-index: 500;
-    animation: adSlideIn 0.3s ease;
+    animation: adSlideIn 0.3s ease forwards;
 }
 .cari-ad-banner-overlay_bottom,
 .cari-ad-banner-bottom {
@@ -90,6 +90,7 @@
     max-width: 728px;
     max-height: 90px;
     width: auto;
+    display: block;
     border-radius: 4px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }

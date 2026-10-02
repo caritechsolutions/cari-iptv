@@ -22,6 +22,7 @@ const CariTracker = (function() {
     var QOE_BATCH_INTERVAL = 30000; // Send QoE every 30 seconds (separate queue)
     var IMPRESSION_DELAY = 1000;    // Content must be visible 1s to count
     var BINGE_GAP_THRESHOLD = 300;  // Max 5 min gap between episodes to be a binge
+    var HEARTBEAT_INTERVAL = 60000; // Send heartbeat every 60 seconds while watching
 
     // --- State ---
     var _queue = [];
@@ -31,11 +32,15 @@ const CariTracker = (function() {
     var _platform = 'web';
     var _batchTimer = null;
     var _qoeBatchTimer = null;
+    var _heartbeatTimer = null;
     var _currentPage = null;
     var _pageEnteredAt = null;
     var _initialized = false;
     var _deviceInfo = null;
     var _sessionStartSent = false;
+
+    // Active watching state (for heartbeat)
+    var _activeWatch = null; // { contentType, contentId }
 
     // Binge tracking state
     var _bingeState = null; // { seriesId, seasonNumber, episodes: [], startedAt, lastEpisodeEndedAt }
@@ -75,6 +80,7 @@ const CariTracker = (function() {
     }
 
     function destroy() {
+        _stopHeartbeat();
         _flushQueue();
         _flushQoeQueue();
         _flushImpressions();
@@ -114,9 +120,12 @@ const CariTracker = (function() {
             content_id: contentId,
             metadata: Object.assign({ start_time: Date.now() }, metadata || {}),
         });
+        // Start heartbeat for this watch session
+        _startHeartbeat(contentType, contentId);
     }
 
     function watchComplete(contentType, contentId, metadata) {
+        _stopHeartbeat();
         track('watch_complete', {
             content_type: contentType,
             content_id: contentId,
@@ -130,11 +139,36 @@ const CariTracker = (function() {
     }
 
     function watchAbandon(contentType, contentId, progressPercent) {
+        _stopHeartbeat();
         track('watch_abandon', {
             content_type: contentType,
             content_id: contentId,
             metadata: { progress_percent: progressPercent },
         });
+    }
+
+    // =========================================================================
+    // HEARTBEAT — keeps "currently watching" alive on the backend
+    // =========================================================================
+
+    function _startHeartbeat(contentType, contentId) {
+        _stopHeartbeat(); // clear any previous heartbeat
+        _activeWatch = { contentType: contentType, contentId: contentId };
+        _heartbeatTimer = setInterval(function() {
+            if (!_activeWatch || !CariAPI.isAuthenticated()) return;
+            track('watch_heartbeat', {
+                content_type: _activeWatch.contentType,
+                content_id: _activeWatch.contentId,
+            });
+        }, HEARTBEAT_INTERVAL);
+    }
+
+    function _stopHeartbeat() {
+        if (_heartbeatTimer) {
+            clearInterval(_heartbeatTimer);
+            _heartbeatTimer = null;
+        }
+        _activeWatch = null;
     }
 
     function detailView(contentType, contentId) {
@@ -651,6 +685,9 @@ const CariTracker = (function() {
     }
 
     function _onBeforeUnload() {
+        // Stop heartbeat
+        _stopHeartbeat();
+
         // Finalize any binge session
         _finalizeBinge();
 
