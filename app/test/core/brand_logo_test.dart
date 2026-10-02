@@ -5,6 +5,7 @@ import 'package:cari_tv/config/app_config.dart';
 import 'package:cari_tv/core/providers.dart';
 import 'package:cari_tv/core/widgets/brand_logo.dart';
 import 'package:cari_tv/features/auth/ui/auth_scaffold.dart';
+import 'package:cari_tv/features/shell/ui/app_shell.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -65,6 +66,26 @@ void main() {
     expect(find.byType(BrandHeader), findsOneWidget);
     expect(find.text(base.appName), findsNothing, reason: 'name is inside the artwork');
     expect(find.text('Sign in'), findsOneWidget);
+  });
+
+  testWidgets('a brand-titled app bar shows the logo when the artwork carries the name, the name as text otherwise', (tester) async {
+    await tester.pumpWidget(harness(base.copyWith(logoHasName: true, hasDarkLogo: true), const Scaffold(appBar: TabAppBar(brand: true))));
+    await tester.pump();
+    expect(find.byKey(const Key('appbar-brand-logo')), findsOneWidget);
+    expect(find.byKey(const Key('brand-logo-dark')), findsOneWidget, reason: 'dark variant on the dark bar');
+    expect(find.text(base.appName), findsNothing);
+    final logoHeight = tester.getSize(find.byKey(const Key('appbar-brand-logo'))).height;
+    expect(logoHeight, lessThanOrEqualTo(kToolbarHeight - 20));
+
+    await tester.pumpWidget(harness(base.copyWith(logoHasName: false), const Scaffold(appBar: TabAppBar(brand: true))));
+    await tester.pump();
+    expect(find.byKey(const Key('appbar-brand-logo')), findsNothing);
+    expect(find.text(base.appName), findsOneWidget);
+
+    await tester.pumpWidget(harness(base.copyWith(logoHasName: true), const Scaffold(appBar: TabAppBar(title: 'Live TV'))));
+    await tester.pump();
+    expect(find.text('Live TV'), findsOneWidget, reason: 'other top-level pages keep their titles');
+    expect(find.byKey(const Key('appbar-brand-logo')), findsNothing);
   });
 
   test('LOGO_HAS_NAME parsing defaults to true', () {

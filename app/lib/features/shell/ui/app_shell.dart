@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers.dart';
 import '../../../core/widgets/async_view.dart';
+import '../../../core/widgets/brand_logo.dart';
 import '../../../core/widgets/legal_links.dart';
 import '../../navigation/state/navigation_provider.dart';
 
@@ -73,8 +75,13 @@ void openTopLevel(BuildContext context, WidgetRef ref, String path) {
 
 /// Standard app bar for tab pages: branding on the left, search and account on the right.
 class TabAppBar extends ConsumerWidget implements PreferredSizeWidget {
-  const TabAppBar({super.key, this.title, this.actions = const []});
+  const TabAppBar({super.key, this.title, this.brand = false, this.actions = const []});
   final String? title;
+
+  /// Top-level page titled with the brand: the logo when the artwork carries
+  /// the name (`LOGO_HAS_NAME`, `logo_dark.png` on the dark bar), else the
+  /// app name as text.
+  final bool brand;
   final List<Widget> actions;
 
   @override
@@ -82,8 +89,15 @@ class TabAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(appConfigProvider);
+    final Widget titleWidget;
+    if (brand && config.logoHasName) {
+      titleWidget = Align(alignment: Alignment.centerLeft, child: BrandLogo(key: const Key('appbar-brand-logo'), height: kToolbarHeight - 20, maxWidth: 220));
+    } else {
+      titleWidget = Text(brand ? config.appName : (title ?? ''));
+    }
     return AppBar(
-      title: Text(title ?? ''),
+      title: titleWidget,
       actions: [
         ...actions,
         IconButton(tooltip: 'Search', icon: const Icon(Icons.search_rounded), onPressed: () => context.push('/search')),

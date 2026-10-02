@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/providers.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
 import '../../../models/layout.dart';
@@ -19,7 +18,6 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(manifestPollerProvider);
-    final config = ref.watch(appConfigProvider);
     final layout = ref.watch(homeLayoutProvider);
 
     Future<void> refresh() async {
@@ -30,7 +28,7 @@ class HomeScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: TabAppBar(title: config.appName),
+      appBar: const TabAppBar(brand: true),
       body: AsyncView<AppLayout?>(
         value: layout,
         onRetry: refresh,
