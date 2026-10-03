@@ -216,3 +216,33 @@ To apply it before running `update.sh`, also install the unit by hand: `sudo ins
 
 Files: `src/Services/SubscriberAuthService.php`, `src/Controllers/Api/AuthController.php`. No migration. Not deployed.
 
+## 10. VOD server 1.1.2: GUI login, real bind_address, empty-key warning (`vod:` commit)
+
+**Finding.** The web GUI on port 8090 had no authentication: the server injected the real `api_key` into `index.html` for every visitor, and `bind_address` was never applied, so a stock install exposed the key, and with it the whole API, to anyone who could reach the port.
+
+**Change.** `index.html` is served without credentials; the GUI shows a login screen that takes the API key, verifies it against `GET /api/config`, keeps it in the tab's `sessionStorage`, sends it as `X-API-Key`, and returns to the login screen on any 401 (wrong or rotated key). "Sign out" forgets it. `bind_address` is now passed to libmicrohttpd (`MHD_OPTION_SOCK_ADDR`, IPv4), so `127.0.0.1` really limits the listener; an invalid value logs a warning and binds all interfaces as before. An empty `api_key` logs a start-up warning and the config template says it disables authentication. Version 1.1.2. Files: `src/web_routes.c`, `src/http_server.c`, `src/main.c`, `config/vod-server.conf`, `www/index.html`, `www/css`, `www/js/app.js`, `www/js/settings.js`, `www/js/uploads.js`, `CMakeLists.txt`.
+
+**Rebuild and swap (vod1 and the Free TV VOD server, each as root).** Both run `update.sh` pinned to this branch (section 6), which rebuilds, installs the binary and the Web GUI, and restarts with auto-rollback:
+
+```bash
+cp /usr/local/bin/vod-server /root/vod-server-1.1.1.bak          # keep your own copy; the script's .bak is overwritten each run
+curl -sSL "https://raw.githubusercontent.com/caritechsolutions/cari-iptv/claude/intelligent-knuth-xzkkd7/vod-server/scripts/update.sh?$(date +%s)" | sudo bash
+vod-server --version                                              # VOD Server 1.1.2 (built ...)
+journalctl -u vod-server -n 30 --no-pager | grep -E "listening|Binding|api_key"   # no "api_key is EMPTY" line expected
+```
+
+Manual alternative (same as section 4): clone the branch, `cmake -S vod-server -B build -DCMAKE_BUILD_TYPE=Release && make -C build -j$(nproc)`, `systemctl stop vod-server`, `install -m 755 build/vod-server /usr/local/bin/vod-server`, `cp -r vod-server/www/* /usr/local/share/vod-server/www/`, `systemctl start vod-server`. Rollback: `cp /root/vod-server-1.1.1.bak /usr/local/bin/vod-server && systemctl restart vod-server` (the old GUI files are not needed for the old binary to run; the new GUI simply stays).
+
+**Rotate the API key afterwards (both servers).** The old key was readable by anyone who loaded the GUI, so treat it as leaked:
+
+```bash
+NEW=$(openssl rand -hex 32)
+sed -i "s|^api_key = .*|api_key = $NEW|" /etc/vod-server/vod-server.conf
+systemctl restart vod-server
+echo "$NEW"            # paste it into each middleware now, then close the terminal
+```
+
+Then in every middleware that uses that VOD server: Admin → VOD Servers → edit the server → API key → save, and confirm the status check turns green (`GET /admin/vod-server/status` proxies `GET /api/status` with the key). The GUI itself: open `https://<host>:8090`, enter the new key on the login screen. Until the key is updated in a middleware, its transcode submissions and status checks fail with 401; nothing already transcoded is affected and playback of `/content/...` files needs no key.
+
+**Optional hardening.** Set `bind_address = 127.0.0.1` on a server whose GUI is only used through SSH tunnels or a local reverse proxy; the middleware's proxied calls need the port reachable from the middleware host, so keep `0.0.0.0` (with a firewall) where the middleware is on another machine.
+

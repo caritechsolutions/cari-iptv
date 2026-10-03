@@ -233,8 +233,9 @@ var uploadsPage = {
                 const url = App.apiBase + '/upload?filename=' + encodeURIComponent(file.name);
                 xhr.open('POST', url);
                 xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-                if (window.VOD_API_KEY) {
-                    xhr.setRequestHeader('X-API-Key', window.VOD_API_KEY);
+                const apiKey = App.apiKey();
+                if (apiKey) {
+                    xhr.setRequestHeader('X-API-Key', apiKey);
                 }
                 xhr.send(file);
             });

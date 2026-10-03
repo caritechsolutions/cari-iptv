@@ -219,8 +219,8 @@ var settingsPage = {
             document.getElementById('set-node-name').value = cls.node_name || status.node_name || '';
             document.getElementById('set-port').value = srv.port || status.port || '';
 
-            /* API Key - use the injected key from the server */
-            document.getElementById('set-api-key').value = window.VOD_API_KEY || '';
+            /* API Key - the one this session signed in with (never sent by the server) */
+            document.getElementById('set-api-key').value = App.apiKey() || '';
 
             /* SSL - load detailed status */
             this.loadSSLStatus();
@@ -549,7 +549,7 @@ var settingsPage = {
     },
 
     copyApiKey() {
-        const key = window.VOD_API_KEY || '';
+        const key = App.apiKey() || '';
         if (!key) {
             App.toast('No API key configured', 'warning');
             return;

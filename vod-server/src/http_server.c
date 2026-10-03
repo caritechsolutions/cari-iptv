@@ -12,6 +12,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 /* ---------- module state ---------- */
 
@@ -616,6 +619,26 @@ int http_server_start(const vod_config_t *config)
         nops++;
 
         log_info("TLS enabled for HTTP server");
+    }
+
+    /* Bind address: "0.0.0.0" or empty = all interfaces; otherwise the
+     * configured IPv4 address only (e.g. 127.0.0.1 keeps the GUI and API
+     * reachable through SSH tunnels or a local reverse proxy only). */
+    static struct sockaddr_in bind_sa;
+    const char *bind_addr = config->bind_address;
+    if (bind_addr[0] != '\0' && strcmp(bind_addr, "0.0.0.0") != 0) {
+        memset(&bind_sa, 0, sizeof(bind_sa));
+        bind_sa.sin_family = AF_INET;
+        bind_sa.sin_port   = htons((uint16_t)config->port);
+        if (inet_pton(AF_INET, bind_addr, &bind_sa.sin_addr) == 1) {
+            ops[nops].option = MHD_OPTION_SOCK_ADDR;
+            ops[nops].value  = 0;
+            ops[nops].ptr_value = (void *)&bind_sa;
+            nops++;
+            log_info("Binding to %s:%d", bind_addr, config->port);
+        } else {
+            log_warn("bind_address '%s' is not a valid IPv4 address; listening on all interfaces", bind_addr);
+        }
     }
 
     /* Terminator */

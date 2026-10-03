@@ -301,6 +301,12 @@ int main(int argc, char *argv[])
              g_config.ssl_enabled ? "https" : "http",
              g_config.bind_address, g_config.port);
 
+    if (g_config.api_key[0] == '\0') {
+        log_warn("api_key is EMPTY: every API request and the web GUI are accepted "
+                 "without authentication. Set api_key in the [server] section of the "
+                 "config file and restart.");
+    }
+
     /* Start job processor */
     if (job_processor_init(&g_config) != 0) {
         log_error("Failed to initialize job processor");

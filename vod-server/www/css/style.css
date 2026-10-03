@@ -561,3 +561,33 @@ textarea.form-control {
         grid-template-columns: 1fr;
     }
 }
+
+/* --- Login screen (API key) --- */
+.login-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 12, 18, 0.96);
+}
+.login-screen.hidden { display: none; }
+.login-card {
+    width: min(420px, 92vw);
+    padding: 28px 24px;
+    border-radius: 12px;
+    background: var(--card-bg, #1e293b);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.login-card h2 { margin: 0; }
+.login-help { margin: 0; font-size: 13px; opacity: 0.75; }
+.login-message { margin: 0; font-size: 13px; color: #f59e0b; }
+.login-message.hidden { display: none; }
+body.login-active .sidebar, body.login-active #main-content { filter: blur(2px); pointer-events: none; }
+.logout-link { display: block; margin-top: 8px; font-size: 12px; opacity: 0.7; }
+.logout-link:hover { opacity: 1; }
+

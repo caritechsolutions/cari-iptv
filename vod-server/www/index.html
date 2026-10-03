@@ -78,8 +78,20 @@
                 <span class="status-dot offline"></span>
                 <span id="node-name">Connecting...</span>
             </div>
+            <a href="#" id="logout-link" class="logout-link" title="Forget the API key in this tab">Sign out</a>
         </div>
     </nav>
+
+    <!-- Login screen: the API key is entered here and kept for this tab only -->
+    <div id="login-screen" class="login-screen hidden">
+        <form id="login-form" class="login-card" autocomplete="off">
+            <h2>VOD Server</h2>
+            <p class="login-help">Enter the API key from <code>/etc/vod-server/vod-server.conf</code> (<code>api_key</code>). It is kept in this browser tab only.</p>
+            <p id="login-message" class="login-message hidden"></p>
+            <input type="password" id="login-key" class="form-control text-mono" placeholder="API key" autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+    </div>
 
     <!-- Main Content Area -->
     <main id="main-content">

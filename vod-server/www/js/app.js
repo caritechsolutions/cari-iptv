@@ -7,18 +7,38 @@ var App = {
     refreshInterval: null,
     apiBase: '/api',
 
+    /* API key: entered once on the login screen, kept for this browser tab
+     * only (sessionStorage). The server never embeds it in the page. */
+    KEY_STORAGE: 'vod_api_key',
+
+    apiKey() {
+        try { return sessionStorage.getItem(this.KEY_STORAGE) || ''; } catch (e) { return ''; }
+    },
+
+    setApiKey(key) {
+        try {
+            if (key) sessionStorage.setItem(this.KEY_STORAGE, key);
+            else sessionStorage.removeItem(this.KEY_STORAGE);
+        } catch (e) { /* storage unavailable: the key lives in memory only */ }
+        this._memKey = key || '';
+    },
+
     /* API Client */
     async api(method, path, body) {
         const headers = { 'Content-Type': 'application/json' };
-        if (window.VOD_API_KEY) {
-            headers['X-API-Key'] = window.VOD_API_KEY;
-        }
+        const key = this.apiKey() || this._memKey;
+        if (key) headers['X-API-Key'] = key;
         const opts = { method, headers };
         if (body) opts.body = JSON.stringify(body);
 
         try {
             const res = await fetch(this.apiBase + path, opts);
             const data = await res.json();
+            if (res.status === 401) {
+                /* Key missing, wrong, or rotated on the server: ask again */
+                this.showLogin('The API key was not accepted. Enter the current key from /etc/vod-server/vod-server.conf.');
+                throw new Error(data.error || 'Unauthorized');
+            }
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
             return data;
         } catch (err) {
@@ -29,12 +49,79 @@ var App = {
         }
     },
 
+    /* --- Login screen (API key) --- */
+
+    showLogin(message) {
+        const el = document.getElementById('login-screen');
+        if (!el) return;
+        const msg = document.getElementById('login-message');
+        if (msg) { msg.textContent = message || ''; msg.classList.toggle('hidden', !message); }
+        el.classList.remove('hidden');
+        document.body.classList.add('login-active');
+        const input = document.getElementById('login-key');
+        if (input) { input.value = ''; setTimeout(() => input.focus(), 50); }
+    },
+
+    hideLogin() {
+        const el = document.getElementById('login-screen');
+        if (el) el.classList.add('hidden');
+        document.body.classList.remove('login-active');
+    },
+
+    /* Verify the key against an authenticated endpoint before accepting it. */
+    async login(key) {
+        key = (key || '').trim();
+        if (!key) { this.showLogin('Enter the API key.'); return false; }
+        const res = await fetch(this.apiBase + '/config', { headers: { 'X-API-Key': key } });
+        if (res.status === 401) { this.showLogin('That key was not accepted.'); return false; }
+        if (!res.ok) { this.showLogin(`Server error (HTTP ${res.status}).`); return false; }
+        this.setApiKey(key);
+        this.hideLogin();
+        this.start();
+        return true;
+    },
+
+    logout() {
+        this.setApiKey('');
+        if (this.refreshInterval) { clearInterval(this.refreshInterval); this.refreshInterval = null; }
+        this.showLogin('Signed out.');
+    },
+
     async get(path) { return this.api('GET', path); },
     async post(path, body) { return this.api('POST', path, body); },
     async del(path) { return this.api('DELETE', path); },
 
     /* SPA Router */
     init() {
+        /* Login form */
+        const form = document.getElementById('login-form');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.login(document.getElementById('login-key').value).catch(err => this.showLogin(err.message));
+            });
+        }
+        const logoutLink = document.getElementById('logout-link');
+        if (logoutLink) logoutLink.addEventListener('click', (e) => { e.preventDefault(); this.logout(); });
+
+        /* No key yet: show the login screen and wait */
+        if (!this.apiKey()) {
+            this.showLogin('');
+            return;
+        }
+        this.start();
+    },
+
+    /* Everything that needs an API key */
+    start() {
+        if (this._started) {
+            this.loadPage(this.getPageFromPath());
+            if (!this.refreshInterval) this.refreshInterval = setInterval(() => this.pollStatus(), 10000);
+            this.pollStatus();
+            return;
+        }
+        this._started = true;
+
         /* Handle navigation clicks */
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', (e) => {

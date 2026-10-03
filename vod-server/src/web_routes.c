@@ -41,9 +41,9 @@ static int is_spa_route(const char *url)
 }
 
 /**
- * Serve index.html with the API key injected as a JS variable.
- * This allows the built-in web GUI to authenticate API requests.
- * The response is not cached (contains credentials).
+ * Serve index.html for SPA routes. The page carries no credentials: the GUI
+ * asks the operator for the API key on its login screen and sends it as
+ * X-API-Key like any other client. Not cached so GUI updates apply at once.
  */
 static int serve_index_html(struct MHD_Connection *conn, const char *filepath)
 {
@@ -68,58 +68,14 @@ static int serve_index_html(struct MHD_Connection *conn, const char *filepath)
     fclose(fp);
     html[nread] = '\0';
 
-    /* Build the script tag to inject */
-    const char *api_key = (g_http_config && g_http_config->api_key[0])
-                          ? g_http_config->api_key : "";
-
-    char script_tag[512];
-    snprintf(script_tag, sizeof(script_tag),
-             "<script>window.VOD_API_KEY=\"%s\";</script>\n</head>",
-             api_key);
-
-    /* Find </head> and replace it with script + </head> */
-    char *head_end = strstr(html, "</head>");
-    if (!head_end) {
-        /* No </head> found, serve as-is */
-        struct MHD_Response *response =
-            MHD_create_response_from_buffer(nread, html, MHD_RESPMEM_MUST_FREE);
-        if (!response) { free(html); return MHD_NO; }
-
-        MHD_add_response_header(response, "Content-Type", CT_HTML);
-        MHD_add_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
-        int ret = MHD_queue_response(conn, MHD_HTTP_OK, response);
-        MHD_destroy_response(response);
-        return ret;
-    }
-
-    /* Build new HTML with injected script */
-    size_t prefix_len = (size_t)(head_end - html);
-    size_t script_len = strlen(script_tag);
-    size_t suffix_len = nread - prefix_len - 7; /* 7 = strlen("</head>") */
-    size_t new_len = prefix_len + script_len + suffix_len;
-
-    char *new_html = malloc(new_len + 1);
-    if (!new_html) {
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(nread, html, MHD_RESPMEM_MUST_FREE);
+    if (!response) {
         free(html);
         return MHD_NO;
     }
 
-    memcpy(new_html, html, prefix_len);
-    memcpy(new_html + prefix_len, script_tag, script_len);
-    memcpy(new_html + prefix_len + script_len, head_end + 7, suffix_len);
-    new_html[new_len] = '\0';
-
-    free(html);
-
-    struct MHD_Response *response =
-        MHD_create_response_from_buffer(new_len, new_html, MHD_RESPMEM_MUST_FREE);
-    if (!response) {
-        free(new_html);
-        return MHD_NO;
-    }
-
     MHD_add_response_header(response, "Content-Type", CT_HTML);
-    /* Don't cache - contains API key and we want updates to take effect immediately */
     MHD_add_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
 
     int ret = MHD_queue_response(conn, MHD_HTTP_OK, response);
@@ -151,7 +107,7 @@ int web_handle_request(http_request_t *req)
     char filepath[MAX_PATH_LEN + 256];
     const char *www_root = g_http_config ? g_http_config->www_root : "/usr/local/share/vod-server/www";
 
-    /* SPA routes -> serve index.html with injected API key */
+    /* SPA routes -> serve index.html (no credentials in the page) */
     if (is_spa_route(req->url)) {
         snprintf(filepath, sizeof(filepath), "%s/index.html", www_root);
 
