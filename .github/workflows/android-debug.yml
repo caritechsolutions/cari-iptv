@@ -1,7 +1,7 @@
 name: Android debug APK
 
 # build  → builds the caritv dev debug APK and the caritv prod release APK,
-#          plus the prod release APK of every brand in EXTRA_BRANDS (freetv).
+#          plus the prod release APK of every brand in EXTRA_BRANDS (freetv, coopcable).
 #          A brand's release APK is signed with its upload key when the secrets
 #          <BRAND>_KEYSTORE_BASE64 and <BRAND>_KEY_PROPERTIES exist (brand name
 #          upper-cased), otherwise with the debug key (and the release notes say so).
@@ -32,7 +32,7 @@ env:
   FLUTTER_VERSION: "3.47.5"
   BRAND: caritv
   # Client brands built alongside caritv (space-separated, prod release APK each).
-  EXTRA_BRANDS: freetv
+  EXTRA_BRANDS: freetv coopcable
 
 jobs:
   build:

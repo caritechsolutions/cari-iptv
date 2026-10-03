@@ -12,7 +12,9 @@
 //      LOGO_HAS_NAME (true = the logo carries the brand name, so it is not printed beside it)
 //      logo_dark.png (optional) = logo for dark backgrounds; without it the logo sits on a light plate
 //   4. writes tool/generated/icons.yaml + splash.yaml and runs
-//      flutter_launcher_icons and flutter_native_splash (skip with --no-icons)
+//      flutter_launcher_icons and flutter_native_splash (skip with --no-icons);
+//      ICON_BACKGROUND_COLOR / SPLASH_COLOR (optional) override BACKGROUND_COLOR
+//      for the adaptive icon layer and the splash screen colour
 //   5. sets CFBundleDisplayName in ios/Runner/Info.plist and prints the ATS
 //      snippet for the brand's cleartext hosts
 //
@@ -107,28 +109,29 @@ void main(List<String> args) async {
 
   // 4. icons + splash
   final gen = Directory('$root/tool/generated')..createSync(recursive: true);
-  final bg = _hex(cfg['BACKGROUND_COLOR']!);
+  final iconBg = _hex((cfg['ICON_BACKGROUND_COLOR'] ?? '').trim().isEmpty ? cfg['BACKGROUND_COLOR']! : cfg['ICON_BACKGROUND_COLOR']!);
+  final splashBg = _hex((cfg['SPLASH_COLOR'] ?? '').trim().isEmpty ? cfg['BACKGROUND_COLOR']! : cfg['SPLASH_COLOR']!);
   File('${gen.path}/icons.yaml').writeAsStringSync('''
 flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
   image_path: "assets/branding/icon.png"
-  adaptive_icon_background: "$bg"
+  adaptive_icon_background: "$iconBg"
   adaptive_icon_foreground: "assets/branding/icon_foreground.png"
 ''');
   File('${gen.path}/splash.yaml').writeAsStringSync('''
 flutter_native_splash:
-  color: "$bg"
+  color: "$splashBg"
   image: assets/branding/splash.png
   android_12:
-    color: "$bg"
+    color: "$splashBg"
     image: assets/branding/splash.png
 ''');
   if (!noIcons) {
     await _run(root, ['dart', 'run', 'flutter_launcher_icons', '-f', 'tool/generated/icons.yaml']);
     await _run(root, ['dart', 'run', 'flutter_native_splash:create', '--path=tool/generated/splash.yaml']);
-    stdout.writeln('✓ launcher icons and splash regenerated');
+    stdout.writeln('✓ launcher icons and splash regenerated (icon background $iconBg, splash $splashBg)');
   } else {
     stdout.writeln('· icons/splash skipped (--no-icons)');
   }

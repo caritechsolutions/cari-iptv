@@ -9,7 +9,8 @@ The app is brand-agnostic. Everything that identifies a brand is a **build-time 
 | Application id (Android) / bundle id (iOS) | `brand.json` → `APPLICATION_ID` | `android/brand.properties` (generated) → Gradle `applicationId`; iOS: set in Xcode (see below) |
 | Display / launcher name | `APP_NAME` | Gradle `resValue app_name` (dev flavour appends " Dev"); iOS `CFBundleDisplayName` (written by the tool); in-app via dart-define |
 | Logo, launcher icon, adaptive foreground, splash | `logo.png` (512²), `icon.png` (1024²), `icon_foreground.png` (1024², transparent), `splash.png` (512²) | copied to `assets/branding/`; icons and splash regenerated with flutter_launcher_icons / flutter_native_splash |
-| Colours | `PRIMARY_COLOR`, `ACCENT_COLOR`, `BACKGROUND_COLOR`, `SURFACE_COLOR` (`#RRGGBB`) | dart-define → `AppConfig` → theme; background also used for the adaptive icon and splash |
+| Colours | `PRIMARY_COLOR`, `ACCENT_COLOR`, `BACKGROUND_COLOR`, `SURFACE_COLOR` (`#RRGGBB`) | dart-define → `AppConfig` → theme; background also used for the adaptive icon layer and the splash screen unless overridden |
+| Icon / splash colour | optional `ICON_BACKGROUND_COLOR`, `SPLASH_COLOR` (`#RRGGBB`, default = `BACKGROUND_COLOR`) | tool only: adaptive icon background layer behind `icon_foreground.png`; splash screen colour behind `splash.png` (use the brand colour when the splash image is a tile of that colour, so it is seamless full-screen) |
 | API base URL | `API_BASE_URL_DEV`, `API_BASE_URL_PROD` (site origin, no path) | dart-define; the API is at `/api/v1` |
 | Legal pages | `PRIVACY_URL`, `TERMS_URL`, `DELETE_ACCOUNT_URL` | dart-define; opened in the browser from login, register, settings |
 | Analytics/ads platform tag | `PLATFORM_TAG_PROD` (default `mobile`; dev builds send `<tag>-dev`) | dart-define |
@@ -24,7 +25,7 @@ Shared across brands: all code, the Android `namespace` (`net.caritech.caritv`, 
 ## Add a brand
 
 1. Copy a brand folder: `cp -r brands/islandtv brands/<newbrand>`.
-2. Edit `brands/<newbrand>/brand.json`. Required keys: `BRAND_KEY`, `APP_NAME`, `APPLICATION_ID`, `API_BASE_URL_DEV`, `API_BASE_URL_PROD`, the four colours, the three legal URLs. Optional: `PLATFORM_TAG_PROD`, `CLEARTEXT_HOSTS`, `BILLING_UI` (`auto` / `on` / `off`), `LOGO_HAS_NAME` (`true` / `false`; see the table; the tool rejects other values), and a `logo_dark.png` file next to `logo.png`.
+2. Edit `brands/<newbrand>/brand.json`. Required keys: `BRAND_KEY`, `APP_NAME`, `APPLICATION_ID`, `API_BASE_URL_DEV`, `API_BASE_URL_PROD`, the four colours, the three legal URLs. Optional: `PLATFORM_TAG_PROD`, `CLEARTEXT_HOSTS`, `BILLING_UI` (`auto` / `on` / `off`), `LOGO_HAS_NAME` (`true` / `false`; see the table; the tool rejects other values), `ICON_BACKGROUND_COLOR`, `SPLASH_COLOR`, and a `logo_dark.png` file next to `logo.png`.
    - `APPLICATION_ID` must be reverse-DNS the operator controls (e.g. `com.operator.tv`). **It cannot change after the first Play/App Store upload.**
 3. Replace the four PNGs with the operator's artwork (add `logo_dark.png` if the wordmark has dark lettering; otherwise the app plates the logo) (same sizes; the icon must not rely on transparency, the foreground must be transparent outside the glyph).
 4. Create the brand's signing key (see below).

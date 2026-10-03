@@ -1,0 +1,20 @@
+{
+  "BRAND_KEY": "coopcable",
+  "APP_NAME": "Coop Cable",
+  "APPLICATION_ID": "net.caritech.coopcable",
+  "API_BASE_URL_DEV": "https://player.caritech.net",
+  "API_BASE_URL_PROD": "https://player.caritech.net",
+  "PRIMARY_COLOR": "#01B1DD",
+  "ACCENT_COLOR": "#22C55E",
+  "BACKGROUND_COLOR": "#0F172A",
+  "SURFACE_COLOR": "#1E293B",
+  "ICON_BACKGROUND_COLOR": "#01B1DD",
+  "SPLASH_COLOR": "#01B1DD",
+  "PRIVACY_URL": "https://player.caritech.net/privacy",
+  "TERMS_URL": "https://player.caritech.net/privacy#terms",
+  "DELETE_ACCOUNT_URL": "https://player.caritech.net/delete-account",
+  "PLATFORM_TAG_PROD": "mobile",
+  "CLEARTEXT_HOSTS": "",
+  "BILLING_UI": "auto",
+  "LOGO_HAS_NAME": "true"
+}
