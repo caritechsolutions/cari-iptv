@@ -674,12 +674,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     ],
   );
 
-  Widget _loading() => Stack(
+  /// Poster + spinner. Draws its own back arrow only where no controls
+  /// overlay exists (the ad lookup phase); inside the content stage the
+  /// controls overlay's arrow is the one back arrow, and it hides with them.
+  Widget _loading({bool backButton = true}) => Stack(
     fit: StackFit.expand,
     children: [
       if (_req.posterUrl != null) Opacity(opacity: 0.35, child: AppImage(_req.posterUrl)),
       const Center(child: CircularProgressIndicator()),
-      _backButton(),
+      if (backButton) _backButton(),
     ],
   );
 
@@ -816,7 +819,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
                 )
               : const SizedBox.expand(),
         ),
-        if (c == null || !_initialized) _loading(),
+        if (c == null || !_initialized) _loading(backButton: false),
         if (c != null && _initialized && _activeSubtitle != null)
           Positioned(
             left: 24,

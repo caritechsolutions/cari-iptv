@@ -88,7 +88,7 @@ void main() {
 
     testWidgets('in-app back arrow does the same as system back', (tester) async {
       await openAndPlay(tester);
-      await tester.tap(find.byIcon(Icons.arrow_back_rounded).first);
+      await tester.tap(find.byIcon(Icons.arrow_back_rounded)); // exactly one arrow (player_back_arrow_test)
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
