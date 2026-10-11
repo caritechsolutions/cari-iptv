@@ -43,6 +43,7 @@ class AppConfig {
     this.billingUi = BillingUi.auto,
     this.logoHasName = true,
     this.hasDarkLogo = false,
+    this.playUpdates = false,
   });
 
   final AppFlavor flavor;
@@ -94,6 +95,11 @@ class AppConfig {
   /// logo is shown on a light plate.
   final bool hasDarkLogo;
 
+  /// `PLAY_UPDATES` (default false): the brand is distributed through Google
+  /// Play, so prod builds check for an update on start and offer a flexible
+  /// in-app update. False = never call Play Core (sideloaded / other stores).
+  final bool playUpdates;
+
   String get apiV1 => '$apiBaseUrl/api/v1';
   bool get isDev => flavor == AppFlavor.dev;
 
@@ -117,6 +123,7 @@ class AppConfig {
   static const _billingUi = String.fromEnvironment('BILLING_UI', defaultValue: 'auto');
   static const _logoHasName = String.fromEnvironment('LOGO_HAS_NAME', defaultValue: 'true');
   static const _hasDarkLogo = bool.fromEnvironment('BRAND_LOGO_DARK', defaultValue: false);
+  static const _playUpdates = String.fromEnvironment('PLAY_UPDATES', defaultValue: 'false');
 
   /// Builds the config for [flavor] from the build-time defines.
   factory AppConfig.forFlavor(AppFlavor flavor) {
@@ -140,6 +147,7 @@ class AppConfig {
       billingUi: BillingUi.parse(_billingUi),
       logoHasName: parseFlag(_logoHasName, true),
       hasDarkLogo: _hasDarkLogo,
+      playUpdates: parseFlag(_playUpdates, false),
     );
   }
 
@@ -151,7 +159,7 @@ class AppConfig {
       };
 
   /// Same config with other brand switches (tests, previews).
-  AppConfig copyWith({BillingUi? billingUi, bool? logoHasName, bool? hasDarkLogo}) => AppConfig(
+  AppConfig copyWith({BillingUi? billingUi, bool? logoHasName, bool? hasDarkLogo, bool? playUpdates}) => AppConfig(
         flavor: flavor,
         brandKey: brandKey,
         appName: appName,
@@ -170,6 +178,7 @@ class AppConfig {
         billingUi: billingUi ?? this.billingUi,
         logoHasName: logoHasName ?? this.logoHasName,
         hasDarkLogo: hasDarkLogo ?? this.hasDarkLogo,
+        playUpdates: playUpdates ?? this.playUpdates,
       );
 
   /// Same config with another billing override (tests, previews).

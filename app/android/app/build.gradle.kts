@@ -17,6 +17,9 @@ if (brandPropsFile.exists()) {
 }
 val brandApplicationId = (brandProps.getProperty("applicationId") ?: "net.caritech.caritv").trim()
 val brandAppName = (brandProps.getProperty("appName") ?: "CARI TV").trim()
+// Per-brand version (brand.json VERSION_CODE / VERSION_NAME); empty = pubspec.yaml version.
+val brandVersionCode = (brandProps.getProperty("versionCode") ?: "").trim().toIntOrNull()
+val brandVersionName = (brandProps.getProperty("versionName") ?: "").trim().ifEmpty { null }
 
 // Release signing: per-brand brands/<brand>/key.properties (gitignored), path passed
 // through brand.properties. Falls back to the debug key so local release builds work.
@@ -45,8 +48,8 @@ android {
         minSdk = 24
         // Google Play requires new apps and updates to target API 36 from 2026-08-31.
         targetSdk = 36
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = brandVersionCode ?: flutter.versionCode
+        versionName = brandVersionName ?: flutter.versionName
     }
 
     buildFeatures {

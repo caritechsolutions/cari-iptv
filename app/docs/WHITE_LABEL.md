@@ -18,6 +18,8 @@ The app is brand-agnostic. Everything that identifies a brand is a **build-time 
 | Logo on dark backgrounds | optional `logo_dark.png` (same artwork with light lettering) | copied to `assets/branding/`; `tool/build_brand.sh` passes `BRAND_LOGO_DARK` from the file's presence. Without it the app draws `logo.png` on a light rounded plate (`BrandLogo`), so dark lettering never disappears on the dark theme |
 | Logo carries the name | `LOGO_HAS_NAME` (`true` default, `false`) | dart-define → `AppConfig.logoHasName`; when true the app name is not printed beside the logo (login, splash, any `BrandHeader`) |
 | Billing surfaces | `BILLING_UI` (`auto` = follow the server's `features.billing`, `on`, `off`; default `auto`) | dart-define → `AppConfig.billingUi`; `off` hides the packages page and nav item, package rows and sections, activate/cancel actions and any plan/price wording whatever the server says (use it for store builds that must not show billing) |
+| Version | optional `VERSION_CODE` (positive integer) and `VERSION_NAME` (`x.y.z`), set both or neither | `android/brand.properties` → Gradle `versionCode` / `versionName`; without them the `pubspec.yaml` version applies. Per brand so a store listing's version code is never shared with another brand |
+| Play in-app update prompt | `PLAY_UPDATES` (`true` / `false`, default `false`) | dart-define → `AppConfig.playUpdates`; when true a prod build checks Google Play on start and offers a flexible update (download in the background, "Restart" when ready). Keep `false` for brands not distributed through Play: the check is a no-op and the Play Core call is never made |
 | Signing key | `key.properties` + `upload-keystore.jks` in the brand folder (gitignored) | `android/brand.properties` → Gradle release signing |
 
 Shared across brands: all code, the Android `namespace` (`net.caritech.caritv`, a code identifier unrelated to the store id), permissions, version number in `pubspec.yaml`.
@@ -25,7 +27,7 @@ Shared across brands: all code, the Android `namespace` (`net.caritech.caritv`, 
 ## Add a brand
 
 1. Copy a brand folder: `cp -r brands/islandtv brands/<newbrand>`.
-2. Edit `brands/<newbrand>/brand.json`. Required keys: `BRAND_KEY`, `APP_NAME`, `APPLICATION_ID`, `API_BASE_URL_DEV`, `API_BASE_URL_PROD`, the four colours, the three legal URLs. Optional: `PLATFORM_TAG_PROD`, `CLEARTEXT_HOSTS`, `BILLING_UI` (`auto` / `on` / `off`), `LOGO_HAS_NAME` (`true` / `false`; see the table; the tool rejects other values), `ICON_BACKGROUND_COLOR`, `SPLASH_COLOR`, and a `logo_dark.png` file next to `logo.png`.
+2. Edit `brands/<newbrand>/brand.json`. Required keys: `BRAND_KEY`, `APP_NAME`, `APPLICATION_ID`, `API_BASE_URL_DEV`, `API_BASE_URL_PROD`, the four colours, the three legal URLs. Optional: `PLATFORM_TAG_PROD`, `CLEARTEXT_HOSTS`, `BILLING_UI` (`auto` / `on` / `off`), `LOGO_HAS_NAME` (`true` / `false`; see the table; the tool rejects other values), `ICON_BACKGROUND_COLOR`, `SPLASH_COLOR`, `VERSION_CODE` + `VERSION_NAME`, `PLAY_UPDATES`, and a `logo_dark.png` file next to `logo.png`.
    - `APPLICATION_ID` must be reverse-DNS the operator controls (e.g. `com.operator.tv`). **It cannot change after the first Play/App Store upload.**
 3. Replace the four PNGs with the operator's artwork (add `logo_dark.png` if the wordmark has dark lettering; otherwise the app plates the logo) (same sizes; the icon must not rely on transparency, the foreground must be transparent outside the glyph).
 4. Create the brand's signing key (see below).

@@ -61,7 +61,13 @@ Answer from the content you distribute, not the app code. Points to consider:
 - **Play App Signing**: enable and upload the upload key certificate from `keytool -exportcert`.
 - **Financial features / Health / Government apps**: none.
 
-## 6. Open items that affect the answers above
+## 6. Free TV (`freetv`): publishing as an update to the client's existing listing
+
+Facts (2026-10-11): the client's app on Google Play is `com.freetv.ng`, Play App Signing enabled, latest release version code 3 (1.0.2). Its current **upload key** belongs to a third party (Afrikastream, Rwanda; certificate from 2017, SHA-256 `E6:0E:D1:81…`), not to the client. Google's **app signing key** for the listing has fingerprint `E2:26:9B:25…`; that key never changes and is what installed apps are verified against, so an update signed through Play keeps working for existing users.
+
+Decision: publish our build as an update to that listing, not as a new app. The brand's `APPLICATION_ID` is therefore `com.freetv.ng` (changed from the placeholder `ng.freetv.app`, which was never uploaded anywhere), `VERSION_CODE` 4, `VERSION_NAME` 1.1.0, and the route in is an **upload key reset** to our `freetv` upload key (SHA-256 `88:C4:22:05…`, certificate PEM exported with `keytool -export -rfc`). Steps for the client are in `app/brands/freetv/README.md` ("Play release"). Users on the old app get the Play in-app update prompt once the update is live (`PLAY_UPDATES` true for this brand).
+
+## 7. Open items that affect the answers above
 
 - Live verification (2026-09-20): all 26 stream URLs are HTTPS; the caritv brand is built HTTPS-only. Other brands set `CLEARTEXT_HOSTS` in their `brand.json`; if non-empty, answer "encrypted in transit" accordingly.
 - Whether ad impression data is shared with advertisers as reports (affects "Shared" for ad interactions).

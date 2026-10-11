@@ -1,6 +1,6 @@
 # Free TV (`freetv`) — client brand
 
-Install: `https://freetvapp.freetv.ng` (API at `/api/v1`, behind a TLS proxy). Application id `ng.freetv.app`, label "Free TV", primary colour `#ED0000` sampled from the logo. The logo on white is the source for all four assets (`icon.png` white background, `icon_foreground.png` transparent mark inside the adaptive safe circle, `logo.png` the original wordmark trimmed at full resolution, `splash.png` the mark on a white rounded square so the black lettering stays readable on the dark splash colour).
+Install: `https://freetvapp.freetv.ng` (API at `/api/v1`, behind a TLS proxy). Application id `com.freetv.ng` (the client's existing Play listing; see "Play release" below), label "Free TV", primary colour `#ED0000` sampled from the logo. The logo on white is the source for all four assets (`icon.png` white background, `icon_foreground.png` transparent mark inside the adaptive safe circle, `logo.png` the original wordmark trimmed at full resolution, `splash.png` the mark on a white rounded square so the black lettering stays readable on the dark splash colour).
 
 `logo_dark.png` is the same wordmark with the black lettering inverted to white (red kept) for the app's dark screens, and `LOGO_HAS_NAME` is true because the wordmark already says FREE TV, so the app does not print the name beside it.
 
@@ -19,6 +19,27 @@ Build: `./tool/build_brand.sh freetv apk prod` (release-signed when `key.propert
 The key was generated in the build container and handed over as two files in the chat. The container is ephemeral: keep both files in the password manager / vault and put them back under `app/brands/freetv/` on any machine that must produce a release-signed build. Losing them means losing the ability to update this brand once published (enable Play App Signing on the listing to limit the damage).
 
 CI signing: add repository secrets `FREETV_KEYSTORE_BASE64` (`base64 -w0 upload-keystore.jks`) and `FREETV_KEY_PROPERTIES` (the four lines of `key.properties`). Without them the workflow builds the freetv APK debug-signed and says so in `SIGNING.txt` on the release.
+
+## Play release (update to the client's existing listing)
+
+Facts: the listing is `com.freetv.ng`, Play App Signing enabled, latest version code 3 (1.0.2). Its upload key is held by a third party (see `docs/STORE_READINESS.md` §6), so the update goes in through an **upload key reset** to our key. Our build: `VERSION_CODE` 4, `VERSION_NAME` 1.1.0, `PLAY_UPDATES` true (users on our builds are prompted in-app for later updates).
+
+Files the client needs, both handed over in chat (regenerate with the commands if lost):
+
+| | |
+|---|---|
+| Upload certificate PEM | `keytool -export -rfc -alias freetv -keystore app/brands/freetv/upload-keystore.jks -file freetv-upload-cert.pem` (SHA-256 `88:C4:22:05:…:24:96`) |
+| Release bundle | `./tool/build_brand.sh freetv appbundle prod` → `build/app/outputs/bundle/prodRelease/app-prod-release.aab`, signed with the freetv upload key |
+
+Play Console steps, in order:
+
+1. **Request the upload key reset.** Play Console → the Free TV app → *Test and release* → *Setup* → *App signing* (older UI: *Setup* → *App integrity* → *App signing*). Under *Upload key certificate*, choose *Request upload key reset*, pick the reason "lost or compromised upload key" (the key is held by a third party), upload `freetv-upload-cert.pem`, and submit. Google emails the account owner; the reset takes effect after a safety delay stated in that email (typically 48 hours after confirmation). The app signing key (`E2:26:9B:25…`) is untouched, so installed apps keep working.
+2. **Wait for Google's confirmation.** Until then an upload signed with our key is rejected with "your Android App Bundle is signed with the wrong key". Do nothing else in the meantime.
+3. **Create the production release.** *Test and release* → *Production* → *Create new release*. Upload the `.aab`. Play shows version code 4 (1.1.0); it must be above 3 or the upload is refused. Fill in the release notes. *Next* → review warnings (none expected; target API 36) → *Start rollout to Production*. A staged rollout (for example 20%) is a reasonable first step; raise it to 100% from the same page.
+4. **Listing checks that may block rollout**, under *Policy* and *Grow*: the privacy policy URL (`https://freetvapp.freetv.ng/privacy`, which exists once the backend commits are deployed there), the Data safety form and content rating (answers in `docs/STORE_READINESS.md`), and the app access note for reviewers (a test login they can use).
+5. **After it is live**, users on 1.0.2 get the update through Play's normal update path (the old app has no in-app prompt of its own); users on 1.1.0 and later get the in-app prompt for future updates.
+
+Nothing in this repo uploads to Play; every step above is done by the client in Play Console.
 
 ## Discovery facts (2026-10-01, read-only, test subscriber)
 
