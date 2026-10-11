@@ -10,7 +10,7 @@ import '../../models/media_card.dart';
 bool? isCardLocked(WidgetRef ref, MediaCard card) {
   final ent = ref.watch(entitlementsProvider).value;
   if (ent == null) return null;
-  return ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted);
+  return ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted, isFree: card.isFree);
 }
 
 /// The padlock / 18+ marker drawn on cards, channel rows and the guide.

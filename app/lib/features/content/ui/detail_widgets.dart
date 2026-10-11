@@ -224,7 +224,7 @@ class AccessNotice extends ConsumerWidget {
     String? text;
     if (card.isAdult && !(user?.adultEnabled ?? false)) {
       text = 'Adult content is hidden. Enable it in Profile to watch.';
-    } else if (ent != null && ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted)) {
+    } else if (ent != null && ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted, isFree: card.isFree)) {
       text = ent.hasSubscription ? 'Not included in your current package.' : 'An active subscription is needed to watch this.';
     }
     if (text == null) return const SizedBox.shrink();

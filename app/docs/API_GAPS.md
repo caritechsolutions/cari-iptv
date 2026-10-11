@@ -30,6 +30,23 @@ Stream URL schemes/formats on live data (2026-09-20): 26/26 `https://`; channels
 | 21 | A movie's `stream_url` can be a YouTube watch URL | Not playable by a native player | **Worked around** — URLs on youtube.com/youtu.be/vimeo.com (or without a media extension) open in the browser with a "Watch on YouTube" button |
 | 22 | No EPG data on the live install; `/movies/featured` empty; no mobile layout published | Empty guide, no hero | **Worked around** — fallback home uses latest titles; guide shows an empty state. Publish a mobile layout in Admin → App Layout to take over the home screen |
 
+## Free content and the lock rule
+
+Channels flagged "Available Without Purchase" and movies flagged "Free Content" in admin now reach the API as `is_free` (`backend:` commit, BACKEND_CHANGES.md §11, not deployed). Lock rule in both clients: free → playable; else no subscription → locked; else restricted and not entitled → locked. Until an install carries the commit the field is absent and such content stays locked for accounts without a subscription, as before.
+
+## Guest (no-login) mode — design, not built
+
+Decided 2026-10-11: not now. What it needs on top of the free-content rule, for when it is wanted:
+
+1. **Anonymous device account.** `POST /auth/guest` with a device id creates a subscriber row with `is_guest = 1`, no email or password, status active, `max_connections` 1, keyed by the device id (new column or `external_id`), and returns the usual token pair; a repeat call with the same device id returns the same account. Needed because every content endpoint is behind `api_auth`.
+2. **What a guest sees.** Entitlements give `has_subscription` false and empty id sets, so the rule above yields exactly the free content. Lists should hide the rest rather than lock it (a `guest=1` filter on the list queries, or the existing `channels.show_to_demo_users`, default 1, as the "visible to guests" switch separate from "playable").
+3. **Protected surfaces.** Guests get 403 on watchlist, ratings, profile edits, package activation and billing; watch progress is kept so it survives the upgrade.
+4. **Upgrade.** `POST /auth/upgrade` on a guest token takes the registration fields and converts the same row (email, password, name, `is_guest = 0`), sends the verification email and keeps history and progress; the web register page and the app register screen call it instead of `register` when a guest token is present.
+5. **Clients.** "Browse as guest" on the login screens, a persistent "Create account" prompt, padlock wording "Sign up to watch" for guests; in the app a guest is an `AuthSignedIn` user with `isGuest` true and a few screens gated on it.
+6. **Housekeeping.** Purge guest rows idle for 90 days; hide or label guests in Admin → Subscribers.
+
+Rough size: backend about a day, web and app about a day each.
+
 ## Padlock data on list rows
 
 `/search` rows and `/auth/continue-watching` rows carry no `is_restricted`, `is_adult` or `category_id`, so cards built from them cannot show the padlock and the play gate sees them as unrestricted until the detail endpoint is opened (movie and series detail pages re-check; a restricted **channel** opened straight from a search result plays without the gate). Fixed in the `backend:` commit "search and continue-watching rows carry the entitlement fields" (`ContentApiService::search()`, `SubscriberAuthService::getContinueWatching()`), not yet deployed; until an install carries it the app sees those rows as unrestricted. The app parses the three fields (`SearchResult`, `ContinueWatchingItem`) and gates on them.

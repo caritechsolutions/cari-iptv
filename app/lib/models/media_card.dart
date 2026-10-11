@@ -14,6 +14,7 @@ class MediaCard {
     this.rating,
     this.isRestricted = false,
     this.isAdult = false,
+    this.isFree = false,
     this.categoryId,
     this.streamUrl,
     this.linkUrl,
@@ -33,6 +34,10 @@ class MediaCard {
   final double? rating;
   final bool isRestricted;
   final bool isAdult;
+
+  /// Admin "Available Without Purchase" (channel) / "Free Content" (movie):
+  /// plays for any signed-in account, subscription or not.
+  final bool isFree;
   final int? categoryId;
   final String? streamUrl;
 
@@ -60,6 +65,7 @@ class MediaCard {
         rating: rating,
         isRestricted: isRestricted,
         isAdult: isAdult,
+        isFree: isFree,
         categoryId: categoryId,
         streamUrl: streamUrl,
         linkUrl: linkUrl,

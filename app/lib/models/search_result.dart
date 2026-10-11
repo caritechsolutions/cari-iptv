@@ -3,7 +3,7 @@ import 'media_card.dart';
 
 /// One row of `/search` (flat, normalised to `image_url`).
 class SearchResult {
-  const SearchResult({required this.id, required this.title, required this.slug, required this.imageUrl, required this.contentType, required this.year, required this.voteAverage, this.isRestricted = false, this.isAdult = false, this.categoryId});
+  const SearchResult({required this.id, required this.title, required this.slug, required this.imageUrl, required this.contentType, required this.year, required this.voteAverage, this.isRestricted = false, this.isAdult = false, this.isFree = false, this.categoryId});
   final int id;
   final String title;
   final String slug;
@@ -14,6 +14,7 @@ class SearchResult {
 
   /// `/search` rows do not carry these today (docs/API_GAPS.md); parsed when present.
   final bool isRestricted;
+  final bool isFree;
   final bool isAdult;
   final int? categoryId;
 
@@ -26,6 +27,7 @@ class SearchResult {
         year: asIntOrNull(j['year']),
         voteAverage: asDoubleOrNull(j['vote_average']),
         isRestricted: asBool(j['is_restricted']),
+        isFree: asBool(j['is_free']),
         isAdult: asBool(j['is_adult']),
         categoryId: asIntOrNull(j['category_id']),
       );
@@ -40,6 +42,7 @@ class SearchResult {
         rating: voteAverage,
         subtitle: year?.toString(),
         isRestricted: isRestricted,
+        isFree: isFree,
         isAdult: isAdult,
         categoryId: categoryId,
       );

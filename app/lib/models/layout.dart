@@ -51,6 +51,7 @@ class LayoutItem {
           rating: asDoubleOrNull(c['vote_average']),
           subtitle: asIntOrNull(c['year'])?.toString(),
           isRestricted: asBool(c['is_restricted']),
+          isFree: asBool(c['is_free']),
           isAdult: asBool(c['is_adult']),
           streamUrl: asStringOrNull(c['stream_url']),
         );
@@ -62,6 +63,7 @@ class LayoutItem {
           logoUrl: asStringOrNull(c['logo_url']),
           streamUrl: asStringOrNull(c['stream_url']),
           isRestricted: asBool(c['is_restricted']),
+          isFree: asBool(c['is_free']),
         );
       case 'category':
         return MediaCard(id: cardId, type: 'category', title: asString(c['name']), subtitle: asStringOrNull(c['type']));

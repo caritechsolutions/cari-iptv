@@ -8,6 +8,7 @@ import '../../models/media_card.dart';
 import 'legal_links.dart';
 import 'access_badge.dart';
 import 'app_image.dart';
+import 'channel_logo.dart';
 
 /// Opens the right screen for any [MediaCard]. Restricted / adult gating is
 /// applied here so every rail, grid and search result behaves the same.
@@ -58,7 +59,7 @@ Future<bool> gateAllows(BuildContext context, WidgetRef ref, MediaCard card) asy
   }
   // Same rule as the padlock badges (web: isContentLocked).
   final ent = await ref.read(entitlementsProvider.future);
-  if (ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted)) {
+  if (ent.locks(type: card.type, id: card.id, categoryId: card.categoryId, isRestricted: card.isRestricted, isFree: card.isFree)) {
     if (!context.mounted) return false;
     if (!ent.hasSubscription) {
       await _info(context, 'Subscription required', 'An active subscription is needed to watch this.');
@@ -175,11 +176,7 @@ class LandscapeCard extends ConsumerWidget {
                 AspectRatio(
                   aspectRatio: 16 / 9,
                   child: isChannel
-                      ? Container(
-                          decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(10)),
-                          padding: EdgeInsets.all((width * 0.07).clamp(6.0, 14.0)),
-                          child: AppImage(card.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined),
-                        )
+                      ? ChannelLogo(card.logoUrl, radius: 10)
                       : AppImage(card.landscapeImage, borderRadius: BorderRadius.circular(10)),
                 ),
                 AccessBadge.overlay(card),

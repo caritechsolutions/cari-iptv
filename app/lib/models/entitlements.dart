@@ -94,11 +94,14 @@ class Entitlements {
         adultEnabled: asBool(j['adult_enabled']),
       );
 
-  /// The web player's lock rule (`isContentLocked` in app.js): with no
-  /// active subscription everything is locked; otherwise only restricted
-  /// content whose id (or category) is absent from the entitled sets. The
-  /// same rule drives the padlock badges and the play gate.
-  bool locks({required String type, required int id, int? categoryId, required bool isRestricted}) {
+  /// The web player's lock rule (`isContentLocked` in app.js): free content
+  /// (`is_free`: a channel "Available Without Purchase", a movie "Free
+  /// Content") is never locked; otherwise with no active subscription
+  /// everything is locked; otherwise only restricted content whose id (or
+  /// category) is absent from the entitled sets. The same rule drives the
+  /// padlock badges and the play gate.
+  bool locks({required String type, required int id, int? categoryId, required bool isRestricted, bool isFree = false}) {
+    if (isFree) return false;
     if (!hasSubscription) return true;
     if (!isRestricted) return false;
     return !allows(type, id, categoryId: categoryId);

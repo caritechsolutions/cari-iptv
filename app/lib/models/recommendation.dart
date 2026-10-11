@@ -36,6 +36,7 @@ class RecommendationSet {
       subtitle: asStringOrNull(c['recommendation_reason']) ?? asIntOrNull(c['year'])?.toString(),
       isAdult: asBool(c['is_adult']),
       isRestricted: asBool(c['is_restricted']),
+      isFree: asBool(c['is_free']),
     );
   }
 }

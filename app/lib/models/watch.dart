@@ -63,6 +63,7 @@ class ContinueWatchingItem {
     required this.resumeEpisodeNumber,
     required this.resumeEpisodeTitle,
     this.isRestricted = false,
+    this.isFree = false,
     this.isAdult = false,
     this.categoryId,
   });
@@ -84,6 +85,7 @@ class ContinueWatchingItem {
 
   /// Carried when the API sends them (docs/API_GAPS.md: continue-watching rows lack them today).
   final bool isRestricted;
+  final bool isFree;
   final bool isAdult;
   final int? categoryId;
 
@@ -105,6 +107,7 @@ class ContinueWatchingItem {
       resumeEpisodeNumber: asIntOrNull(j['resume_episode_number']),
       resumeEpisodeTitle: asStringOrNull(j['resume_episode_title']),
       isRestricted: asBool(j['is_restricted']),
+      isFree: asBool(j['is_free']),
       isAdult: asBool(j['is_adult']),
       categoryId: asIntOrNull(j['category_id']),
     );
@@ -123,6 +126,7 @@ class ContinueWatchingItem {
             : year?.toString(),
         progress: progress.fraction,
         isRestricted: isRestricted,
+        isFree: isFree,
         isAdult: isAdult,
         categoryId: categoryId,
       );

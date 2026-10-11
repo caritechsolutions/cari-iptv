@@ -81,9 +81,9 @@ Web player cadence: progress POST every 10 s of playback (`public/assets/js/play
 `meta.total` is a real count for `/channels`, `/movies`, `/series`; for `/search` and `/categories` it is just the returned row count.
 
 ### Item shapes
-- **Channel (list)**: `id, name, slug, logo_url, stream_url, epg_channel_id, category_id, country, is_hd, is_adult, channel_number, sort_order, updated_at, category_name, is_restricted (bool), content_type:"channel"`.
+- **Channel (list)**: `id, name, slug, logo_url, stream_url, epg_channel_id, category_id, country, is_hd, is_adult, channel_number, sort_order, updated_at, category_name, is_restricted (bool), is_free (bool; admin "Available Without Purchase"), content_type:"channel"`.
 - **Channel (detail)**: all columns + `now_playing`, `next_up` = `{title, description, start_time, end_time}` or null. Times are raw MySQL `YYYY-MM-DD HH:MM:SS` (no `Z`).
-- **Movie (list)**: `id, title, slug, year, genres, runtime, vote_average, poster_url, backdrop_url, stream_url, is_featured, is_adult, category_id, updated_at, category_name, is_restricted, content_type:"movie"`.
+- **Movie (list)**: `id, title, slug, year, genres, runtime, vote_average, poster_url, backdrop_url, stream_url, is_featured, is_adult, is_free (bool; admin "Free Content"), category_id, updated_at, category_name, is_restricted, content_type:"movie"`.
 - **Movie (detail)**: all columns + `category_name, is_restricted, content_type, drm, trailers[{id,title,video_key,url,is_primary}], artwork[{id,type,url,language,is_primary}], cast[] (SELECT *), markers[{id,marker_type,position_seconds,label}], subtitles[{id,language_code,language_name,file_path,format,is_default,is_forced}]`. Optional `rating_source:"community"`, `rating_count` when community ratings exist.
 - **Series (list)**: `id, title, slug, year, genres, synopsis, vote_average, poster_url, backdrop_url, is_featured, is_adult, category_id, updated_at, season_count, episode_count, category_name, is_restricted, content_type:"series"`.
 - **Series (detail)**: all columns + `seasons[]` (all `series_seasons` columns) each with `episodes[{id, title, episode_number, synopsis, runtime, stream_url, still_url, air_date, vote_average, vod_status}]`, plus `trailers[]`, `cast[]`. **No `drm`/`markers`/`subtitles` on embedded episodes.**

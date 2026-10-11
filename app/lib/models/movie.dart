@@ -18,6 +18,7 @@ class Movie {
     required this.isFeatured,
     required this.isAdult,
     required this.isRestricted,
+    required this.isFree,
     required this.categoryId,
     required this.categoryName,
     required this.vodStatus,
@@ -44,6 +45,7 @@ class Movie {
   final bool isFeatured;
   final bool isAdult;
   final bool isRestricted;
+  final bool isFree;
   final int? categoryId;
   final String? categoryName;
   final String? vodStatus;
@@ -72,6 +74,7 @@ class Movie {
         isFeatured: asBool(j['is_featured']),
         isAdult: asBool(j['is_adult']),
         isRestricted: asBool(j['is_restricted']),
+        isFree: asBool(j['is_free']),
         categoryId: asIntOrNull(j['category_id']),
         categoryName: asStringOrNull(j['category_name']),
         vodStatus: asStringOrNull(j['vod_status']),
@@ -94,6 +97,7 @@ class Movie {
         rating: voteAverage,
         subtitle: year?.toString(),
         isRestricted: isRestricted,
+        isFree: isFree,
         isAdult: isAdult,
         categoryId: categoryId,
         streamUrl: streamUrl,

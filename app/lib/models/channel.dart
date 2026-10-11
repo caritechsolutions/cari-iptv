@@ -36,6 +36,7 @@ class Channel {
     required this.isHd,
     required this.isAdult,
     required this.isRestricted,
+    required this.isFree,
     required this.channelNumber,
     required this.description,
     required this.nowPlaying,
@@ -54,6 +55,7 @@ class Channel {
   final bool isHd;
   final bool isAdult;
   final bool isRestricted;
+  final bool isFree;
   final int? channelNumber;
   final String? description;
   final ChannelProgramme? nowPlaying;
@@ -72,6 +74,7 @@ class Channel {
         isHd: asBool(j['is_hd']),
         isAdult: asBool(j['is_adult']),
         isRestricted: asBool(j['is_restricted']),
+        isFree: asBool(j['is_free']),
         channelNumber: asIntOrNull(j['channel_number']),
         description: asStringOrNull(j['description']),
         nowPlaying: ChannelProgramme.fromJsonOrNull(j['now_playing']),
@@ -85,6 +88,7 @@ class Channel {
         logoUrl: logoUrl,
         subtitle: channelNumber != null ? 'Ch $channelNumber' : categoryName,
         isRestricted: isRestricted,
+        isFree: isFree,
         isAdult: isAdult,
         categoryId: categoryId,
         streamUrl: streamUrl,

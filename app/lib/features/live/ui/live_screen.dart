@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/widgets/access_badge.dart';
-import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/channel_logo.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../../core/widgets/cards.dart';
 import '../../../models/channel.dart';
@@ -116,15 +116,7 @@ class ChannelTile extends ConsumerWidget {
     return ListTile(
       onTap: () => openCard(context, ref, channel.toCard()),
       onLongPress: () => context.push('/guide/${channel.id}', extra: channel),
-      leading: SizedBox(
-        width: 64,
-        height: 40,
-        child: Container(
-          decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(6)),
-          padding: const EdgeInsets.all(4),
-          child: AppImage(channel.logoUrl, fit: BoxFit.contain, icon: Icons.live_tv_outlined),
-        ),
-      ),
+      leading: SizedBox(width: 84, height: 50, child: ChannelLogo(channel.logoUrl)),
       title: Row(
         children: [
           if (channel.channelNumber != null) Text('${channel.channelNumber}  ', style: const TextStyle(color: Colors.white54, fontSize: 12)),
