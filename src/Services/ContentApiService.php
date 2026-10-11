@@ -246,6 +246,22 @@ class ContentApiService
     }
 
     /**
+     * Cast the access flags every card-shaped row carries: is_restricted
+     * (in any content group), is_adult, is_free (channel "Available Without
+     * Purchase" / movie "Free Content"). Null rows pass through.
+     */
+    public function castAccessFlags(?array $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        $row['is_restricted'] = (bool) ($row['is_restricted'] ?? false);
+        $row['is_adult'] = (bool) ($row['is_adult'] ?? false);
+        $row['is_free'] = (bool) ($row['is_free'] ?? false);
+        return $row;
+    }
+
+    /**
      * Check if content is restricted (belongs to any content group)
      * If not in any group, it's free/unrestricted
      */
@@ -304,6 +320,7 @@ class ContentApiService
             "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url,
                     c.epg_channel_id, c.category_id, c.country,
                     c.is_hd, c.is_adult, c.channel_number, c.sort_order, c.updated_at,
+                    c.available_without_purchase = 1 as is_free,
                     cat.name as category_name,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
@@ -328,6 +345,7 @@ class ContentApiService
 
         foreach ($channels as &$channel) {
             $channel['is_restricted'] = (bool) ($channel['is_restricted'] ?? false);
+            $channel['is_free'] = (bool) ($channel['is_free'] ?? $channel['available_without_purchase'] ?? false);
             $channel['content_type'] = 'channel';
         }
 
@@ -349,6 +367,7 @@ class ContentApiService
         // Try with content restriction check; fall back without it
         $channel = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT c.*, cat.name as category_name,
+                    c.available_without_purchase = 1 as is_free,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c
              LEFT JOIN categories cat ON c.category_id = cat.id
@@ -371,6 +390,8 @@ class ContentApiService
         }
 
         $channel['is_restricted'] = (bool) ($channel['is_restricted'] ?? false);
+
+        $channel['is_free'] = (bool) ($channel['is_free'] ?? $channel['available_without_purchase'] ?? false);
         $channel['content_type'] = 'channel';
 
         // Get current EPG programme (table is epg_programs)
@@ -446,7 +467,7 @@ class ContentApiService
         $movies = $this->safeQuery(fn() => $this->db->fetchAll(
             "SELECT m.id, m.title, m.slug, m.year, m.genres, m.runtime,
                     m.vote_average, m.poster_url, m.backdrop_url,
-                    m.stream_url, m.is_featured, m.is_adult,
+                    m.stream_url, m.is_featured, m.is_adult, m.is_free,
                     m.category_id, m.updated_at,
                     cat.name as category_name,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = m.id LIMIT 1) IS NOT NULL as is_restricted
@@ -473,6 +494,7 @@ class ContentApiService
 
         foreach ($movies as &$movie) {
             $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
+            $movie['is_free'] = (bool) ($movie['is_free'] ?? false);
             $movie['content_type'] = 'movie';
             // Use community rating if available, fall back to TMDB
             if (!empty($movie['community_rating'])) {
@@ -524,6 +546,8 @@ class ContentApiService
         }
 
         $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
+
+        $movie['is_free'] = (bool) ($movie['is_free'] ?? false);
         $movie['content_type'] = 'movie';
         if (!empty($movie['community_rating'])) {
             $movie['vote_average'] = (float) $movie['community_rating'];
@@ -691,6 +715,7 @@ class ContentApiService
 
         foreach ($series as &$show) {
             $show['is_restricted'] = (bool) ($show['is_restricted'] ?? false);
+            $show['is_free'] = false; // series have no free flag
             $show['content_type'] = 'series';
             if (!empty($show['community_rating'])) {
                 $show['vote_average'] = (float) $show['community_rating'];
@@ -741,6 +766,8 @@ class ContentApiService
         }
 
         $show['is_restricted'] = (bool) ($show['is_restricted'] ?? false);
+
+        $show['is_free'] = false; // series have no free flag
         $show['content_type'] = 'series';
 
         // Community rating override (use viewer ratings if available, else TMDB)
@@ -1122,11 +1149,13 @@ class ContentApiService
 
         $titleCol = 'title';
         $extraCols = $table === 'movies'
-            ? 'slug, genres, runtime, vote_average, poster_url, backdrop_url, stream_url, synopsis'
-            : 'slug, genres, vote_average, poster_url, backdrop_url, synopsis';
+            ? 'slug, genres, runtime, vote_average, poster_url, backdrop_url, stream_url, synopsis, is_adult, category_id, is_free'
+            : 'slug, genres, vote_average, poster_url, backdrop_url, synopsis, is_adult, category_id, 0 as is_free';
+        $cgType = $table === 'movies' ? 'movie' : 'series';
+        $restricted = "(SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = '{$cgType}' AND cgi.content_id = {$table}.id LIMIT 1) IS NOT NULL as is_restricted";
 
         $rows = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT id, {$titleCol}, year, {$extraCols}
+            "SELECT id, {$titleCol}, year, {$extraCols}, {$restricted}
              FROM {$table} WHERE {$where}
              ORDER BY {$order} LIMIT {$limit}",
             $params
@@ -1134,6 +1163,7 @@ class ContentApiService
 
         $items = [];
         foreach ($rows as $i => $row) {
+            $row = $this->castAccessFlags($row);
             $items[] = [
                 'id' => 0,
                 'content_type' => $type,
@@ -1161,12 +1191,15 @@ class ContentApiService
         if ($source === 'category' && !$categoryId) return [];
 
         $rows = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.is_hd
+            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.is_hd, c.is_adult, c.category_id,
+                    c.available_without_purchase = 1 as is_free,
+                    (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c {$join}
              WHERE {$where}
              ORDER BY c.channel_number ASC LIMIT {$limit}",
             $params
         ), []);
+        $rows = array_map(fn($r) => $this->castAccessFlags($r), $rows);
 
         $items = [];
         foreach ($rows as $i => $row) {
@@ -1193,23 +1226,27 @@ class ContentApiService
         }
 
         return match ($type) {
-            'movie' => $this->safeQuery(fn() => $this->db->fetch(
+            'movie' => $this->castAccessFlags($this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, title, slug, year, genres, runtime, vote_average,
-                        poster_url, backdrop_url, stream_url, synopsis
+                        poster_url, backdrop_url, stream_url, synopsis, is_adult, category_id, is_free,
+                        (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = movies.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM movies WHERE id = ? AND status = 'published'",
                 [$contentId]
-            )),
-            'series' => $this->safeQuery(fn() => $this->db->fetch(
+            ))),
+            'series' => $this->castAccessFlags($this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, title, slug, year, genres, vote_average,
-                        poster_url, backdrop_url, synopsis
+                        poster_url, backdrop_url, synopsis, is_adult, category_id, 0 as is_free,
+                        (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = series.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM series WHERE id = ? AND status = 'published'",
                 [$contentId]
-            )),
-            'channel' => $this->safeQuery(fn() => $this->db->fetch(
-                "SELECT id, name, slug, logo_url, stream_url, is_hd
+            ))),
+            'channel' => $this->castAccessFlags($this->safeQuery(fn() => $this->db->fetch(
+                "SELECT id, name, slug, logo_url, stream_url, is_hd, is_adult, category_id,
+                        available_without_purchase = 1 as is_free,
+                        (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = channels.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM channels WHERE id = ? AND is_active = 1",
                 [$contentId]
-            )),
+            ))),
             'category' => $this->safeQuery(fn() => $this->db->fetch(
                 "SELECT id, name, slug, type, icon
                  FROM categories WHERE id = ? AND is_active = 1",
@@ -1283,7 +1320,7 @@ class ContentApiService
         if ($types === 'all' || $types === 'channel') {
             $channels = $this->safeQuery(fn() => $this->db->fetchAll(
                 "SELECT id, name as title, slug, logo_url as image_url, 'channel' as content_type,
-                        is_adult, category_id,
+                        is_adult, category_id, available_without_purchase = 1 as is_free,
                         (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = channels.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM channels
                  WHERE is_active = 1 AND (name LIKE ? OR slug LIKE ?)
@@ -1296,7 +1333,7 @@ class ContentApiService
         if ($types === 'all' || $types === 'movie') {
             $movies = $this->safeQuery(fn() => $this->db->fetchAll(
                 "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'movie' as content_type,
-                        is_adult, category_id,
+                        is_adult, category_id, is_free,
                         (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = movies.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM movies
                  WHERE status = 'published' AND (title LIKE ? OR slug LIKE ? OR synopsis LIKE ?)
@@ -1309,7 +1346,7 @@ class ContentApiService
         if ($types === 'all' || $types === 'series') {
             $series = $this->safeQuery(fn() => $this->db->fetchAll(
                 "SELECT id, title, slug, poster_url as image_url, year, genres, vote_average, 'series' as content_type,
-                        is_adult, category_id,
+                        is_adult, category_id, 0 as is_free,
                         (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = series.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM series
                  WHERE status = 'published' AND (title LIKE ? OR slug LIKE ? OR synopsis LIKE ?)
@@ -1322,6 +1359,7 @@ class ContentApiService
         // Same entitlement fields as the list endpoints, same booleans.
         foreach ($results as &$row) {
             $row['is_restricted'] = (bool) ($row['is_restricted'] ?? false);
+            $row['is_free'] = (bool) ($row['is_free'] ?? false);
             $row['is_adult'] = (bool) ($row['is_adult'] ?? false);
         }
         unset($row);

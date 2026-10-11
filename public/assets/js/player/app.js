@@ -47,12 +47,19 @@ const CariApp = (function() {
 
     /**
      * Check if content is locked (user doesn't have access)
-     * - No active subscription: ALL content is locked
+     * - Free content (is_free): never locked
+     * - No active subscription: all other content is locked
      * - Has subscription: only entitled content is unlocked
      */
     function isContentLocked(item) {
         if (!entitlements) return false;
         if (!item || !item.id) return false;
+
+        // Free content (admin: channel "Available Without Purchase", movie
+        // "Free Content") plays for any signed-in account, subscription or not.
+        if (item.is_free) {
+            return false;
+        }
 
         // If subscriber has no active subscriptions, all content is locked
         if (!entitlements.has_subscription) {

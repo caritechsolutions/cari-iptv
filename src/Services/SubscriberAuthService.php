@@ -463,7 +463,7 @@ class SubscriberAuthService
                 }
                 $movie = $this->db->fetch(
                     "SELECT id, title, slug, year, poster_url, backdrop_url, runtime, vote_average, stream_url,
-                            is_adult, category_id,
+                            is_adult, category_id, is_free,
                             (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'movie' AND cgi.content_id = movies.id LIMIT 1) IS NOT NULL as is_restricted
                      FROM movies WHERE id = ? AND status = 'published'",
                     [$item['content_id']]
@@ -471,6 +471,7 @@ class SubscriberAuthService
                 if ($movie) {
                     $movie['is_restricted'] = (bool) ($movie['is_restricted'] ?? false);
                     $movie['is_adult'] = (bool) ($movie['is_adult'] ?? false);
+                    $movie['is_free'] = (bool) ($movie['is_free'] ?? false);
                     $item = array_merge($item, $movie);
                 } else {
                     $item['title'] = 'Unknown Movie';
@@ -516,6 +517,7 @@ class SubscriberAuthService
                 // Entitlement fields of the series, as on the series list
                 $item['is_restricted'] = (bool) ($episode['series_is_restricted'] ?? false);
                 $item['is_adult'] = (bool) ($episode['series_is_adult'] ?? false);
+                $item['is_free'] = false; // series have no free flag
                 $item['category_id'] = $episode['series_category_id'] ?? null;
                 // Include resume episode details so player knows where to pick up
                 $item['resume_episode_id'] = $episode['episode_id'];
