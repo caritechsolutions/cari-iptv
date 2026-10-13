@@ -18,7 +18,7 @@ Build: `./tool/build_brand.sh freetv apk prod` (release-signed when `key.propert
 
 The key was generated in the build container and handed over as two files in the chat. The container is ephemeral: keep both files in the password manager / vault and put them back under `app/brands/freetv/` on any machine that must produce a release-signed build. Losing them means losing the ability to update this brand once published (enable Play App Signing on the listing to limit the damage).
 
-CI signing: add repository secrets `FREETV_KEYSTORE_BASE64` (`base64 -w0 upload-keystore.jks`) and `FREETV_KEY_PROPERTIES` (the four lines of `key.properties`). Without them the workflow builds the freetv APK debug-signed and says so in `SIGNING.txt` on the release.
+CI signing: add repository secrets `FREETV_KEYSTORE_BASE64` (`base64 -w0 upload-keystore.jks`) and `FREETV_KEY_PROPERTIES` (the four lines of `key.properties`). Without them the workflow builds the freetv APK debug-signed and says so in `SIGNING.txt` on the release. With them the release also carries `freetv-<version>-release-signed.aab` and `.apk` (store-ready, signed with this key) and `freetv-upload-cert.pem`, with every asset's SHA-256 in `SHA256SUMS.txt` and the release notes.
 
 ## Play release (update to the client's existing listing)
 

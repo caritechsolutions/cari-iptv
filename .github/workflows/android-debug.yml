@@ -5,6 +5,11 @@ name: Android debug APK
 #          A brand's release APK is signed with its upload key when the secrets
 #          <BRAND>_KEYSTORE_BASE64 and <BRAND>_KEY_PROPERTIES exist (brand name
 #          upper-cased), otherwise with the debug key (and the release notes say so).
+#          With the secrets the brand also gets store-ready assets on the release:
+#          <brand>-<version>-release-signed.aab and .apk (version = brand.json
+#          VERSION_NAME, else pubspec.yaml) and <brand>-upload-cert.pem (the upload
+#          certificate, for Play's upload key reset); SHA-256 of every asset goes
+#          into SHA256SUMS.txt and the release notes.
 # smoke  → boots an API 36 (Android 16) emulator (KVM), installs each APK, launches it, waits 20 s,
 #          fails if the process died / FATAL EXCEPTION / activity not resumed;
 #          logcat + screenshot are uploaded either way
@@ -104,20 +109,49 @@ jobs:
             U=$(echo "$b" | tr '[:lower:]' '[:upper:]')
             KS=$(echo "$SECRETS_JSON" | jq -r --arg k "${U}_KEYSTORE_BASE64" '.[$k] // empty')
             KP=$(echo "$SECRETS_JSON" | jq -r --arg k "${U}_KEY_PROPERTIES" '.[$k] // empty')
+            SIGNED=0
             if [ -n "$KS" ] && [ -n "$KP" ]; then
               echo "$KS" | base64 -d > "brands/$b/upload-keystore.jks"
               printf '%s\n' "$KP" > "brands/$b/key.properties"
+              SIGNED=1
               echo "$b: release-signed with the brand upload key" | tee -a out/SIGNING.txt
             else
               echo "$b: debug-signed (no ${U}_KEYSTORE_BASE64 / ${U}_KEY_PROPERTIES secrets)" | tee -a out/SIGNING.txt
             fi
             ./tool/build_brand.sh "$b" apk prod
             cp build/app/outputs/flutter-apk/app-prod-release.apk "out/${b}-prod-release-${SHORT_SHA}.apk"
+            if [ "$SIGNED" = 1 ]; then
+              # Store-ready assets: <brand>-<version>-release-signed.{apk,aab} + the upload certificate.
+              VER=$(jq -r '.VERSION_NAME // empty' "brands/$b/brand.json")
+              [ -n "$VER" ] || VER=$(sed -n 's/^version: *\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)
+              cp build/app/outputs/flutter-apk/app-prod-release.apk "out/${b}-${VER}-release-signed.apk"
+              ./tool/build_brand.sh "$b" appbundle prod --no-icons
+              cp build/app/outputs/bundle/prodRelease/app-prod-release.aab "out/${b}-${VER}-release-signed.aab"
+              ALIAS=$(sed -n 's/^keyAlias=//p' "brands/$b/key.properties")
+              STOREPASS=$(sed -n 's/^storePassword=//p' "brands/$b/key.properties")
+              keytool -export -rfc -alias "$ALIAS" -keystore "brands/$b/upload-keystore.jks" -storepass "$STOREPASS" -file "out/${b}-upload-cert.pem"
+              echo "$b: ${b}-${VER}-release-signed.aab / .apk and ${b}-upload-cert.pem (upload certificate SHA-256 $(keytool -printcert -file "out/${b}-upload-cert.pem" | sed -n 's/.*SHA256: //p'))" | tee -a out/SIGNING.txt
+            fi
             rm -f "brands/$b/upload-keystore.jks" "brands/$b/key.properties"
           done
           # leave the tree on the committed brand
           dart run tool/apply_brand.dart "$BRAND" --no-icons
-          (cd out && sha256sum *.apk | tee SHA256SUMS.txt)
+          (cd out && sha256sum *.apk $(ls *.aab *.pem 2>/dev/null) | tee SHA256SUMS.txt)
+          # release notes: the fixed text plus a checksum table of every asset
+          {
+            echo "Debug APK of the **${BRAND}** brand, **dev** flavour (application id \`net.caritech.caritv.dev\`, label \"CARI TV Dev\")."
+            echo "Built from \`${GITHUB_SHA}\` on branch \`${GITHUB_REF_NAME}\`. Passed the emulator smoke test (debug and release variants launched and reached the foreground)."
+            echo
+            echo "Install: download the \`.apk\` below on the phone, open it and allow installing from this source. The caritv APKs are signed with the debug key — not for stores."
+            echo
+            echo "Client brands (\`*-prod-release-*.apk\`, see \`SIGNING.txt\` for how each was signed): ${EXTRA_BRANDS}. Brands whose signing secrets exist also get \`<brand>-<version>-release-signed.aab\` / \`.apk\` (store-ready, signed with the brand upload key) and \`<brand>-upload-cert.pem\`. Nothing is uploaded to any store by this workflow."
+            echo
+            echo "### SHA-256"
+            echo
+            echo "| File | SHA-256 |"
+            echo "|---|---|"
+            awk '{ printf "| `%s` | `%s` |\n", $2, $1 }' out/SHA256SUMS.txt
+          } > out/RELEASE_NOTES.md
 
       - uses: actions/upload-artifact@v4
         with:
@@ -215,16 +249,13 @@ jobs:
           name: "Debug build dev-${{ needs.build.outputs.short_sha }}"
           prerelease: true
           make_latest: false
-          body: |
-            Debug APK of the **${{ env.BRAND }}** brand, **dev** flavour (application id `net.caritech.caritv.dev`, label "CARI TV Dev").
-            Built from `${{ github.sha }}` on branch `${{ github.ref_name }}`. Passed the emulator smoke test (debug and release variants launched and reached the foreground).
-
-            Install: download the `.apk` below on the phone, open it and allow installing from this source. The caritv APKs are signed with the debug key — not for stores.
-
-            Client brands (`*-prod-release-*.apk`, see `SIGNING.txt` for how each was signed): ${{ env.EXTRA_BRANDS }}. Nothing is uploaded to any store by this workflow.
+          body_path: apks/RELEASE_NOTES.md
           files: |
             apks/${{ env.BRAND }}-dev-debug-${{ needs.build.outputs.short_sha }}.apk
             apks/*-prod-release-${{ needs.build.outputs.short_sha }}.apk
+            apks/*-release-signed.aab
+            apks/*-release-signed.apk
+            apks/*-upload-cert.pem
             apks/SHA256SUMS.txt
             apks/SIGNING.txt
           token: ${{ secrets.GITHUB_TOKEN }}
