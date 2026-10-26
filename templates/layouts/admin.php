@@ -869,6 +869,54 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 
     <script>
+        /**
+         * Upload cover art for a VOD entity through ImageService.
+         * opts: {entity, id, type, seriesId?, save?, input?, preview?, button?, onDone?}
+         * Opens a file picker; on success fills `input` with the stored path,
+         * refreshes `preview` with a cache-busted copy, and calls onDone(url).
+         */
+        function uploadArtwork(opts) {
+            const picker = document.createElement('input');
+            picker.type = 'file';
+            picker.accept = 'image/jpeg,image/png,image/webp,image/gif';
+            picker.onchange = async () => {
+                const file = picker.files[0];
+                if (!file) return;
+                const btn = opts.button;
+                const label = btn ? btn.innerHTML : null;
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="lucide-loader"></i> Uploading…'; }
+                const fd = new FormData();
+                fd.append('_token', document.querySelector('meta[name="csrf-token"]')?.content
+                    || (typeof csrfToken !== 'undefined' ? csrfToken : ''));
+                fd.append('entity', opts.entity);
+                fd.append('id', opts.id || 0);
+                fd.append('type', opts.type);
+                if (opts.seriesId) fd.append('series_id', opts.seriesId);
+                if (opts.save) fd.append('save', '1');
+                fd.append('file', file);
+                try {
+                    const r = await fetch('/admin/artwork/upload', { method: 'POST', body: fd });
+                    const data = await r.json();
+                    if (!data.success) throw new Error(data.message || 'Upload failed');
+                    if (opts.input) {
+                        const el = typeof opts.input === 'string' ? document.getElementById(opts.input) : opts.input;
+                        if (el) { el.value = data.url; el.dispatchEvent(new Event('change')); }
+                    }
+                    if (opts.preview) {
+                        const pv = typeof opts.preview === 'string' ? document.getElementById(opts.preview) : opts.preview;
+                        if (pv) pv.innerHTML = '<img src="' + data.preview_url + '" alt="">';
+                    }
+                    if (typeof showToast === 'function') showToast('Artwork uploaded', 'success');
+                    if (opts.onDone) opts.onDone(data.url);
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast(e.message, 'error'); else alert(e.message);
+                } finally {
+                    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+                }
+            };
+            picker.click();
+        }
+
         function toggleDropdown(id) {
             const dropdown = document.getElementById(id);
             dropdown.classList.toggle('open');

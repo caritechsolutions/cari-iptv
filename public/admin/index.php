@@ -51,6 +51,7 @@ use CariIPTV\Core\Session;
 use CariIPTV\Middleware\AdminAuthMiddleware;
 use CariIPTV\Controllers\Admin\AuthController;
 use CariIPTV\Controllers\Admin\DashboardController;
+use CariIPTV\Controllers\Admin\ArtworkController;
 use CariIPTV\Controllers\Admin\ProfileController;
 use CariIPTV\Controllers\Admin\AdminUserController;
 use CariIPTV\Controllers\Admin\SettingsController;
@@ -163,6 +164,9 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/channels/search-iptv-org', [ChannelController::class, 'searchIptvOrg']);
     $router->get('/channels/iptv-org-countries', [ChannelController::class, 'iptvOrgCountries']);
     $router->post('/channels/import-iptv-org', [ChannelController::class, 'importIptvOrg']);
+
+    // VOD artwork upload (movies, series, seasons, episodes)
+    $router->post('/artwork/upload', [ArtworkController::class, 'upload']);
 
     // Movie Management
     $router->get('/movies', [MovieController::class, 'index']);

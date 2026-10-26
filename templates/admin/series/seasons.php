@@ -126,6 +126,11 @@ if (!empty($seasons)) {
                     <?php endif; ?>
                 </div>
                 <div class="season-card-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" title="Upload poster"
+                            onclick="uploadArtwork({entity:'season', id:<?= (int)$season['id'] ?>, seriesId:showId, type:'poster', save:true, button:this,
+                                preview:document.querySelector('#season-<?= (int)$season['id'] ?> .season-poster')})">
+                        <i class="lucide-upload"></i>
+                    </button>
                     <a href="/admin/series/<?= $showId ?>/seasons/<?= $season['id'] ?>/episodes" class="btn btn-primary btn-sm">
                         <i class="lucide-list"></i> Episodes
                     </a>
@@ -189,6 +194,10 @@ if (!empty($seasons)) {
             <div class="form-group">
                 <label class="form-label" for="seasonPosterUrl">Poster URL</label>
                 <input type="text" id="seasonPosterUrl" class="form-input" placeholder="https://image.tmdb.org/...">
+                <button type="button" class="btn btn-sm btn-secondary mt-1"
+                        onclick="uploadArtwork({entity:'season', id:0, seriesId:showId, type:'poster', input:'seasonPosterUrl', button:this})">
+                    <i class="lucide-upload"></i> Upload poster
+                </button>
             </div>
         </div>
         <div class="modal-footer">

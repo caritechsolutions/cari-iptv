@@ -191,6 +191,10 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             <input type="text" name="poster_url" id="poster_url" class="form-input mt-1"
                                    value="<?= htmlspecialchars($show['poster_url'] ?? '') ?>"
                                    placeholder="Poster URL or path" onchange="updatePosterPreview()">
+                            <button type="button" class="btn btn-sm btn-secondary mt-1" style="width:100%"
+                                    onclick="uploadArtwork({entity:'series', id:<?= (int)($show['id'] ?? 0) ?>, type:'poster', input:'poster_url', preview:'posterPreview', button:this})">
+                                <i class="lucide-upload"></i> Upload poster
+                            </button>
                         </div>
                         <div class="media-preview-item">
                             <label class="form-label">Backdrop</label>
@@ -207,6 +211,10 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             <input type="text" name="backdrop_url" id="backdrop_url" class="form-input mt-1"
                                    value="<?= htmlspecialchars($show['backdrop_url'] ?? '') ?>"
                                    placeholder="Backdrop URL or path" onchange="updateBackdropPreview()">
+                            <button type="button" class="btn btn-sm btn-secondary mt-1" style="width:100%"
+                                    onclick="uploadArtwork({entity:'series', id:<?= (int)($show['id'] ?? 0) ?>, type:'backdrop', input:'backdrop_url', preview:'backdropPreview', button:this})">
+                                <i class="lucide-upload"></i> Upload backdrop
+                            </button>
                         </div>
                     </div>
 

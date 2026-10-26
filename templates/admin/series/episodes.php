@@ -258,6 +258,10 @@ $episodeCount = count($episodes);
                 <div class="form-group">
                     <label class="form-label" for="add_still_url">Still Image URL</label>
                     <input type="text" id="add_still_url" class="form-input" placeholder="https://image.tmdb.org/...">
+                    <button type="button" class="btn btn-sm btn-secondary mt-1"
+                            onclick="uploadArtwork({entity:'episode', id:0, seriesId:showId, type:'still', input:'add_still_url', button:this})">
+                        <i class="lucide-upload"></i> Upload still
+                    </button>
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="add_stream_url">Stream URL (Primary)</label>
@@ -315,6 +319,10 @@ $episodeCount = count($episodes);
                 <div class="form-group">
                     <label class="form-label" for="edit_still_url">Still Image URL</label>
                     <input type="text" id="edit_still_url" class="form-input" placeholder="https://image.tmdb.org/...">
+                    <button type="button" class="btn btn-sm btn-secondary mt-1"
+                            onclick="uploadArtwork({entity:'episode', id:parseInt(document.getElementById('edit_episode_id').value)||0, seriesId:showId, type:'still', input:'edit_still_url', button:this})">
+                        <i class="lucide-upload"></i> Upload still
+                    </button>
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="edit_stream_url">Stream URL (Primary)</label>

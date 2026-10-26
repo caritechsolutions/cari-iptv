@@ -257,3 +257,17 @@ Web player `public/assets/js/player/app.js` `isContentLocked`: `is_free` → not
 Rule, both clients: free → playable; else no subscription → locked; else restricted and not entitled → locked; else playable. The flag wins over content groups on purpose: a flagged channel that is also in a group stays open to non-subscribers.
 
 No migration. Part of the IPTV backend (root `update.sh`). Not deployed. Until an install carries it, clients see `is_free` absent and treat it as false, i.e. today's behaviour.
+
+## 11. Admin: upload your own cover art (`backend:` commit)
+
+**Why.** VOD titles took artwork only from TMDB/Fanart lookups or a pasted URL; there was no file picker.
+
+**What changed.**
+- `src/Controllers/Admin/ArtworkController.php`, route `POST /admin/artwork/upload` (CSRF, multipart: `entity` movie|series|season|episode, `id`, `type` poster|backdrop|still, `series_id` for seasons/episodes, optional `save=1`).
+- The file runs through `ImageService::processUpload()` with the `vod` context, the same call the downloader uses: thumb 150×225, poster 342×513, backdrop 780×439, WebP quality 85, centre-crop, original kept under `original/`. Storage keys match `MovieService`/`SeriesService::process*Images` (`{id}`, `s{series}_season{id}`, `s{series}_ep{id}`), so a later metadata refresh overwrites a manual upload and vice versa. Stills use the backdrop variant, as the downloader does.
+- `templates/layouts/admin.php`: global `uploadArtwork()` helper. Upload buttons under each artwork field on the movie and series forms, in the season Add modal and on each season card (saves at once), and in the episode Add/Edit modals.
+- No migration. `updated_at` is `ON UPDATE CURRENT_TIMESTAMP` on all four tables, so saving the form changes the manifest hash and the apps refetch.
+
+**Verified.** `php -l` on all touched files; ImageService run on a 1200×1800 JPEG produced the three variants at the expected sizes; the controller was driven through the real Session/Response classes for success (episode, new season, movie backdrop), bad CSRF, missing file, wrong type and unknown entity.
+
+**Deploy.** Standard `update.sh --backup --branch=...`; no migration, nothing to configure.
