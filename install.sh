@@ -1374,7 +1374,7 @@ install_application_files() {
     log_step "Installing Application Files"
 
     REPO_URL="https://github.com/caritechsolutions/cari-iptv.git"
-    BRANCH="claude/fix-opensubtitle-connection-TvyOH"
+    BRANCH="claude/intelligent-knuth-xzkkd7"
     TEMP_DIR=$(mktemp -d)
 
     log_info "Downloading application files from $BRANCH branch..."
