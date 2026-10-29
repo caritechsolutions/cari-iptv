@@ -883,6 +883,29 @@ function fetchSource(id, captureTimeout, sourceType) {
     })
     .then(r => r.json())
     .then(data => {
+        // Background fetch: poll the source status until it leaves "running"
+        if (data.async) {
+            return new Promise((resolve, reject) => {
+                const started = Date.now();
+                const poll = () => {
+                    fetch(`/admin/epg/${id}/status?_=${Date.now()}`)
+                        .then(r => r.json())
+                        .then(st => {
+                            if (st.status === 'running' && Date.now() - started < 15 * 60 * 1000) {
+                                if (st.message) stepInfo.textContent = st.message;
+                                setTimeout(poll, 3000);
+                            } else {
+                                resolve(st);
+                            }
+                        })
+                        .catch(() => setTimeout(poll, 5000)); // transient, keep polling
+                };
+                setTimeout(poll, 3000);
+            });
+        }
+        return data;
+    })
+    .then(data => {
         clearInterval(fetchTimerInterval);
         clearInterval(fetchProgressInterval);
 

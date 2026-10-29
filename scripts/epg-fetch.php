@@ -18,8 +18,13 @@
  *   See /etc/cron.d/cari-iptv (installed by install.sh / update.sh)
  */
 
-// Prevent overlapping runs via lock file
-$lockFile = sys_get_temp_dir() . '/cari_epg_fetch.lock';
+// Prevent overlapping runs via lock file (per source when one is named, so an
+// admin-triggered fetch of one source does not collide with the cron run)
+$lockName = 'cari_epg_fetch';
+foreach ($argv as $arg) {
+    if (preg_match('/^--source-id=(\d+)$/', $arg, $m)) $lockName .= '_' . $m[1];
+}
+$lockFile = sys_get_temp_dir() . '/' . $lockName . '.lock';
 $lockFp = fopen($lockFile, 'w');
 if (!flock($lockFp, LOCK_EX | LOCK_NB)) {
     // Another instance is running

@@ -104,12 +104,13 @@ class EpgService
             $data['last_fetch'] = date('Y-m-d H:i:s');
             $data['last_attempt'] = $data['last_fetch'];
             $data['consecutive_errors'] = 0;
-        } elseif ($status === 'error') {
-            $data['last_attempt'] = date('Y-m-d H:i:s');
-            $this->db->execute(
-                "UPDATE epg_sources SET consecutive_errors = consecutive_errors + 1 WHERE id = ?",
-                [$id]
-            );
+        } elseif ($status === 'error' || $status === 'running') {
+            if ($status === 'error') {
+                $this->db->execute(
+                    "UPDATE epg_sources SET consecutive_errors = consecutive_errors + 1 WHERE id = ?",
+                    [$id]
+                );
+            }
         }
 
         $this->db->update('epg_sources', $data, 'id = ?', [$id]);

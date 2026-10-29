@@ -190,30 +190,80 @@ class EpgController
             return;
         }
 
+        if ($source['type'] === 'xmltv_file') {
+            $this->sendJson(['success' => false, 'message' => 'Use the upload function for file-based sources']);
+            return;
+        }
+
+        if (($source['last_status'] ?? '') === 'running' && !empty($source['last_attempt'])
+            && time() - strtotime($source['last_attempt'] . ' UTC') < 900) {
+            $this->sendJson(['success' => true, 'async' => true, 'message' => 'Fetch already running']);
+            return;
+        }
+
+        // An EIT capture takes longer than the proxies in front of the admin
+        // allow for one request, so the work runs in the background (the same
+        // script cron uses) and the page polls /epg/{id}/status until it ends.
+        $this->epgService->updateSourceStatus($id, 'running', 'Fetch queued...');
+        if ($this->spawnFetch($id)) {
+            $this->sendJson(['success' => true, 'async' => true, 'message' => 'Fetch started']);
+            return;
+        }
+
+        // Could not start a background process: run inline as before
         try {
             if ($source['type'] === 'eit') {
                 $this->epgService->extractEit($source);
-            } elseif ($source['type'] === 'xmltv_url') {
+            } else {
                 $this->fetchXmltvUrl($source);
-            } elseif ($source['type'] === 'xmltv_file') {
-                $this->sendJson(['success' => false, 'message' => 'Use the upload function for file-based sources']);
-                return;
             }
         } catch (\Exception $e) {
             error_log('EPG fetch error: ' . $e->getMessage());
+            $this->epgService->updateSourceStatus($id, 'error', 'Fetch error: ' . $e->getMessage());
             $this->sendJson(['success' => false, 'message' => 'Fetch error: ' . $e->getMessage()]);
             return;
         }
 
-        $updated = $this->epgService->getSource($id);
+        $this->sendJson($this->statusPayload($id));
+    }
 
-        $this->sendJson([
-            'success' => $updated['last_status'] === 'success',
-            'message' => $updated['last_message'] ?? 'Fetch completed',
-            'programme_count' => (int) $updated['programme_count'],
-            'channel_count' => (int) $updated['channel_count'],
-            'last_fetch' => $updated['last_fetch'],
-        ]);
+    /**
+     * GET /admin/epg/{id}/status — polled while a background fetch runs
+     */
+    public function status(int $id): void
+    {
+        $this->sendJson($this->statusPayload($id));
+    }
+
+    private function statusPayload(int $id): array
+    {
+        $s = $this->epgService->getSource($id);
+        if (!$s) return ['success' => false, 'message' => 'Source not found'];
+        return [
+            'success' => $s['last_status'] === 'success',
+            'status' => $s['last_status'],
+            'message' => $s['last_message'] ?? '',
+            'programme_count' => (int) $s['programme_count'],
+            'channel_count' => (int) $s['channel_count'],
+            'last_fetch' => $s['last_fetch'],
+        ];
+    }
+
+    /**
+     * Start scripts/epg-fetch.php for one source, detached from this request.
+     */
+    private function spawnFetch(int $id): bool
+    {
+        $script = BASE_PATH . '/scripts/epg-fetch.php';
+        if (!is_file($script) || !function_exists('exec')) return false;
+        $php = trim((string) shell_exec('command -v php 2>/dev/null'));
+        if ($php === '') $php = '/usr/bin/php';
+        if (!is_executable($php)) return false;
+        $log = BASE_PATH . '/storage/logs/epg.log';
+        $cmd = sprintf('nohup %s %s --source-id=%d >> %s 2>&1 &',
+            escapeshellarg($php), escapeshellarg($script), $id, escapeshellarg($log));
+        exec($cmd, $out, $rc);
+        return $rc === 0;
     }
 
     /**
