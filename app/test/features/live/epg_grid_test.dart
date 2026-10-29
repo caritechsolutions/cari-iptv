@@ -24,10 +24,10 @@ void main() {
       prog(1, 'Morning Show', DateTime(2026, 9, 21, 13, 30), const Duration(minutes: 60)),
       prog(1, 'Afternoon News', DateTime(2026, 9, 21, 14, 30), const Duration(minutes: 30)),
     ];
-    // Channel 2: a long title and a 10-minute bulletin, the cases that cropped.
-    map[2] = [
-      prog(2, 'Caribbean Premier League Cricket Highlights and Analysis', DateTime(2026, 9, 21, 14, 0), const Duration(minutes: 60)),
-      prog(2, 'Weather', DateTime(2026, 9, 21, 15, 0), const Duration(minutes: 10)),
+    // Channel 3: a long title and a 10-minute bulletin, the cases that cropped.
+    map[3] = [
+      prog(3, 'Caribbean Premier League Cricket Highlights and Analysis', DateTime(2026, 9, 21, 14, 0), const Duration(minutes: 60)),
+      prog(3, 'Weather', DateTime(2026, 9, 21, 15, 0), const Duration(minutes: 10)),
     ];
     return map;
   }
@@ -68,7 +68,7 @@ void main() {
     expect(find.text('Channel 1'), findsOneWidget);
     expect(find.text('Morning Show'), findsOneWidget, reason: 'airing programme block');
     expect(find.text('Afternoon News'), findsOneWidget);
-    expect(find.text('Channel 3 Content'), findsWidgets, reason: 'placeholder blocks for channels without data');
+    expect(find.text('Channel 2 Content'), findsWidgets, reason: 'placeholder blocks for channels without data');
   });
 
   testWidgets('channel column stays put while the timeline scrolls horizontally; prev / Now / next paging', (tester) async {
@@ -111,7 +111,7 @@ void main() {
 
     // Drag on the timeline side (rows, right of the channel column); the
     // channel column must follow.
-    await tester.dragFrom(const Offset(300, 200), const Offset(0, -72.0 * 20));
+    await tester.dragFrom(const Offset(300, 200), const Offset(0, -72.0 * 16));
     await tester.pumpAndSettle();
     expect(find.text('Channel 1'), findsNothing);
     expect(find.text('Channel 20'), findsOneWidget);
@@ -192,8 +192,8 @@ void main() {
     await tester.pumpWidget(harness(EpgGridController()));
     await tester.pump();
 
-    final cricket = programmes()[2]![0];
-    final weather = programmes()[2]![1];
+    final cricket = programmes()[3]![0];
+    final weather = programmes()[3]![1];
     final longTitle = find.byKey(Key('epg-title-${cricket.key}'));
     expect(longTitle, findsOneWidget);
     expect(tester.widget<Text>(longTitle).maxLines, 2);
