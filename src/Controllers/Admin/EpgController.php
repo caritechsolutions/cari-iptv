@@ -333,6 +333,25 @@ class EpgController
     /**
      * Auto-map channels for a source (AJAX)
      */
+    /**
+     * POST /admin/epg/{id}/prune-mappings — remove unnamed, unmapped leftovers
+     */
+    public function pruneMappings(int $id): void
+    {
+        $token = $_POST['_token'] ?? '';
+        if (!Session::validateCsrf($token)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+
+        $removed = $this->epgService->pruneStaleMappings($id);
+        $this->sendJson([
+            'success' => true,
+            'message' => "Removed {$removed} stale row(s)",
+            'removed' => $removed,
+        ]);
+    }
+
     public function autoMap(int $id): void
     {
         $token = $_POST['_token'] ?? '';

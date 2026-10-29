@@ -268,6 +268,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->get('/epg/{id}/mappings', [EpgController::class, 'mappings']);
     $router->post('/epg/save-mapping', [EpgController::class, 'saveMapping']);
     $router->post('/epg/{id}/auto-map', [EpgController::class, 'autoMap']);
+    $router->post('/epg/{id}/prune-mappings', [EpgController::class, 'pruneMappings']);
     $router->post('/epg/cleanup', [EpgController::class, 'cleanup']);
     $router->post('/epg/process-metadata', [EpgController::class, 'processMetadata']);
 

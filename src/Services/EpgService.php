@@ -317,6 +317,11 @@ class EpgService
             $serviceNames = $this->parseSdtXml($sdtFile);
             unlink($sdtFile);
         }
+        // SDT missed this capture: keep filtering with the services seen on a
+        // previous fetch rather than importing every cross-carried service.
+        if (empty($serviceNames)) {
+            $serviceNames = $this->knownLocalServices($source['id']);
+        }
 
         // Validate EIT output
         if (!file_exists($eitFile) || filesize($eitFile) === 0) {
@@ -348,6 +353,10 @@ class EpgService
                 'programme_count' => $result['programmes'],
                 'channel_count' => $result['channels'],
             ], 'id = ?', [$source['id']]);
+            // Drop unmapped rows for services that are not on this transponder
+            if (!empty($serviceNames)) {
+                $this->pruneStaleMappings($source['id'], array_keys($serviceNames));
+            }
         } else {
             $this->updateSourceStatus($source['id'], 'error', $result['message']);
         }
@@ -369,6 +378,9 @@ class EpgService
 
             foreach ($xml->children() as $table) {
                 if ($table->getName() !== 'SDT') continue;
+                // Only "SDT actual": the SDT PID also carries the service lists
+                // of other transponders, which are not on this stream.
+                if ((string) ($table['actual'] ?? 'true') === 'false') continue;
 
                 foreach ($table->children() as $service) {
                     if ($service->getName() !== 'service') continue;
@@ -553,6 +565,46 @@ class EpgService
             'unmapped' => count($programmes) - $imported,
             'metadata_queued' => $metadataQueued,
         ];
+    }
+
+    /**
+     * Services previously confirmed local to an EIT source (named via its SDT).
+     */
+    private function knownLocalServices(int $sourceId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT epg_channel_id, epg_channel_name FROM epg_channel_map
+             WHERE epg_source_id = ? AND epg_channel_name IS NOT NULL AND epg_channel_name <> ''",
+            [$sourceId]
+        );
+        $names = [];
+        foreach ($rows as $r) $names[$r['epg_channel_id']] = $r['epg_channel_name'];
+        return $names;
+    }
+
+    /**
+     * Remove unmapped mapping rows that do not belong to the source. With a
+     * list of local service ids, anything else unmapped goes; without one,
+     * only nameless rows with no programmes (the cross-carried leftovers).
+     * Rows an admin has mapped are always kept.
+     */
+    public function pruneStaleMappings(int $sourceId, array $keepIds = []): int
+    {
+        if (!empty($keepIds)) {
+            $placeholders = implode(',', array_fill(0, count($keepIds), '?'));
+            return $this->db->execute(
+                "DELETE FROM epg_channel_map
+                 WHERE epg_source_id = ? AND is_mapped = 0 AND epg_channel_id NOT IN ({$placeholders})",
+                array_merge([$sourceId], array_values($keepIds))
+            );
+        }
+        return $this->db->execute(
+            "DELETE FROM epg_channel_map
+             WHERE epg_source_id = ? AND is_mapped = 0
+               AND (epg_channel_name IS NULL OR epg_channel_name = '')
+               AND COALESCE(programme_count, 0) = 0",
+            [$sourceId]
+        );
     }
 
     /**

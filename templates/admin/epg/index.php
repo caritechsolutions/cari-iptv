@@ -369,6 +369,9 @@
                 <button type="button" class="btn btn-info btn-sm" onclick="autoMapChannels()" id="autoMapBtn">
                     <i class="lucide-wand-2"></i> Auto-Map by Name
                 </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="pruneMappings()" id="pruneBtn" title="Remove unnamed, unmapped rows left over from other transponders">
+                    <i class="lucide-eraser"></i> Remove Stale
+                </button>
                 <span class="text-muted text-sm" id="mappingsInfo"></span>
             </div>
             <div id="mappingsContent" class="mappings-table-wrap">
@@ -1082,6 +1085,24 @@ function saveMappingInline(mappingId, channelId) {
         }
     })
     .catch(() => showToast('Network error', 'error'));
+}
+
+function pruneMappings() {
+    if (!currentMappingsSourceId) return;
+    const btn = document.getElementById('pruneBtn');
+    btn.disabled = true;
+    fetch(`/admin/epg/${currentMappingsSourceId}/prune-mappings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ _token: csrfToken }).toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(data.message || (data.success ? 'Done' : 'Failed'), data.success ? 'success' : 'error');
+        if (data.success) loadMappings(currentMappingsSourceId);
+    })
+    .catch(() => showToast('Network error', 'error'))
+    .finally(() => { btn.disabled = false; });
 }
 
 function autoMapChannels() {
