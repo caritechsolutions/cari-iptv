@@ -11,6 +11,7 @@ ini_set('log_errors', 1);
 ini_set('error_log', dirname(__DIR__) . '/storage/logs/php-error.log');
 
 // Define base path
+date_default_timezone_set('UTC'); // storage and APIs are UTC; admin pages convert for display
 define('BASE_PATH', dirname(__DIR__));
 
 // Load environment variables

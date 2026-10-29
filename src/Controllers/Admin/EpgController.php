@@ -376,6 +376,7 @@ class EpgController
             'channel_id' => $_GET['channel_id'] ?? null,
             'source_id' => $_GET['source_id'] ?? null,
             'date' => $_GET['date'] ?? null,
+            'tz' => $_GET['tz'] ?? null,
             'now' => isset($_GET['now']) && $_GET['now'] === '1',
             'page' => $_GET['page'] ?? 1,
             'per_page' => $_GET['per_page'] ?? 50,

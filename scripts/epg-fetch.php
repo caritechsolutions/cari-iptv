@@ -30,6 +30,7 @@ if (!flock($lockFp, LOCK_EX | LOCK_NB)) {
 set_time_limit(0);
 
 // Bootstrap
+date_default_timezone_set('UTC'); // storage and APIs are UTC; admin pages convert for display
 define('BASE_PATH', dirname(__DIR__));
 
 // Load environment
@@ -119,22 +120,10 @@ if (empty($sources)) {
 if (!$forceAll && !$specificSource) {
     $dueSources = [];
     foreach ($sources as $source) {
-        // Skip sources that don't have auto_refresh enabled
-        if (empty($source['auto_refresh'])) {
-            continue;
+        // Honours refresh_interval and backs off after consecutive errors
+        if (EpgService::isSourceDue($source)) {
+            $dueSources[] = $source;
         }
-
-        // Check if enough time has passed since last fetch
-        $interval = (int) ($source['refresh_interval'] ?? 1800); // default 30 min
-        if (!empty($source['last_fetch'])) {
-            $lastFetch = strtotime($source['last_fetch']);
-            $elapsed = time() - $lastFetch;
-            if ($elapsed < $interval) {
-                continue; // Not due yet
-            }
-        }
-
-        $dueSources[] = $source;
     }
     $sources = $dueSources;
 }

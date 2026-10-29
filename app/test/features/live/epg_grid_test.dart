@@ -24,6 +24,11 @@ void main() {
       prog(1, 'Morning Show', DateTime(2026, 9, 21, 13, 30), const Duration(minutes: 60)),
       prog(1, 'Afternoon News', DateTime(2026, 9, 21, 14, 30), const Duration(minutes: 30)),
     ];
+    // Channel 2: a long title and a 10-minute bulletin, the cases that cropped.
+    map[2] = [
+      prog(2, 'Caribbean Premier League Cricket Highlights and Analysis', DateTime(2026, 9, 21, 14, 0), const Duration(minutes: 60)),
+      prog(2, 'Weather', DateTime(2026, 9, 21, 15, 0), const Duration(minutes: 10)),
+    ];
     return map;
   }
 
@@ -63,7 +68,7 @@ void main() {
     expect(find.text('Channel 1'), findsOneWidget);
     expect(find.text('Morning Show'), findsOneWidget, reason: 'airing programme block');
     expect(find.text('Afternoon News'), findsOneWidget);
-    expect(find.text('Channel 2 Content'), findsWidgets, reason: 'placeholder blocks for channels without data');
+    expect(find.text('Channel 3 Content'), findsWidgets, reason: 'placeholder blocks for channels without data');
   });
 
   testWidgets('channel column stays put while the timeline scrolls horizontally; prev / Now / next paging', (tester) async {
@@ -106,7 +111,7 @@ void main() {
 
     // Drag on the timeline side (rows, right of the channel column); the
     // channel column must follow.
-    await tester.dragFrom(const Offset(300, 200), const Offset(0, -56.0 * 14));
+    await tester.dragFrom(const Offset(300, 200), const Offset(0, -72.0 * 20));
     await tester.pumpAndSettle();
     expect(find.text('Channel 1'), findsNothing);
     expect(find.text('Channel 20'), findsOneWidget);
@@ -178,6 +183,36 @@ void main() {
     expect(taps.last.$2.hasTimes, isTrue, reason: 'placeholder blocks carry exact times for time-shift');
     expect(taps.last.$2.start!.toLocal().minute, 0);
     expect(taps.last.$2.duration, const Duration(hours: 1));
+  });
+
+  testWidgets('long titles wrap to two lines, short blocks drop the time, and large fonts do not overflow', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(harness(EpgGridController()));
+    await tester.pump();
+
+    final cricket = programmes()[2]![0];
+    final weather = programmes()[2]![1];
+    final longTitle = find.byKey(Key('epg-title-${cricket.key}'));
+    expect(longTitle, findsOneWidget);
+    expect(tester.widget<Text>(longTitle).maxLines, 2);
+    expect(find.byKey(Key('epg-time-${cricket.key}')), findsOneWidget, reason: 'a 60-minute block shows its start time');
+
+    // The 10-minute block (70 px) has no room for a time line.
+    expect(find.byKey(Key('epg-title-${weather.key}')), findsOneWidget);
+    expect(find.byKey(Key('epg-time-${weather.key}')), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    // Large system font: rows grow instead of clipping the text.
+    final before = tester.getSize(find.text('Channel 1')).height;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(harness(EpgGridController()));
+    await tester.pump();
+    expect(tester.getSize(find.text('Channel 1')).height, greaterThan(before));
+    expect(longTitle, findsOneWidget);
+    expect(tester.takeException(), isNull, reason: 'no RenderFlex overflow at 150% text scale');
   });
 
   testWidgets('tapping a channel cell reports the channel', (tester) async {

@@ -953,39 +953,47 @@ class ContentApiService
 
     public function getEpg(array $filters = []): array
     {
-        // Include programmes from 3 hours ago so the TV guide can show past/current slots
-        $where = ["p.end_time > DATE_SUB(NOW(), INTERVAL 3 HOUR)"];
+        // Window: 3 hours ago to 24 hours ahead, so guides can show past/current slots.
+        // With `date`, the calendar day in the caller's timezone (tz param, else display tz).
+        $where = [];
         $params = [];
 
         if (!empty($filters['channel_id'])) {
             $where[] = "p.channel_id = ?";
-            $params[] = $filters['channel_id'];
+            $params[] = (int) $filters['channel_id'];
         }
 
         if (!empty($filters['date'])) {
-            $where[] = "DATE(p.start_time) = ?";
-            $params[] = $filters['date'];
-        }
-
-        // Default: 3 hours ago to 24 hours ahead
-        if (empty($filters['date'])) {
+            [$dayStart, $dayEnd] = EpgService::localDayToUtcRange($filters['date'], $filters['tz'] ?? null);
+            $where[] = "p.start_time >= ? AND p.start_time < ?";
+            $params[] = $dayStart;
+            $params[] = $dayEnd;
+        } else {
+            $where[] = "p.end_time > DATE_SUB(NOW(), INTERVAL 3 HOUR)";
             $where[] = "p.start_time < DATE_ADD(NOW(), INTERVAL 24 HOUR)";
         }
 
         $whereStr = implode(' AND ', $where);
 
-        $limit = min((int)($filters['limit'] ?? 500), 2000);
+        // The cap is per channel, not across the whole guide, so channels later in
+        // id order are never silently left empty. 200 programmes covers 27 hours of
+        // any schedule; a single-channel request can ask for more.
+        $perChannel = min(max((int) ($filters['limit'] ?? 200), 1), 2000);
 
         // Table is epg_programs (not epg_programmes)
         return $this->db->fetchAll(
-            "SELECT p.id, p.channel_id, p.title, p.description,
-                    p.start_time, p.end_time, p.category,
-                    c.name as channel_name
-             FROM epg_programs p
-             JOIN channels c ON p.channel_id = c.id
-             WHERE {$whereStr}
-             ORDER BY p.channel_id ASC, p.start_time ASC
-             LIMIT {$limit}",
+            "SELECT id, channel_id, title, description, start_time, end_time, category, channel_name
+             FROM (
+                 SELECT p.id, p.channel_id, p.title, p.description,
+                        p.start_time, p.end_time, p.category,
+                        c.name AS channel_name,
+                        ROW_NUMBER() OVER (PARTITION BY p.channel_id ORDER BY p.start_time ASC) AS rn
+                 FROM epg_programs p
+                 JOIN channels c ON p.channel_id = c.id
+                 WHERE {$whereStr}
+             ) ranked
+             WHERE rn <= {$perChannel}
+             ORDER BY channel_id ASC, start_time ASC",
             $params
         );
     }

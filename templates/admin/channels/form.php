@@ -409,6 +409,27 @@
         $isMapped = !empty($epgMappings);
         ?>
 
+        <?php $knownEpgChannels = $knownEpgChannels ?? []; ?>
+        <!-- EPG channel id: the key every source is matched on -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title"><i class="lucide-key" style="width:16px;height:16px;"></i> EPG Channel ID</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group" style="margin-bottom:0.5rem;">
+                    <input type="text" name="epg_channel_id" id="epg_channel_id" class="form-control" list="epg-channel-ids"
+                           value="<?= htmlspecialchars($channel['epg_channel_id'] ?? '') ?>"
+                           placeholder="e.g. BBCOne.uk or a DVB service id" autocomplete="off">
+                    <datalist id="epg-channel-ids">
+                        <?php foreach ($knownEpgChannels as $k): ?>
+                            <option value="<?= htmlspecialchars($k['epg_channel_id']) ?>"><?= htmlspecialchars(($k['epg_channel_name'] ?: $k['epg_channel_id']) . ' — ' . $k['source_name'] . ($k['channel_id'] && (int)$k['channel_id'] !== (int)($channel['id'] ?? 0) ? ' (mapped)' : '')) ?></option>
+                        <?php endforeach; ?>
+                    </datalist>
+                </div>
+                <p class="form-help">Pick the id the EPG source uses for this channel (start typing a channel name). It is matched against every EPG source, now and on future imports; leave blank to unlink the channel from all sources.</p>
+            </div>
+        </div>
+
         <?php if ($channel && $isMapped): ?>
             <!-- Mapped Sources -->
             <div class="card mb-3">
@@ -449,7 +470,7 @@
                     <?php if (!empty($channel['epg_last_update'])): ?>
                         <div class="epg-last-update">
                             <i class="lucide-clock" style="width:14px;height:14px;"></i>
-                            Last EPG update: <?= date('M j, Y g:i a', strtotime($channel['epg_last_update'])) ?>
+                            Last EPG update: <?= (new DateTime($channel['epg_last_update'], new DateTimeZone('UTC')))->setTimezone($displayTz ?? new DateTimeZone(\CariIPTV\Services\EpgService::displayTimezone()))->format('M j, Y g:i a') ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -465,10 +486,12 @@
                         <div class="epg-schedule-list">
                             <?php
                             $now = new DateTime();
+                            $displayTz = new DateTimeZone(\CariIPTV\Services\EpgService::displayTimezone());
                             $shownNow = false;
                             foreach ($epgNowNext as $i => $prog):
-                                $start = new DateTime($prog['start_time']);
-                                $end = new DateTime($prog['end_time']);
+                                // Stored as UTC; shown in the configured display timezone
+                                $start = (new DateTime($prog['start_time'], new DateTimeZone('UTC')))->setTimezone($displayTz);
+                                $end = (new DateTime($prog['end_time'], new DateTimeZone('UTC')))->setTimezone($displayTz);
                                 $isLive = $start <= $now && $end > $now;
                                 if ($isLive) $shownNow = true;
                             ?>
@@ -484,8 +507,8 @@
                                             <?php elseif (!$shownNow && $i === 0): ?>
                                                 <span class="badge badge-warning" style="font-size: 10px; margin-right: 4px;">NEXT</span>
                                             <?php elseif ($shownNow && !$isLive && $i > 0):
-                                                $prevEnd = new DateTime($epgNowNext[$i-1]['end_time'] ?? '');
-                                                $prevIsLive = (new DateTime($epgNowNext[$i-1]['start_time'])) <= $now && $prevEnd > $now;
+                                                $prevEnd = new DateTime($epgNowNext[$i-1]['end_time'] ?? 'now', new DateTimeZone('UTC'));
+                                                $prevIsLive = (new DateTime($epgNowNext[$i-1]['start_time'], new DateTimeZone('UTC'))) <= $now && $prevEnd > $now;
                                                 if ($prevIsLive): ?>
                                                     <span class="badge badge-warning" style="font-size: 10px; margin-right: 4px;">NEXT</span>
                                                 <?php endif; ?>

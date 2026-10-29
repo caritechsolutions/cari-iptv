@@ -27,7 +27,8 @@ class EpgController extends BaseApiController
         $filters = $this->queryFilters([
             'channel_id' => null,
             'date' => null,
-            'limit' => 500,
+            'tz' => null,
+            'limit' => 200, // per channel
         ]);
 
         try {
@@ -75,7 +76,8 @@ class EpgController extends BaseApiController
         $filters = [
             'channel_id' => (int)$channelId,
             'date' => $this->query('date'),
-            'limit' => 200,
+            'tz' => $this->query('tz'),
+            'limit' => 500,
         ];
 
         try {

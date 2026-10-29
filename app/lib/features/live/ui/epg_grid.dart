@@ -37,7 +37,7 @@ class EpgGrid extends StatefulWidget {
     this.onProgrammeTap,
     this.controller,
     this.channelWidth = 112,
-    this.rowHeight = 56,
+    this.rowHeight = 72,
     this.headerHeight = 28,
   });
 
@@ -52,6 +52,9 @@ class EpgGrid extends StatefulWidget {
   final void Function(Channel channel, EpgProgramme programme)? onProgrammeTap;
   final EpgGridController? controller;
   final double channelWidth;
+
+  /// Row height at the default text scale; rows grow with the user's font
+  /// size setting (see [_EpgGridState._rowExtent]) so titles are never cropped.
   final double rowHeight;
   final double headerHeight;
 
@@ -129,12 +132,19 @@ class _EpgGridState extends State<EpgGrid> {
     }
   }
 
+  /// Rows scale with the platform text size (capped so the grid stays a grid).
+  double _rowExtent(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+    return widget.rowHeight * scale;
+  }
+
   @override
   Widget build(BuildContext context) {
     final window = widget.window;
     final timeFmt = DateFormat.Hm();
     final theme = Theme.of(context);
     final border = BorderSide(color: Colors.white.withValues(alpha: 0.08));
+    final rowExtent = _rowExtent(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -194,7 +204,7 @@ class _EpgGridState extends State<EpgGrid> {
                     child: ListView.builder(
                       controller: _vLeft,
                       physics: const ClampingScrollPhysics(),
-                      itemExtent: widget.rowHeight,
+                      itemExtent: rowExtent,
                       itemCount: widget.channels.length,
                       itemBuilder: (context, i) => _channelCell(widget.channels[i], theme, border),
                     ),
@@ -210,7 +220,7 @@ class _EpgGridState extends State<EpgGrid> {
                             ListView.builder(
                               controller: _vRight,
                               physics: const ClampingScrollPhysics(),
-                              itemExtent: widget.rowHeight,
+                              itemExtent: rowExtent,
                               itemCount: widget.channels.length,
                               itemBuilder: (context, i) => _timelineRow(widget.channels[i], theme, border, timeFmt),
                             ),
@@ -313,6 +323,10 @@ class _ProgrammeBlock extends StatelessWidget {
   static const double _padding = 6;
   static const double _minTextWidth = 48;
 
+  /// Blocks narrower than this (about 13 minutes at [pxPerMinute]) show the
+  /// title only.
+  static const double _minWidthForTime = 90;
+
   /// How far the text moves right so it starts at the visible edge.
   double _textShift() {
     final offset = hScroll.hasClients ? hScroll.offset : 0.0;
@@ -347,11 +361,17 @@ class _ProgrammeBlock extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(p.title, key: Key('epg-title-${p.key}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.isPlaceholder ? Colors.white60 : Colors.white)),
-                Text(timeFmt.format(p.start!.toLocal()), maxLines: 1, style: const TextStyle(fontSize: 10, color: Colors.white54)),
+                Flexible(
+                  child: Text(p.title, key: Key('epg-title-${p.key}'), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w600, color: p.isPlaceholder ? Colors.white60 : Colors.white)),
+                ),
+                // A start time only fits in a block that is wide enough to be
+                // read next to the header; narrow blocks keep the title alone.
+                if (width >= _minWidthForTime)
+                  Text(timeFmt.format(p.start!.toLocal()), key: Key('epg-time-${p.key}'), maxLines: 1, style: const TextStyle(fontSize: 10, color: Colors.white54)),
                 if (airing) ...[
-                  const Spacer(),
+                  const SizedBox(height: 3),
                   ClipRRect(borderRadius: BorderRadius.circular(2), child: LinearProgressIndicator(value: p.progressAt(now), minHeight: 2, backgroundColor: Colors.white12)),
                 ],
               ],

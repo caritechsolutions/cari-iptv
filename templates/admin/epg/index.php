@@ -1020,10 +1020,11 @@ function loadMappings(id) {
                 '<th width="30"></th><th>EPG ID</th><th>Service Name</th><th>Progs</th><th>Map To Channel</th>' +
                 '</tr></thead><tbody>';
 
-            // Build set of channel IDs already mapped (to exclude from other dropdowns)
-            const mappedChannelIds = new Set();
+            // Which EPG id each channel is already mapped to in this source, so the
+            // dropdown can show every channel and mark the taken ones instead of hiding them
+            const mappedTo = new Map();
             mappings.forEach(m => {
-                if (m.is_mapped && m.channel_id) mappedChannelIds.add(Number(m.channel_id));
+                if (m.is_mapped && m.channel_id) mappedTo.set(Number(m.channel_id), m.epg_channel_name || m.epg_channel_id);
             });
 
             mappings.forEach(m => {
@@ -1035,11 +1036,10 @@ function loadMappings(id) {
                 let options = '<option value="">-- Not Mapped --</option>';
                 channels.forEach(ch => {
                     const chId = Number(ch.id);
-                    // Show channel if: it's the currently selected one, or it's not mapped elsewhere
-                    if (chId === currentChannelId || !mappedChannelIds.has(chId)) {
-                        const sel = chId === currentChannelId ? 'selected' : '';
-                        options += `<option value="${ch.id}" ${sel}>${escapeHtml(ch.name)}</option>`;
-                    }
+                    const sel = chId === currentChannelId ? 'selected' : '';
+                    const taken = chId !== currentChannelId && mappedTo.has(chId);
+                    const label = taken ? `${ch.name} (mapped to ${mappedTo.get(chId)})` : ch.name;
+                    options += `<option value="${ch.id}" ${sel}>${escapeHtml(label)}</option>`;
                 });
 
                 html += `<tr>
@@ -1151,7 +1151,7 @@ function loadProgrammes(page) {
 
     const params = new URLSearchParams({ page: currentProgPage, per_page: 50 });
     if (channelId) params.set('channel_id', channelId);
-    if (date) params.set('date', date);
+    if (date) { params.set('date', date); params.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone); }
     if (now) params.set('now', now);
 
     document.getElementById('programmeContent').innerHTML =
@@ -1190,8 +1190,8 @@ function loadProgrammes(page) {
 
         const now = new Date();
         data.programmes.forEach(p => {
-            const start = new Date(p.start_time.replace(' ', 'T'));
-            const end = new Date(p.end_time.replace(' ', 'T'));
+            const start = new Date(p.start_time.replace(' ', 'T') + 'Z'); // stored as UTC
+            const end = new Date(p.end_time.replace(' ', 'T') + 'Z');
             const isLive = start <= now && end > now;
 
             const startStr = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1250,7 +1250,7 @@ function esc(str) {
 
 // Auto-load programmes on page load if there are any
 document.addEventListener('DOMContentLoaded', function() {
-    const today = new Date().toISOString().split('T')[0];
+    const d = new Date(); const today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     document.getElementById('progDateFilter').value = today;
     if (<?= (int)$stats['total_programmes'] ?> > 0) {
         loadProgrammes();

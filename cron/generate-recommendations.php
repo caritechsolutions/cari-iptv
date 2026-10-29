@@ -7,6 +7,7 @@
  * Generates AI taste profiles and pre-computes recommendation sets.
  */
 
+date_default_timezone_set('UTC'); // storage and APIs are UTC; admin pages convert for display
 define('BASE_PATH', dirname(__DIR__));
 
 // Load environment

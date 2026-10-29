@@ -10,6 +10,7 @@ use CariIPTV\Core\Response;
 use CariIPTV\Core\Session;
 use CariIPTV\Services\AdminAuthService;
 use CariIPTV\Services\ChannelService;
+use CariIPTV\Services\EpgService;
 use CariIPTV\Services\MetadataService;
 use CariIPTV\Services\AIService;
 use CariIPTV\Services\ImageService;
@@ -90,6 +91,7 @@ class ChannelController
             'contentOwners' => $contentOwners,
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
+            'knownEpgChannels' => (new EpgService())->knownEpgChannels(),
         ], 'admin');
     }
 
@@ -124,6 +126,11 @@ class ChannelController
         try {
             // Create channel first (logos processed after so we have the channel ID for WebP paths)
             $channelId = $this->channelService->createChannel($data);
+
+            // EPG mapping by id (links any source that carries this id)
+            if (array_key_exists('epg_channel_id', $_POST)) {
+                (new EpgService())->mapChannelByEpgId($channelId, $_POST['epg_channel_id']);
+            }
 
             // Handle logo upload with WebP conversion
             $logoUpdate = [];
@@ -226,6 +233,7 @@ class ChannelController
             'contentOwners' => $contentOwners,
             'epgMappings' => $epgMappings,
             'epgNowNext' => $epgNowNext,
+            'knownEpgChannels' => (new EpgService())->knownEpgChannels(),
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');
@@ -306,6 +314,11 @@ class ChannelController
 
         try {
             $this->channelService->updateChannel($id, $data);
+
+            // EPG mapping by id (links any source that carries this id)
+            if (array_key_exists('epg_channel_id', $_POST)) {
+                (new EpgService())->mapChannelByEpgId($id, $_POST['epg_channel_id']);
+            }
 
             // Log activity
             $this->auth->logActivity(

@@ -102,9 +102,36 @@ class EpgService
 
         if ($status === 'success') {
             $data['last_fetch'] = date('Y-m-d H:i:s');
+            $data['last_attempt'] = $data['last_fetch'];
+            $data['consecutive_errors'] = 0;
+        } elseif ($status === 'error') {
+            $data['last_attempt'] = date('Y-m-d H:i:s');
+            $this->db->execute(
+                "UPDATE epg_sources SET consecutive_errors = consecutive_errors + 1 WHERE id = ?",
+                [$id]
+            );
         }
 
         $this->db->update('epg_sources', $data, 'id = ?', [$id]);
+    }
+
+    /**
+     * Whether an auto-refresh source is due. After an error the wait doubles
+     * per consecutive failure (capped at 6h) so a dead stream is not retried
+     * every cron tick.
+     */
+    public static function isSourceDue(array $source, ?int $now = null): bool
+    {
+        if (empty($source['auto_refresh'])) return false;
+        $now = $now ?? time();
+        $interval = max(60, (int) ($source['refresh_interval'] ?? 1800));
+        $errors = (int) ($source['consecutive_errors'] ?? 0);
+        if ($errors > 0) {
+            $interval = min($interval * (2 ** min($errors, 8)), 6 * 3600);
+        }
+        $last = $source['last_attempt'] ?? $source['last_fetch'] ?? null;
+        if (empty($last)) return true;
+        return ($now - strtotime($last . ' UTC')) >= $interval;
     }
 
     // ========================================================================
@@ -125,6 +152,20 @@ class EpgService
 
     public function mapChannel(int $mappingId, ?int $channelId): bool
     {
+        $m = $this->db->fetch("SELECT epg_source_id, epg_channel_id FROM epg_channel_map WHERE id = ?", [$mappingId]);
+        if (!$m) return false;
+
+        if ($channelId) {
+            // one channel per source
+            $this->db->execute(
+                "UPDATE epg_channel_map SET channel_id = NULL, is_mapped = 0
+                 WHERE epg_source_id = ? AND channel_id = ? AND id <> ?",
+                [$m['epg_source_id'], $channelId, $mappingId]
+            );
+            // remember the key on the channel so other sources map on their own
+            $this->db->update('channels', ['epg_channel_id' => $m['epg_channel_id']], 'id = ?', [$channelId]);
+        }
+
         $this->db->update('epg_channel_map', [
             'channel_id' => $channelId,
             'is_mapped' => $channelId ? 1 : 0,
@@ -136,30 +177,17 @@ class EpgService
     public function autoMapChannels(int $sourceId): int
     {
         $mappings = $this->db->fetchAll(
-            "SELECT id, epg_channel_name FROM epg_channel_map
-             WHERE epg_source_id = ? AND is_mapped = 0 AND epg_channel_name IS NOT NULL",
+            "SELECT id, epg_channel_id, epg_channel_name FROM epg_channel_map
+             WHERE epg_source_id = ? AND is_mapped = 0",
             [$sourceId]
         );
 
         $mapped = 0;
         foreach ($mappings as $m) {
-            // Try exact name match first
-            $channel = $this->db->fetch(
-                "SELECT id FROM channels WHERE LOWER(name) = LOWER(?)",
-                [$m['epg_channel_name']]
-            );
-
-            // Try partial match
-            if (!$channel) {
-                $channel = $this->db->fetch(
-                    "SELECT id FROM channels WHERE LOWER(name) LIKE LOWER(?) LIMIT 1",
-                    ['%' . $m['epg_channel_name'] . '%']
-                );
-            }
-
-            if ($channel) {
+            $channelId = $this->resolveChannel($m['epg_channel_id'], $m['epg_channel_name']);
+            if ($channelId) {
                 $this->db->update('epg_channel_map', [
-                    'channel_id' => $channel['id'],
+                    'channel_id' => $channelId,
                     'is_mapped' => 1,
                 ], 'id = ?', [$m['id']]);
                 $mapped++;
@@ -167,6 +195,52 @@ class EpgService
         }
 
         return $mapped;
+    }
+
+    /**
+     * Set the mapping for one of our channels from the channel form:
+     * every source that knows $epgChannelId points at $channelId, and any
+     * older mapping of this channel in those sources is released.
+     * Also stores the id on the channel so future sources map automatically.
+     */
+    public function mapChannelByEpgId(int $channelId, ?string $epgChannelId): void
+    {
+        $epgChannelId = $epgChannelId !== null ? trim($epgChannelId) : '';
+        $this->db->update('channels', ['epg_channel_id' => $epgChannelId !== '' ? $epgChannelId : null], 'id = ?', [$channelId]);
+
+        if ($epgChannelId === '') {
+            $this->db->execute(
+                "UPDATE epg_channel_map SET channel_id = NULL, is_mapped = 0 WHERE channel_id = ?",
+                [$channelId]
+            );
+            return;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT id, epg_source_id FROM epg_channel_map WHERE epg_channel_id = ?",
+            [$epgChannelId]
+        );
+        foreach ($rows as $r) {
+            // one channel per source: release the previous row this channel held there
+            $this->db->execute(
+                "UPDATE epg_channel_map SET channel_id = NULL, is_mapped = 0
+                 WHERE epg_source_id = ? AND channel_id = ? AND id <> ?",
+                [$r['epg_source_id'], $channelId, $r['id']]
+            );
+            $this->db->update('epg_channel_map', ['channel_id' => $channelId, 'is_mapped' => 1], 'id = ?', [$r['id']]);
+        }
+    }
+
+    /**
+     * EPG channel ids known across all sources, for the channel form's picker.
+     */
+    public function knownEpgChannels(): array
+    {
+        return $this->db->fetchAll(
+            "SELECT m.epg_channel_id, m.epg_channel_name, s.name AS source_name, m.channel_id
+             FROM epg_channel_map m JOIN epg_sources s ON s.id = m.epg_source_id
+             ORDER BY m.epg_channel_name, m.epg_channel_id"
+        );
     }
 
     // ========================================================================
@@ -450,101 +524,22 @@ class EpgService
             return ['success' => false, 'message' => 'No programme data found in EIT tables', 'programmes' => 0, 'channels' => 0];
         }
 
-        // Ensure channel mappings exist
+        // Ensure channel mappings exist, resolving new services against channels.epg_channel_id
         foreach (array_keys($channelsFound) as $svcId) {
             $serviceName = $serviceNames[$svcId] ?? null;
             $this->ensureChannelMapping($sourceId, $svcId, $serviceName);
         }
 
-        // Get the channel mapping for this source
-        $mappings = $this->db->fetchAll(
-            "SELECT epg_channel_id, channel_id FROM epg_channel_map
-             WHERE epg_source_id = ? AND is_mapped = 1",
-            [$sourceId]
-        );
+        $channelMap = $this->channelMapFor($sourceId);
 
-        $channelMap = [];
-        foreach ($mappings as $m) {
-            $channelMap[$m['epg_channel_id']] = (int) $m['channel_id'];
-        }
+        // DVB EIT carries only current + future events, so only that window is replaced;
+        // past rows stay for catch-up. All of it happens in one transaction so the guide
+        // never shows an empty grid mid-import.
+        $write = $this->writeProgrammes($sourceId, $programmes, $channelMap, 'service_id', futureOnly: true);
+        $imported = $write['imported'];
+        $serviceStats = $write['stats'];
 
-        // Replace current/future programmes with fresh data, but keep past programmes
-        // DVB EIT only carries current + future events, so past data would be lost on re-import
-        $this->db->execute(
-            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time > NOW()",
-            [$sourceId]
-        );
-
-        // Clean up past programmes older than 7 days
-        $this->db->execute(
-            "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time < DATE_SUB(NOW(), INTERVAL 7 DAY)",
-            [$sourceId]
-        );
-
-        // Insert programmes
-        $imported = 0;
-        $serviceStats = [];
-
-        foreach ($programmes as $prog) {
-            $channelId = $channelMap[$prog['service_id']] ?? null;
-            if (!$channelId) continue;
-
-            // Upsert: insert or update if same event already exists (prevents duplicates)
-            $this->db->execute(
-                "INSERT INTO epg_programs
-                    (epg_source_id, channel_id, external_event_id, title, subtitle, description, start_time, end_time, category, rating, language)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE
-                    title = VALUES(title),
-                    subtitle = VALUES(subtitle),
-                    description = VALUES(description),
-                    start_time = VALUES(start_time),
-                    end_time = VALUES(end_time),
-                    category = VALUES(category),
-                    rating = VALUES(rating),
-                    language = VALUES(language)",
-                [
-                    $sourceId,
-                    $channelId,
-                    $prog['event_id'],
-                    $prog['title'],
-                    $prog['subtitle'] ?: null,
-                    $prog['description'] ?: null,
-                    $prog['start_time'],
-                    $prog['end_time'],
-                    $prog['category'] ?: null,
-                    $prog['rating'] ?: null,
-                    $prog['language'] ?: null,
-                ]
-            );
-
-            $imported++;
-
-            if (!isset($serviceStats[$prog['service_id']])) {
-                $serviceStats[$prog['service_id']] = 0;
-            }
-            $serviceStats[$prog['service_id']]++;
-        }
-
-        // Update channel mapping programme counts
-        foreach ($serviceStats as $svcId => $count) {
-            $this->db->execute(
-                "UPDATE epg_channel_map SET programme_count = ? WHERE epg_source_id = ? AND epg_channel_id = ?",
-                [$count, $sourceId, $svcId]
-            );
-        }
-
-        // Update channel epg_last_update timestamps
-        if (!empty($channelMap)) {
-            $channelIds = array_unique(array_values($channelMap));
-            $placeholders = implode(',', array_fill(0, count($channelIds), '?'));
-            $this->db->execute(
-                "UPDATE channels SET epg_last_update = NOW() WHERE id IN ({$placeholders})",
-                $channelIds
-            );
-        }
-
-        // Queue unique programme titles for TMDB metadata enrichment
+        // Queue unique programme titles for TMDB metadata enrichment (outside the transaction)
         $metadataQueued = 0;
         if ($imported > 0) {
             $metadataQueued = $this->queueMetadataEnrichment($programmes);
@@ -561,7 +556,116 @@ class EpgService
     }
 
     /**
-     * Ensure a channel mapping record exists for a service_id
+     * Mapped channels for a source: epg_channel_id => channel id.
+     */
+    private function channelMapFor(int $sourceId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT epg_channel_id, channel_id FROM epg_channel_map
+             WHERE epg_source_id = ? AND is_mapped = 1 AND channel_id IS NOT NULL",
+            [$sourceId]
+        );
+        $map = [];
+        foreach ($rows as $m) {
+            $map[$m['epg_channel_id']] = (int) $m['channel_id'];
+        }
+        return $map;
+    }
+
+    /**
+     * Write a parsed programme list for a source in one transaction.
+     *
+     * - futureOnly=true  (EIT): replace rows ending after now; older rows are kept.
+     * - futureOnly=false (XMLTV): replace rows inside the window the file covers;
+     *   rows outside it (older schedules) are kept for catch-up.
+     * Inserts are batched and upserted on (source, channel, external_event_id).
+     *
+     * @return array{imported:int, stats:array<string,int>}
+     */
+    private function writeProgrammes(int $sourceId, array $programmes, array $channelMap, string $keyField, bool $futureOnly): array
+    {
+        $rows = [];
+        $stats = [];
+        $minStart = null;
+        $maxEnd = null;
+        foreach ($programmes as $prog) {
+            $channelId = $channelMap[$prog[$keyField]] ?? null;
+            if (!$channelId) continue;
+            $rows[] = [
+                $sourceId, $channelId, $prog['event_id'] ?: null,
+                mb_substr($prog['title'], 0, 255),
+                $prog['subtitle'] !== '' ? mb_substr($prog['subtitle'], 0, 500) : null,
+                $prog['description'] !== '' ? $prog['description'] : null,
+                $prog['start_time'], $prog['end_time'],
+                $prog['category'] !== '' ? mb_substr($prog['category'], 0, 100) : null,
+                ($prog['episode_info'] ?? '') !== '' ? mb_substr($prog['episode_info'], 0, 50) : null,
+                $prog['rating'] !== '' ? mb_substr($prog['rating'], 0, 10) : null,
+                $prog['language'] !== '' ? mb_substr($prog['language'], 0, 10) : null,
+            ];
+            $stats[$prog[$keyField]] = ($stats[$prog[$keyField]] ?? 0) + 1;
+            if ($minStart === null || $prog['start_time'] < $minStart) $minStart = $prog['start_time'];
+            if ($maxEnd === null || $prog['end_time'] > $maxEnd) $maxEnd = $prog['end_time'];
+        }
+
+        $this->db->beginTransaction();
+        try {
+            if ($futureOnly) {
+                $this->db->execute(
+                    "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time > NOW()",
+                    [$sourceId]
+                );
+            } elseif ($minStart !== null) {
+                $this->db->execute(
+                    "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time > ? AND start_time < ?",
+                    [$sourceId, $minStart, $maxEnd]
+                );
+            }
+
+            // Past rows beyond the retention window go in the same pass
+            $this->db->execute(
+                "DELETE FROM epg_programs WHERE epg_source_id = ? AND end_time < DATE_SUB(NOW(), INTERVAL 7 DAY)",
+                [$sourceId]
+            );
+
+            $cols = "(epg_source_id, channel_id, external_event_id, title, subtitle, description, start_time, end_time, category, episode_info, rating, language)";
+            $update = "ON DUPLICATE KEY UPDATE title = VALUES(title), subtitle = VALUES(subtitle), description = VALUES(description),
+                       start_time = VALUES(start_time), end_time = VALUES(end_time), category = VALUES(category),
+                       episode_info = VALUES(episode_info), rating = VALUES(rating), language = VALUES(language)";
+            $rowSql = '(' . implode(',', array_fill(0, 12, '?')) . ')';
+            foreach (array_chunk($rows, 200) as $chunk) {
+                $sql = "INSERT INTO epg_programs {$cols} VALUES " . implode(',', array_fill(0, count($chunk), $rowSql)) . ' ' . $update;
+                $this->db->execute($sql, array_merge(...$chunk));
+            }
+
+            foreach ($stats as $epgChId => $count) {
+                $this->db->execute(
+                    "UPDATE epg_channel_map SET programme_count = ? WHERE epg_source_id = ? AND epg_channel_id = ?",
+                    [$count, $sourceId, (string) $epgChId]
+                );
+            }
+
+            if (!empty($channelMap)) {
+                $channelIds = array_values(array_unique($channelMap));
+                $placeholders = implode(',', array_fill(0, count($channelIds), '?'));
+                $this->db->execute(
+                    "UPDATE channels SET epg_last_update = NOW() WHERE id IN ({$placeholders})",
+                    $channelIds
+                );
+            }
+
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollback();
+            throw $e;
+        }
+
+        return ['imported' => count($rows), 'stats' => $stats];
+    }
+
+    /**
+     * Ensure a channel mapping record exists for a service_id.
+     * A new mapping is resolved automatically when a channel carries this id in
+     * channels.epg_channel_id (the XMLTV / iptv-org key) or has exactly the same name.
      */
     private function ensureChannelMapping(int $sourceId, string $epgChannelId, ?string $serviceName): void
     {
@@ -580,12 +684,34 @@ class EpgService
             return;
         }
 
+        $channelId = $this->resolveChannel($epgChannelId, $serviceName);
         $this->db->insert('epg_channel_map', [
             'epg_source_id' => $sourceId,
             'epg_channel_id' => $epgChannelId,
             'epg_channel_name' => $serviceName,
-            'is_mapped' => 0,
+            'channel_id' => $channelId,
+            'is_mapped' => $channelId ? 1 : 0,
         ]);
+    }
+
+    /**
+     * Find our channel for an EPG channel id / name: epg_channel_id first, then an
+     * exact (case-insensitive) name match. Never a partial match, which mapped
+     * "BBC" to "BBC Earth".
+     */
+    public function resolveChannel(string $epgChannelId, ?string $name): ?int
+    {
+        $row = $this->db->fetch(
+            "SELECT id FROM channels WHERE epg_channel_id = ? LIMIT 1",
+            [$epgChannelId]
+        );
+        if (!$row && $name !== null && $name !== '') {
+            $row = $this->db->fetch(
+                "SELECT id FROM channels WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+                [$name]
+            );
+        }
+        return $row ? (int) $row['id'] : null;
     }
 
     // ========================================================================
@@ -625,90 +751,48 @@ class EpgService
             }
         }
 
-        // Get channel mappings
-        $mappings = $this->db->fetchAll(
-            "SELECT epg_channel_id, channel_id FROM epg_channel_map
-             WHERE epg_source_id = ? AND is_mapped = 1",
-            [$sourceId]
-        );
-
-        $channelMap = [];
-        foreach ($mappings as $m) {
-            $channelMap[$m['epg_channel_id']] = (int) $m['channel_id'];
-        }
-
-        // Clear old programmes
-        $this->db->execute("DELETE FROM epg_programs WHERE epg_source_id = ?", [$sourceId]);
+        $channelMap = $this->channelMapFor($sourceId);
 
         // Parse programmes
-        $imported = 0;
-        $serviceStats = [];
-        $programmeTitles = [];
-
+        $programmes = [];
         foreach ($xml->programme as $prog) {
             $channelRef = (string) ($prog['channel'] ?? '');
-            $channelId = $channelMap[$channelRef] ?? null;
-            if (!$channelId) continue;
+            if (!isset($channelMap[$channelRef])) continue;
 
             $startStr = (string) ($prog['start'] ?? '');
             $stopStr = (string) ($prog['stop'] ?? '');
-
             if (empty($startStr) || empty($stopStr)) continue;
 
             $startTime = $this->parseXmltvDateTime($startStr, $sourceTz);
             $endTime = $this->parseXmltvDateTime($stopStr, $sourceTz);
-
-            if (!$startTime || !$endTime) continue;
+            if (!$startTime || !$endTime || $endTime <= $startTime) continue;
 
             $title = (string) ($prog->title ?? '');
             if (empty($title)) continue;
 
-            $subtitle = (string) ($prog->{'sub-title'} ?? '');
-            $description = (string) ($prog->desc ?? '');
-            $category = (string) ($prog->category ?? '');
-            $rating = '';
+            $rating = isset($prog->rating) ? (string) ($prog->rating->value ?? '') : '';
+            $language = isset($prog->title['lang']) ? (string) $prog->title['lang'] : '';
 
-            if (isset($prog->rating)) {
-                $rating = (string) ($prog->rating->value ?? '');
-            }
-
-            $episodeNum = (string) ($prog->{'episode-num'} ?? '');
-            $language = '';
-            if (isset($prog->title['lang'])) {
-                $language = (string) $prog->title['lang'];
-            }
-
-            $this->db->insert('epg_programs', [
-                'epg_source_id' => $sourceId,
-                'channel_id' => $channelId,
-                'external_event_id' => null,
+            $programmes[] = [
+                'service_id' => $channelRef,
+                // XMLTV has no event id; channel + start time identifies a slot
+                'event_id' => 'x' . substr(md5($channelRef . '|' . $startTime), 0, 16),
                 'title' => $title,
-                'subtitle' => $subtitle ?: null,
-                'description' => $description ?: null,
+                'subtitle' => (string) ($prog->{'sub-title'} ?? ''),
+                'description' => (string) ($prog->desc ?? ''),
                 'start_time' => $startTime,
                 'end_time' => $endTime,
-                'category' => $category ?: null,
-                'episode_info' => $episodeNum ?: null,
-                'rating' => $rating ?: null,
-                'language' => $language ?: null,
-            ]);
-
-            $imported++;
-            $programmeTitles[] = $title;
-
-            if (!isset($serviceStats[$channelRef])) {
-                $serviceStats[$channelRef] = 0;
-            }
-            $serviceStats[$channelRef]++;
+                'category' => (string) ($prog->category ?? ''),
+                'episode_info' => (string) ($prog->{'episode-num'} ?? ''),
+                'rating' => $rating,
+                'language' => $language,
+            ];
         }
 
-        // Update programme counts on mappings
-        foreach ($serviceStats as $epgChId => $count) {
-            $this->db->execute(
-                "UPDATE epg_channel_map SET programme_count = ? WHERE epg_source_id = ? AND epg_channel_id = ?",
-                [$count, $sourceId, $epgChId]
-            );
-        }
+        // Replace the whole window the file covers, keep anything older for catch-up.
+        $write = $this->writeProgrammes($sourceId, $programmes, $channelMap, 'service_id', futureOnly: false);
+        $imported = $write['imported'];
+        $serviceStats = $write['stats'];
 
         // Update source stats
         $this->db->update('epg_sources', [
@@ -716,20 +800,10 @@ class EpgService
             'channel_count' => count($serviceStats),
         ], 'id = ?', [$sourceId]);
 
-        // Update channel timestamps
-        if (!empty($channelMap)) {
-            $channelIds = array_unique(array_values($channelMap));
-            $placeholders = implode(',', array_fill(0, count($channelIds), '?'));
-            $this->db->execute(
-                "UPDATE channels SET epg_last_update = NOW() WHERE id IN ({$placeholders})",
-                $channelIds
-            );
-        }
-
-        // Queue unique programme titles for TMDB metadata enrichment
+        // Queue unique programme titles for TMDB metadata enrichment (outside the transaction)
         $metadataQueued = 0;
-        if ($imported > 0 && !empty($programmeTitles)) {
-            $metadataQueued = $this->queueMetadataEnrichment($programmeTitles);
+        if ($imported > 0) {
+            $metadataQueued = $this->queueMetadataEnrichment($programmes);
         }
 
         return [
@@ -762,8 +836,11 @@ class EpgService
         }
 
         if (!empty($filters['date'])) {
-            $where[] = 'DATE(p.start_time) = ?';
-            $params[] = $filters['date'];
+            // A calendar day in the caller's timezone, converted to a UTC range
+            [$dayStart, $dayEnd] = self::localDayToUtcRange($filters['date'], $filters['tz'] ?? null);
+            $where[] = 'p.start_time >= ? AND p.start_time < ?';
+            $params[] = $dayStart;
+            $params[] = $dayEnd;
         }
 
         if (!empty($filters['now'])) {
@@ -849,13 +926,45 @@ class EpgService
     // ========================================================================
 
     /**
+     * Convert a calendar date in a timezone to the [start, end) UTC range it covers.
+     * Falls back to the configured display timezone, then UTC, when the zone is missing or invalid.
+     */
+    public static function localDayToUtcRange(string $date, ?string $tz): array
+    {
+        $zone = null;
+        foreach ([$tz, self::displayTimezone(), 'UTC'] as $candidate) {
+            if (empty($candidate)) continue;
+            try { $zone = new \DateTimeZone($candidate); break; } catch (\Exception) {}
+        }
+        $start = \DateTime::createFromFormat('!Y-m-d', $date, $zone) ?: new \DateTime('today', $zone);
+        $end = (clone $start)->modify('+1 day');
+        $utc = new \DateTimeZone('UTC');
+        return [$start->setTimezone($utc)->format('Y-m-d H:i:s'), $end->setTimezone($utc)->format('Y-m-d H:i:s')];
+    }
+
+    /** Display timezone from config/app.php (storage stays UTC). */
+    public static function displayTimezone(): string
+    {
+        static $tz = null;
+        if ($tz === null) {
+            $cfg = defined('BASE_PATH') && file_exists(BASE_PATH . '/src/Config/app.php') ? require BASE_PATH . '/src/Config/app.php' : [];
+            $tz = $cfg['timezone'] ?? 'UTC';
+        }
+        return $tz;
+    }
+
+    /**
      * Parse EIT datetime format: "2024-01-15 14:00:00"
      * EIT/DVB times are typically UTC. The source timezone setting is used as fallback.
      * All times are converted to UTC for storage.
      */
     private function parseEitDateTime(string $dateStr, string $sourceTz = 'UTC'): ?string
     {
-        $tz = new \DateTimeZone($sourceTz);
+        // DVB EIT start times are defined as UTC (ETSI EN 300 468) and TSDuck
+        // prints them as such; the source timezone must not be applied here or
+        // every programme shifts by the zone offset. The parameter is kept for
+        // signature compatibility only.
+        $tz = new \DateTimeZone('UTC');
         $dt = \DateTime::createFromFormat('Y-m-d H:i:s', trim($dateStr), $tz);
         if (!$dt) {
             $dt = \DateTime::createFromFormat('Y-m-d H:i', trim($dateStr), $tz);
