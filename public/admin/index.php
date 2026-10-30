@@ -266,6 +266,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/epg/{id}/fetch', [EpgController::class, 'fetch']);
     $router->get('/epg/{id}/status', [EpgController::class, 'status']);
     $router->post('/epg/{id}/upload', [EpgController::class, 'upload']);
+    $router->post('/epg/{id}/csv-preview', [EpgController::class, 'csvPreview']);
+    $router->post('/epg/{id}/csv-import', [EpgController::class, 'csvImport']);
     $router->get('/epg/{id}/mappings', [EpgController::class, 'mappings']);
     $router->post('/epg/save-mapping', [EpgController::class, 'saveMapping']);
     $router->post('/epg/{id}/auto-map', [EpgController::class, 'autoMap']);

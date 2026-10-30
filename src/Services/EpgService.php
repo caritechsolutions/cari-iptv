@@ -54,6 +54,7 @@ class EpgService
         return $this->db->insert('epg_sources', [
             'name' => $data['name'],
             'type' => $data['type'],
+            'channel_id' => !empty($data['channel_id']) ? (int) $data['channel_id'] : null,
             'source_url' => $data['source_url'] ?? null,
             'source_port' => !empty($data['source_port']) ? (int) $data['source_port'] : null,
             'eit_pid' => $data['eit_pid'] ?? '0x12',
@@ -68,7 +69,7 @@ class EpgService
     public function updateSource(int $id, array $data): bool
     {
         $fields = [];
-        $allowed = ['name', 'type', 'source_url', 'source_port', 'eit_pid',
+        $allowed = ['name', 'type', 'channel_id', 'source_url', 'source_port', 'eit_pid',
                      'capture_timeout', 'is_active', 'auto_refresh', 'refresh_interval', 'timezone'];
 
         foreach ($allowed as $field) {
@@ -133,6 +134,299 @@ class EpgService
         $last = $source['last_attempt'] ?? $source['last_fetch'] ?? null;
         if (empty($last)) return true;
         return ($now - strtotime($last . ' UTC')) >= $interval;
+    }
+
+
+    // ========================================================================
+    // SCHEDULE CSV (one channel per file)
+    // ========================================================================
+
+    /** Where a previewed upload waits for the admin's confirmation. */
+    private const CSV_PREVIEW_DIR = BASE_PATH . '/storage/cache/epg-csv';
+
+    /**
+     * Parse a schedule CSV. Columns (header row, any order, case-insensitive):
+     *   name | title | programme | program
+     *   description | desc | synopsis            (optional)
+     *   start_time | start
+     *   end_time | end
+     * Times are local to $tz unless they carry an explicit offset / Z.
+     * Accepted date forms: ISO (2026-07-01 00:00[:ss], 2026-07-01T00:00),
+     * Excel exports (7/1/26 0:00, 7/1/2026 0:00, 01/07/2026 00:00 — d/m is
+     * detected when any first field exceeds 12).
+     *
+     * @return array{rows: array<int, array>, issues: array<int, array>, columns: array}
+     */
+    public function parseScheduleCsv(string $path, string $tz): array
+    {
+        $fh = fopen($path, 'r');
+        if (!$fh) {
+            return ['rows' => [], 'issues' => [['line' => 0, 'level' => 'error', 'message' => 'Cannot open file']], 'columns' => []];
+        }
+
+        // Strip a UTF-8 BOM (Excel writes one)
+        $bom = fread($fh, 3);
+        if ($bom !== "\xEF\xBB\xBF") rewind($fh);
+
+        $header = fgetcsv($fh);
+        if (!$header) {
+            fclose($fh);
+            return ['rows' => [], 'issues' => [['line' => 1, 'level' => 'error', 'message' => 'File is empty']], 'columns' => []];
+        }
+
+        $aliases = [
+            'name' => ['name', 'title', 'programme', 'program', 'programme name', 'program name'],
+            'description' => ['description', 'desc', 'synopsis', 'details'],
+            'start' => ['start_time', 'start', 'start time', 'starttime', 'from'],
+            'end' => ['end_time', 'end', 'end time', 'endtime', 'to', 'stop', 'stop_time'],
+        ];
+        $cols = [];
+        foreach ($header as $i => $h) {
+            $key = strtolower(trim((string) $h));
+            foreach ($aliases as $field => $names) {
+                if (in_array($key, $names, true)) $cols[$field] = $i;
+            }
+        }
+
+        $issues = [];
+        foreach (['name', 'start', 'end'] as $required) {
+            if (!isset($cols[$required])) {
+                $issues[] = ['line' => 1, 'level' => 'error', 'message' => "Missing column '{$required}' (header row has: " . implode(', ', array_map('trim', $header)) . ')'];
+            }
+        }
+        if (!empty($issues)) {
+            fclose($fh);
+            return ['rows' => [], 'issues' => $issues, 'columns' => $cols];
+        }
+
+        // First pass: read raw rows, decide d/m vs m/d for slash dates
+        $raw = [];
+        $line = 1;
+        $dayFirst = false;
+        while (($r = fgetcsv($fh)) !== false) {
+            $line++;
+            if ($r === [null] || count(array_filter($r, fn($v) => trim((string) $v) !== '')) === 0) continue;
+            $raw[] = ['line' => $line, 'r' => $r];
+            foreach (['start', 'end'] as $f) {
+                $v = trim((string) ($r[$cols[$f]] ?? ''));
+                if (preg_match('~^(\d{1,2})/(\d{1,2})/~', $v, $m) && (int) $m[1] > 12) $dayFirst = true;
+            }
+        }
+        fclose($fh);
+
+        $zone = new \DateTimeZone($tz ?: 'UTC');
+        $rows = [];
+        foreach ($raw as $item) {
+            $r = $item['r'];
+            $ln = $item['line'];
+            $name = trim((string) ($r[$cols['name']] ?? ''));
+            $desc = isset($cols['description']) ? trim((string) ($r[$cols['description']] ?? '')) : '';
+            $startRaw = trim((string) ($r[$cols['start']] ?? ''));
+            $endRaw = trim((string) ($r[$cols['end']] ?? ''));
+
+            $start = $this->parseScheduleDateTime($startRaw, $zone, $dayFirst);
+            $end = $this->parseScheduleDateTime($endRaw, $zone, $dayFirst);
+
+            $rowErrors = [];
+            if ($name === '') $rowErrors[] = 'name is empty';
+            if (!$start) $rowErrors[] = "cannot read start_time '{$startRaw}'";
+            if (!$end) $rowErrors[] = "cannot read end_time '{$endRaw}'";
+            if ($start && $end && $end <= $start) $rowErrors[] = 'end_time is not after start_time';
+
+            if ($rowErrors) {
+                $issues[] = ['line' => $ln, 'level' => 'error', 'message' => implode('; ', $rowErrors) . ' — row skipped'];
+                continue;
+            }
+
+            $rows[] = [
+                'line' => $ln,
+                'title' => $name,
+                'description' => $desc,
+                'start_time' => $start->format('Y-m-d H:i:s'),
+                'end_time' => $end->format('Y-m-d H:i:s'),
+                'start_local' => $start->setTimezone($zone)->format('Y-m-d H:i'),
+                'end_local' => $end->setTimezone($zone)->format('Y-m-d H:i'),
+            ];
+        }
+
+        // Order by start, then check continuity
+        usort($rows, fn($a, $b) => strcmp($a['start_time'], $b['start_time']));
+        for ($i = 1; $i < count($rows); $i++) {
+            $prev = $rows[$i - 1];
+            $cur = $rows[$i];
+            if ($cur['start_time'] < $prev['end_time']) {
+                $issues[] = ['line' => $cur['line'], 'level' => 'warning',
+                    'message' => "overlaps the previous programme (row {$prev['line']} ends {$prev['end_local']}, this starts {$cur['start_local']})"];
+            } elseif ($cur['start_time'] > $prev['end_time']) {
+                $gap = (strtotime($cur['start_time']) - strtotime($prev['end_time'])) / 60;
+                $issues[] = ['line' => $cur['line'], 'level' => 'warning',
+                    'message' => sprintf('gap of %s before this programme (%s → %s) — the guide will show "No information"',
+                        $gap >= 60 ? round($gap / 60, 1) . ' h' : $gap . ' min', $prev['end_local'], $cur['start_local'])];
+            }
+        }
+
+        $past = count(array_filter($rows, fn($r) => $r['end_time'] < gmdate('Y-m-d H:i:s')));
+        if ($past > 0) {
+            $issues[] = ['line' => 0, 'level' => 'info', 'message' => "{$past} programme(s) have already ended and will not show in the guide"];
+        }
+
+        usort($issues, fn($a, $b) => $a['line'] <=> $b['line']);
+        return ['rows' => $rows, 'issues' => $issues, 'columns' => $cols];
+    }
+
+    private function parseScheduleDateTime(string $v, \DateTimeZone $zone, bool $dayFirst): ?\DateTimeImmutable
+    {
+        if ($v === '') return null;
+        $v = preg_replace('/\s+/', ' ', $v);
+
+        // Explicit offset or Z: honour it
+        if (preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $v)) {
+            try { return (new \DateTimeImmutable($v))->setTimezone(new \DateTimeZone('UTC')); } catch (\Exception) { return null; }
+        }
+
+        $formats = ['Y-m-d H:i:s', 'Y-m-d H:i', 'Y-m-d\TH:i:s', 'Y-m-d\TH:i', 'Y-m-d'];
+        // Two-digit-year forms first: 'y' needs exactly two digits so it cannot
+        // swallow a four-digit year, whereas 'Y' would read "26" as year 0026.
+        $formats = array_merge($formats, $dayFirst
+            ? ['d/m/y H:i:s', 'd/m/y H:i', 'd/m/Y H:i:s', 'd/m/Y H:i', 'd/m/y', 'd/m/Y']
+            : ['n/j/y H:i:s', 'n/j/y H:i', 'n/j/Y H:i:s', 'n/j/Y H:i', 'n/j/y', 'n/j/Y']);
+        $formats = array_merge($formats, ['d-m-Y H:i', 'd.m.Y H:i', 'Y/m/d H:i', 'j M Y H:i', 'd M Y H:i', 'M j Y H:i', 'g:i A n/j/Y']);
+        foreach ($formats as $f) {
+            $dt = \DateTimeImmutable::createFromFormat('!' . $f, $v, $zone);
+            if (!$dt) continue;
+            // createFromFormat accepts out-of-range parts (e.g. 31/02) with a warning; reject those
+            $err = \DateTimeImmutable::getLastErrors();
+            if (is_array($err) && ($err['warning_count'] || $err['error_count'])) continue;
+            return $dt->setTimezone(new \DateTimeZone('UTC'));
+        }
+        return null;
+    }
+
+    /**
+     * Parse an uploaded schedule and park it for confirmation.
+     * @return array{success:bool, token?:string, rows?:int, errors?:int, warnings?:int, issues?:array, sample?:array, range?:array, message?:string}
+     */
+    public function previewScheduleCsv(int $sourceId, string $path): array
+    {
+        $source = $this->getSource($sourceId);
+        if (!$source || $source['type'] !== 'csv') {
+            return ['success' => false, 'message' => 'Not a schedule CSV source'];
+        }
+        if (empty($source['channel_id'])) {
+            return ['success' => false, 'message' => 'This source has no channel selected — edit the source and pick the channel first'];
+        }
+
+        $parsed = $this->parseScheduleCsv($path, $source['timezone'] ?: 'UTC');
+        $errors = count(array_filter($parsed['issues'], fn($i) => $i['level'] === 'error'));
+        $warnings = count(array_filter($parsed['issues'], fn($i) => $i['level'] === 'warning'));
+
+        if (empty($parsed['rows'])) {
+            return ['success' => false, 'message' => 'No usable rows found', 'issues' => $parsed['issues'], 'errors' => $errors, 'warnings' => $warnings];
+        }
+
+        if (!is_dir(self::CSV_PREVIEW_DIR)) @mkdir(self::CSV_PREVIEW_DIR, 0775, true);
+        $token = bin2hex(random_bytes(12));
+        file_put_contents(self::CSV_PREVIEW_DIR . "/{$sourceId}_{$token}.json", json_encode($parsed['rows']));
+        $this->purgeOldPreviews();
+
+        $first = $parsed['rows'][0];
+        $last = $parsed['rows'][count($parsed['rows']) - 1];
+        return [
+            'success' => true,
+            'token' => $token,
+            'rows' => count($parsed['rows']),
+            'errors' => $errors,
+            'warnings' => $warnings,
+            'issues' => $parsed['issues'],
+            'sample' => array_slice($parsed['rows'], 0, 5),
+            'range' => ['from' => $first['start_local'], 'to' => $last['end_local'], 'timezone' => $source['timezone'] ?: 'UTC'],
+            'channel' => $this->db->fetch("SELECT id, name FROM channels WHERE id = ?", [$source['channel_id']]),
+        ];
+    }
+
+    /**
+     * Commit a previewed schedule: the window the file covers replaces what
+     * was there for this channel/source; earlier rows are kept for catch-up.
+     */
+    public function importScheduleCsv(int $sourceId, string $token): array
+    {
+        $source = $this->getSource($sourceId);
+        if (!$source || $source['type'] !== 'csv' || empty($source['channel_id'])) {
+            return ['success' => false, 'message' => 'Not a schedule CSV source with a channel'];
+        }
+        if (!preg_match('/^[a-f0-9]{24}$/', $token)) {
+            return ['success' => false, 'message' => 'Invalid preview token'];
+        }
+        $file = self::CSV_PREVIEW_DIR . "/{$sourceId}_{$token}.json";
+        if (!is_file($file)) {
+            return ['success' => false, 'message' => 'Preview expired — upload the file again'];
+        }
+        $rows = json_decode((string) file_get_contents($file), true) ?: [];
+        @unlink($file);
+        if (empty($rows)) {
+            return ['success' => false, 'message' => 'Nothing to import'];
+        }
+
+        $channelId = (int) $source['channel_id'];
+        $epgChannelId = 'csv:' . $channelId;
+
+        // One mapping row per CSV source, always mapped to its channel
+        $existing = $this->db->fetch(
+            "SELECT id FROM epg_channel_map WHERE epg_source_id = ? AND epg_channel_id = ?",
+            [$sourceId, $epgChannelId]
+        );
+        $channelName = $this->db->fetch("SELECT name FROM channels WHERE id = ?", [$channelId])['name'] ?? null;
+        if ($existing) {
+            $this->db->update('epg_channel_map', ['channel_id' => $channelId, 'is_mapped' => 1, 'epg_channel_name' => $channelName], 'id = ?', [$existing['id']]);
+        } else {
+            $this->db->insert('epg_channel_map', [
+                'epg_source_id' => $sourceId, 'epg_channel_id' => $epgChannelId,
+                'epg_channel_name' => $channelName, 'channel_id' => $channelId, 'is_mapped' => 1,
+            ]);
+        }
+        // Anything else attached to this source is stale
+        $this->db->execute("DELETE FROM epg_channel_map WHERE epg_source_id = ? AND epg_channel_id <> ?", [$sourceId, $epgChannelId]);
+
+        $programmes = [];
+        foreach ($rows as $r) {
+            $programmes[] = [
+                'service_id' => $epgChannelId,
+                'event_id' => 'c' . substr(md5($channelId . '|' . $r['start_time']), 0, 16),
+                'title' => $r['title'],
+                'subtitle' => '',
+                'description' => $r['description'] ?? '',
+                'start_time' => $r['start_time'],
+                'end_time' => $r['end_time'],
+                'category' => '',
+                'episode_info' => '',
+                'rating' => '',
+                'language' => '',
+            ];
+        }
+
+        try {
+            $write = $this->writeProgrammes($sourceId, $programmes, [$epgChannelId => $channelId], 'service_id', futureOnly: false);
+        } catch (\Throwable $e) {
+            $this->updateSourceStatus($sourceId, 'error', 'Import failed: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Import failed: ' . $e->getMessage()];
+        }
+
+        $this->db->update('epg_sources', ['programme_count' => $write['imported'], 'channel_count' => 1], 'id = ?', [$sourceId]);
+        $msg = "Imported {$write['imported']} programmes for {$channelName}";
+        $this->updateSourceStatus($sourceId, 'success', $msg);
+
+        if ($write['imported'] > 0) {
+            $this->queueMetadataEnrichment($programmes);
+        }
+
+        return ['success' => true, 'message' => $msg, 'programmes' => $write['imported'], 'channels' => 1];
+    }
+
+    private function purgeOldPreviews(): void
+    {
+        foreach (glob(self::CSV_PREVIEW_DIR . '/*.json') ?: [] as $f) {
+            if (filemtime($f) < time() - 3600) @unlink($f);
+        }
     }
 
     // ========================================================================

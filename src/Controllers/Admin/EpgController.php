@@ -43,9 +43,12 @@ class EpgController
              FROM epg_programme_metadata"
         ) ?: ['total' => 0, 'pending' => 0, 'complete' => 0, 'not_found' => 0, 'errors' => 0];
 
+        $channels = $this->db->fetchAll("SELECT id, name FROM channels ORDER BY name");
+
         Response::view('admin/epg/index', [
             'pageTitle' => 'EPG',
             'sources' => $sources,
+            'channels' => $channels,
             'stats' => $stats,
             'metadataStats' => $metadataStats,
             'user' => $this->auth->user(),
@@ -72,15 +75,21 @@ class EpgController
             return;
         }
 
-        $validTypes = ['eit', 'xmltv_file', 'xmltv_url'];
+        $validTypes = ['eit', 'xmltv_file', 'xmltv_url', 'csv'];
         if (!in_array($type, $validTypes)) {
             $this->sendJson(['success' => false, 'message' => 'Invalid source type']);
+            return;
+        }
+
+        if ($type === 'csv' && empty($_POST['channel_id'])) {
+            $this->sendJson(['success' => false, 'message' => 'Pick the channel this schedule is for']);
             return;
         }
 
         $data = [
             'name' => $name,
             'type' => $type,
+            'channel_id' => $type === 'csv' && !empty($_POST['channel_id']) ? (int) $_POST['channel_id'] : null,
             'source_url' => trim($_POST['source_url'] ?? '') ?: null,
             'source_port' => !empty($_POST['source_port']) ? (int) $_POST['source_port'] : null,
             'eit_pid' => trim($_POST['eit_pid'] ?? '') ?: '0x12',
@@ -124,6 +133,7 @@ class EpgController
 
         $data = [
             'name' => trim($_POST['name'] ?? $source['name']),
+            'channel_id' => $source['type'] === 'csv' && !empty($_POST['channel_id']) ? (int) $_POST['channel_id'] : $source['channel_id'],
             'source_url' => trim($_POST['source_url'] ?? '') ?: null,
             'source_port' => !empty($_POST['source_port']) ? (int) $_POST['source_port'] : null,
             'eit_pid' => trim($_POST['eit_pid'] ?? '') ?: '0x12',
@@ -190,8 +200,8 @@ class EpgController
             return;
         }
 
-        if ($source['type'] === 'xmltv_file') {
-            $this->sendJson(['success' => false, 'message' => 'Use the upload function for file-based sources']);
+        if ($source['type'] === 'xmltv_file' || $source['type'] === 'csv') {
+            $this->sendJson(['success' => false, 'message' => 'Use the upload button for file-based sources']);
             return;
         }
 
@@ -264,6 +274,46 @@ class EpgController
             escapeshellarg($php), escapeshellarg($script), $id, escapeshellarg($log));
         exec($cmd, $out, $rc);
         return $rc === 0;
+    }
+
+    /**
+     * POST /admin/epg/{id}/csv-preview (multipart: schedule_file)
+     * Parses and validates a schedule CSV; nothing is written yet.
+     */
+    public function csvPreview(int $id): void
+    {
+        if (!Session::validateCsrf($_POST['_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+        if (empty($_FILES['schedule_file']) || $_FILES['schedule_file']['error'] !== UPLOAD_ERR_OK) {
+            $this->sendJson(['success' => false, 'message' => 'No file uploaded or upload error']);
+            return;
+        }
+        $file = $_FILES['schedule_file'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            $this->sendJson(['success' => false, 'message' => 'Please upload a .csv file (in Excel: File → Save As → CSV UTF-8)']);
+            return;
+        }
+        if ($file['size'] > 5 * 1024 * 1024) {
+            $this->sendJson(['success' => false, 'message' => 'File is larger than 5 MB']);
+            return;
+        }
+
+        $this->sendJson($this->epgService->previewScheduleCsv($id, $file['tmp_name']));
+    }
+
+    /**
+     * POST /admin/epg/{id}/csv-import (token) — commit a previewed schedule
+     */
+    public function csvImport(int $id): void
+    {
+        if (!Session::validateCsrf($_POST['_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+        $this->sendJson($this->epgService->importScheduleCsv($id, (string) ($_POST['token'] ?? '')));
     }
 
     /**

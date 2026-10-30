@@ -159,6 +159,7 @@ foreach ($sources as $source) {
             break;
 
         case 'xmltv_file':
+        case 'csv':
             logMsg("  Skipping file-based source (use admin panel to upload)");
             continue 2;
 

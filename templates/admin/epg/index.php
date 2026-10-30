@@ -126,6 +126,7 @@
                                         'eit' => '<span class="badge badge-primary">EIT/DVB</span>',
                                         'xmltv_file' => '<span class="badge badge-secondary">XMLTV File</span>',
                                         'xmltv_url' => '<span class="badge badge-info">XMLTV URL</span>',
+                                        'csv' => '<span class="badge badge-warning">Schedule CSV</span>',
                                         default => '<span class="badge">' . htmlspecialchars($src['type']) . '</span>',
                                     };
                                     echo $typeBadge;
@@ -137,6 +138,9 @@
                                         <span class="text-xs">(PID <?= htmlspecialchars($src['eit_pid']) ?>)</span>
                                     <?php elseif ($src['source_url']): ?>
                                         <?= htmlspecialchars($src['source_url']) ?>
+                                    <?php elseif ($src['type'] === 'csv'): ?>
+                                        <?php $csvCh = null; foreach ($channels ?? [] as $c) { if ((int)$c['id'] === (int)($src['channel_id'] ?? 0)) { $csvCh = $c; break; } } ?>
+                                        <?= $csvCh ? 'Channel: ' . htmlspecialchars($csvCh['name']) : '<span class="text-danger">No channel selected</span>' ?>
                                     <?php else: ?>
                                         <span class="text-muted">-</span>
                                     <?php endif; ?>
@@ -159,9 +163,15 @@
                                 </td>
                                 <td>
                                     <div class="action-buttons">
+                                        <?php if ($src['type'] === 'csv'): ?>
+                                            <button class="btn btn-primary btn-sm" onclick="openCsvModal(<?= $src['id'] ?>, '<?= htmlspecialchars($src['name']) ?>')" title="Upload schedule CSV">
+                                                <i class="lucide-upload"></i> Upload
+                                            </button>
+                                        <?php else: ?>
                                         <button class="btn btn-primary btn-sm" onclick="fetchSource(<?= $src['id'] ?>, <?= (int)$src['capture_timeout'] ?>, '<?= htmlspecialchars($src['type']) ?>')" title="Fetch now" id="fetchBtn-<?= $src['id'] ?>">
                                             <i class="lucide-download"></i> Fetch
                                         </button>
+                                        <?php endif; ?>
                                         <?php if ($src['type'] === 'xmltv_file'): ?>
                                             <button class="btn btn-info btn-sm" onclick="openUploadModal(<?= $src['id'] ?>, '<?= htmlspecialchars($src['name']) ?>')" title="Upload XMLTV">
                                                 <i class="lucide-upload"></i>
@@ -255,7 +265,22 @@
                     <option value="eit">EIT / DVB (MPTS Stream)</option>
                     <option value="xmltv_url">XMLTV URL</option>
                     <option value="xmltv_file">XMLTV File Upload</option>
+                    <option value="csv">Schedule CSV (one channel, uploaded)</option>
                 </select>
+            </div>
+
+            <!-- Schedule CSV fields -->
+            <div id="csvFields" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Channel <span class="text-danger">*</span></label>
+                    <select id="csvChannelId" class="form-input">
+                        <option value="">-- choose the channel this schedule is for --</option>
+                        <?php foreach ($channels ?? [] as $c): ?>
+                            <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small class="form-hint">One source per channel. After saving, use <strong>Upload</strong> on the source row to load a CSV with columns <code>name, description, start_time, end_time</code>. Set the Source Timezone below to the timezone the times in the file are written in.</small>
+                </div>
             </div>
 
             <!-- EIT Fields -->
@@ -344,6 +369,10 @@
                     <option value="America/Belize">America/Belize (CST, UTC-6)</option>
                     <option value="Europe/London">Europe/London (GMT/BST)</option>
                     <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                    <option value="Africa/Lagos">Africa/Lagos (WAT, UTC+1)</option>
+                    <option value="Africa/Accra">Africa/Accra (GMT)</option>
+                    <option value="Africa/Johannesburg">Africa/Johannesburg (SAST, UTC+2)</option>
+                    <option value="Africa/Nairobi">Africa/Nairobi (EAT, UTC+3)</option>
                 </select>
                 <small class="form-hint">Timezone of the EPG data. EIT/DVB streams are always UTC. XMLTV files with timezone offsets are auto-converted. Use this for XMLTV sources without timezone info or if EIT times need adjustment.</small>
             </div>
@@ -407,7 +436,50 @@
     </div>
 </div>
 
+<!-- Schedule CSV Upload Modal -->
+<div class="modal-overlay" id="csvModal" style="display: none;">
+    <div class="modal-content" style="max-width: 760px;">
+        <div class="modal-header">
+            <h3 id="csvTitle"><i class="lucide-upload"></i> Upload Schedule</h3>
+            <button type="button" class="modal-close" onclick="closeCsvModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="csvSourceId" value="">
+            <input type="hidden" id="csvToken" value="">
+            <div id="csvStep1">
+                <div class="form-group">
+                    <label class="form-label">Schedule file (.csv)</label>
+                    <input type="file" id="csvFileInput" class="form-input" accept=".csv,text/csv">
+                    <small class="form-hint">Columns: <code>name, description, start_time, end_time</code>. Times are read in the source's timezone. Nothing is saved until you confirm on the next step.</small>
+                </div>
+            </div>
+            <div id="csvStep2" style="display: none;">
+                <div id="csvSummary" class="form-notice" style="margin-bottom: 12px;"></div>
+                <div id="csvIssues" style="max-height: 260px; overflow: auto; margin-bottom: 12px;"></div>
+                <div id="csvSample"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeCsvModal()">Cancel</button>
+            <button type="button" class="btn btn-secondary" id="csvBackBtn" onclick="csvBack()" style="display: none;">Choose another file</button>
+            <button type="button" class="btn btn-primary" onclick="csvPreview()" id="csvPreviewBtn">
+                <i class="lucide-search"></i> Check file
+            </button>
+            <button type="button" class="btn btn-success" onclick="csvImport()" id="csvImportBtn" style="display: none;">
+                <i class="lucide-check"></i> Import
+            </button>
+        </div>
+    </div>
+</div>
+
 <style>
+.btn-success { background: #22c55e; color: white; }
+.btn-success:hover { background: #16a34a; }
+.csv-issues-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.csv-issues-table td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+.csv-issues-table .lvl-error { color: #f87171; font-weight: 600; }
+.csv-issues-table .lvl-warning { color: #fbbf24; font-weight: 600; }
+.csv-issues-table .lvl-info { color: #94a3b8; font-weight: 600; }
 .header-actions {
     display: flex;
     gap: 0.5rem;
@@ -696,6 +768,8 @@ function openEditModal(src) {
         document.getElementById('sourcePort').value = src.source_port || '';
         document.getElementById('eitPid').value = src.eit_pid || '0x12';
         document.getElementById('captureTimeout').value = src.capture_timeout || 30;
+    } else if (src.type === 'csv') {
+        document.getElementById('csvChannelId').value = src.channel_id || '';
     } else {
         document.getElementById('xmltvUrl').value = src.source_url || '';
     }
@@ -715,6 +789,7 @@ function toggleTypeFields() {
     document.getElementById('eitFields').style.display = type === 'eit' ? '' : 'none';
     document.getElementById('urlFields').style.display = type === 'xmltv_url' ? '' : 'none';
     document.getElementById('fileFields').style.display = type === 'xmltv_file' ? '' : 'none';
+    document.getElementById('csvFields').style.display = type === 'csv' ? '' : 'none';
 }
 
 function toggleRefreshInterval() {
@@ -743,6 +818,8 @@ function saveSource() {
         body.set('capture_timeout', document.getElementById('captureTimeout').value);
     } else if (type === 'xmltv_url') {
         body.set('source_url', document.getElementById('xmltvUrl').value);
+    } else if (type === 'csv') {
+        body.set('channel_id', document.getElementById('csvChannelId').value);
     }
 
     const url = id ? `/admin/epg/${id}/update` : '/admin/epg/store';
@@ -951,6 +1028,119 @@ function fetchSource(id, captureTimeout, sourceType) {
 // ========================================================================
 // XMLTV UPLOAD
 // ========================================================================
+
+// ---- Schedule CSV upload: check first, then confirm ----
+function openCsvModal(id, name) {
+    document.getElementById('csvSourceId').value = id;
+    document.getElementById('csvTitle').innerHTML = `<i class="lucide-upload"></i> Upload Schedule - ${escapeHtml(name)}`;
+    document.getElementById('csvFileInput').value = '';
+    csvBack();
+    document.getElementById('csvModal').style.display = 'flex';
+}
+
+function closeCsvModal() {
+    document.getElementById('csvModal').style.display = 'none';
+}
+
+function csvBack() {
+    document.getElementById('csvStep1').style.display = '';
+    document.getElementById('csvStep2').style.display = 'none';
+    document.getElementById('csvPreviewBtn').style.display = '';
+    document.getElementById('csvImportBtn').style.display = 'none';
+    document.getElementById('csvBackBtn').style.display = 'none';
+    document.getElementById('csvToken').value = '';
+}
+
+function csvPreview() {
+    const id = document.getElementById('csvSourceId').value;
+    const input = document.getElementById('csvFileInput');
+    if (!input.files.length) { showToast('Please select a .csv file', 'error'); return; }
+
+    const btn = document.getElementById('csvPreviewBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader"></i> Checking...';
+
+    const fd = new FormData();
+    fd.append('_token', csrfToken);
+    fd.append('schedule_file', input.files[0]);
+
+    fetch(`/admin/epg/${id}/csv-preview`, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-search"></i> Check file';
+            renderCsvIssues(data.issues || []);
+            if (!data.success) {
+                document.getElementById('csvSummary').innerHTML = `<i class="lucide-x-circle"></i> ${escapeHtml(data.message || 'File could not be read')}`;
+                document.getElementById('csvSample').innerHTML = '';
+                document.getElementById('csvStep1').style.display = 'none';
+                document.getElementById('csvStep2').style.display = '';
+                document.getElementById('csvPreviewBtn').style.display = 'none';
+                document.getElementById('csvBackBtn').style.display = '';
+                return;
+            }
+            document.getElementById('csvToken').value = data.token;
+            const ch = data.channel ? escapeHtml(data.channel.name) : 'channel';
+            const r = data.range || {};
+            document.getElementById('csvSummary').innerHTML =
+                `<i class="lucide-info"></i> <strong>${data.rows}</strong> programmes for <strong>${ch}</strong>, ` +
+                `${escapeHtml(r.from || '')} → ${escapeHtml(r.to || '')} (${escapeHtml(r.timezone || 'UTC')}). ` +
+                (data.errors ? `<span style="color:#f87171">${data.errors} row(s) skipped.</span> ` : '') +
+                (data.warnings ? `<span style="color:#fbbf24">${data.warnings} warning(s).</span> ` : '') +
+                `Importing replaces this channel's guide for that period.`;
+            let sample = '<table class="csv-issues-table"><tr><td><strong>Start</strong></td><td><strong>End</strong></td><td><strong>Programme</strong></td></tr>';
+            (data.sample || []).forEach(p => {
+                sample += `<tr><td>${escapeHtml(p.start_local)}</td><td>${escapeHtml(p.end_local)}</td><td>${escapeHtml(p.title)}</td></tr>`;
+            });
+            sample += '</table><small class="form-hint">First rows, shown in the source timezone.</small>';
+            document.getElementById('csvSample').innerHTML = sample;
+
+            document.getElementById('csvStep1').style.display = 'none';
+            document.getElementById('csvStep2').style.display = '';
+            document.getElementById('csvPreviewBtn').style.display = 'none';
+            document.getElementById('csvImportBtn').style.display = '';
+            document.getElementById('csvBackBtn').style.display = '';
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="lucide-search"></i> Check file';
+            showToast('Network error while checking the file', 'error');
+        });
+}
+
+function renderCsvIssues(issues) {
+    const el = document.getElementById('csvIssues');
+    if (!issues.length) {
+        el.innerHTML = '<div class="form-notice" style="color:#4ade80"><i class="lucide-check-circle"></i> No gaps, overlaps or unreadable rows.</div>';
+        return;
+    }
+    let html = '<table class="csv-issues-table">';
+    issues.forEach(i => {
+        html += `<tr><td class="lvl-${i.level}">${i.level}</td><td>${i.line ? 'row ' + i.line : ''}</td><td>${escapeHtml(i.message)}</td></tr>`;
+    });
+    el.innerHTML = html + '</table>';
+}
+
+function csvImport() {
+    const id = document.getElementById('csvSourceId').value;
+    const token = document.getElementById('csvToken').value;
+    if (!token) return;
+    const btn = document.getElementById('csvImportBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="lucide-loader"></i> Importing...';
+    fetch(`/admin/epg/${id}/csv-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ _token: csrfToken, token }).toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(data.message || (data.success ? 'Imported' : 'Import failed'), data.success ? 'success' : 'error');
+        if (data.success) setTimeout(() => location.reload(), 1200);
+        else { btn.disabled = false; btn.innerHTML = '<i class="lucide-check"></i> Import'; }
+    })
+    .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="lucide-check"></i> Import'; showToast('Network error during import', 'error'); });
+}
 
 function openUploadModal(id, name) {
     document.getElementById('uploadSourceId').value = id;
