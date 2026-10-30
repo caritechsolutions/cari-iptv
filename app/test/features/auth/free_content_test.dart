@@ -13,6 +13,7 @@ import 'package:cari_tv/features/live/ui/live_screen.dart';
 import 'package:cari_tv/models/channel.dart';
 import 'package:cari_tv/models/entitlements.dart';
 import 'package:cari_tv/models/search_result.dart';
+import 'package:cari_tv/models/series.dart';
 import 'package:cari_tv/models/watch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,8 +53,12 @@ void main() {
       expect(cvm.toCard().isFree, isTrue);
       expect(SearchResult.fromJson({'id': 3, 'title': 'CVM', 'content_type': 'channel', 'is_free': true}).toCard().isFree, isTrue);
       expect(ContinueWatchingItem.fromJson({'content_type': 'movie', 'content_id': 8, 'id': 8, 'title': 'Short', 'is_free': 1}).toCard().isFree, isTrue);
+      // TV shows: admin "Free Content" on the series unlocks its episodes.
+      expect(Series.fromJson({'id': 5, 'title': 'Tinsel', 'slug': 'tinsel', 'is_free': true, 'is_restricted': true}).toCard().isFree, isTrue);
+      expect(ent(subscription: false).locks(type: 'episode', id: 5, isRestricted: true, isFree: Series.fromJson({'id': 5, 'title': 'Tinsel', 'slug': 'tinsel', 'is_free': 1}).isFree), isFalse);
       // Older backends without the field: not free, as before.
       expect(SearchResult.fromJson({'id': 3, 'title': 'CVM', 'content_type': 'channel'}).toCard().isFree, isFalse);
+      expect(Series.fromJson({'id': 5, 'title': 'Tinsel', 'slug': 'tinsel'}).isFree, isFalse);
     });
   });
 

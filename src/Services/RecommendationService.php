@@ -683,7 +683,7 @@ class RecommendationService
             $rows = $this->db->fetchAll(
                 "SELECT id, title, poster_url, backdrop_url, vote_average, year, genres,
                         community_rating, community_rating_count, synopsis, status,
-                        is_adult, category_id,
+                        is_adult, category_id, is_free,
                         (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = series.id LIMIT 1) IS NOT NULL as is_restricted
                  FROM series WHERE id IN ($placeholders) AND status = 'published'",
                 $seriesIds
@@ -692,7 +692,7 @@ class RecommendationService
                 $r['content_type'] = 'series';
                 $r['is_restricted'] = (bool) ($r['is_restricted'] ?? false);
                 $r['is_adult'] = (bool) ($r['is_adult'] ?? false);
-                $r['is_free'] = false;
+                $r['is_free'] = (bool) ($r['is_free'] ?? false);
                 if (!empty($r['community_rating'])) {
                     $r['vote_average'] = (float) $r['community_rating'];
                 }

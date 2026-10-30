@@ -1364,6 +1364,7 @@ class SeriesController
         }
 
         $data['is_featured'] = isset($post['is_featured']) ? 1 : 0;
+        $data['is_free'] = isset($post['is_free']) ? 1 : 0;
 
         // TMDB ID
         if (isset($post['tmdb_id']) && $post['tmdb_id'] !== '') {

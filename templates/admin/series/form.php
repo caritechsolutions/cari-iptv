@@ -285,6 +285,17 @@ $pageAction = $isEdit ? 'Edit' : 'Add';
                             </span>
                         </label>
                     </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="is_free" value="1"
+                                   <?= !empty($show['is_free']) ? 'checked' : '' ?>>
+                            <span class="checkbox-text">
+                                <strong>Free Content</strong>
+                                <small>All episodes play without a package, like a free channel or movie</small>
+                            </span>
+                        </label>
+                    </div>
                 </div>
             </div>
 

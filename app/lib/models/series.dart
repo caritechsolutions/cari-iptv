@@ -143,6 +143,7 @@ class Series {
     required this.isFeatured,
     required this.isAdult,
     required this.isRestricted,
+    this.isFree = false,
     required this.categoryId,
     required this.categoryName,
     required this.seasonCount,
@@ -166,6 +167,9 @@ class Series {
   final bool isFeatured;
   final bool isAdult;
   final bool isRestricted;
+
+  /// Admin "Free Content": every episode plays without a package.
+  final bool isFree;
   final int? categoryId;
   final String? categoryName;
   final int? seasonCount;
@@ -191,6 +195,7 @@ class Series {
       isFeatured: asBool(j['is_featured']),
       isAdult: asBool(j['is_adult']),
       isRestricted: asBool(j['is_restricted']),
+      isFree: asBool(j['is_free']),
       categoryId: asIntOrNull(j['category_id']),
       categoryName: asStringOrNull(j['category_name']),
       seasonCount: asIntOrNull(j['season_count']) ?? asIntOrNull(j['number_of_seasons']),
@@ -214,6 +219,7 @@ class Series {
         subtitle: seasonCount != null ? '$seasonCount season${seasonCount == 1 ? '' : 's'}' : year?.toString(),
         isRestricted: isRestricted,
         isAdult: isAdult,
+        isFree: isFree,
         categoryId: categoryId,
       );
 }

@@ -487,7 +487,7 @@ class SubscriberAuthService
                             e.stream_url, e.runtime, e.vote_average,
                             sn.id as season_id, sn.season_number,
                             s.title, s.slug, s.year, s.poster_url, s.backdrop_url, s.id as series_id,
-                            s.is_adult as series_is_adult, s.category_id as series_category_id,
+                            s.is_adult as series_is_adult, s.is_free as series_is_free, s.category_id as series_category_id,
                             (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'series' AND cgi.content_id = s.id LIMIT 1) IS NOT NULL as series_is_restricted
                      FROM series_episodes e
                      LEFT JOIN series_seasons sn ON e.season_id = sn.id
@@ -517,7 +517,7 @@ class SubscriberAuthService
                 // Entitlement fields of the series, as on the series list
                 $item['is_restricted'] = (bool) ($episode['series_is_restricted'] ?? false);
                 $item['is_adult'] = (bool) ($episode['series_is_adult'] ?? false);
-                $item['is_free'] = false; // series have no free flag
+                $item['is_free'] = (bool) ($episode['series_is_free'] ?? false);
                 $item['category_id'] = $episode['series_category_id'] ?? null;
                 // Include resume episode details so player knows where to pick up
                 $item['resume_episode_id'] = $episode['episode_id'];
