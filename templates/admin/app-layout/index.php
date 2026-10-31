@@ -20,6 +20,7 @@ $statusLabels = [
 ?>
 
 <style>
+    .form-notice { display:flex; align-items:center; gap:0.5rem; padding:0.75rem 1rem; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); border-radius:8px; color:var(--text-secondary); font-size:0.875rem; }
     .platform-tabs {
         display: flex;
         gap: 0.5rem;
@@ -245,11 +246,24 @@ $statusLabels = [
         <h1 class="page-title">App Layout</h1>
         <p class="page-subtitle">Design your app's home screen experience for each platform.</p>
     </div>
-    <div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        <select id="starterPlatform" class="form-select" style="width:auto;" title="Platform for the starter layout">
+            <option value="mobile">Mobile</option>
+            <option value="web">Web</option>
+            <option value="tv">Smart TV</option>
+            <option value="stb">Set-Top Box</option>
+        </select>
+        <button type="button" class="btn btn-secondary" onclick="createStarterLayout()" title="A draft that reproduces the app's built-in home (hero, continue watching, latest movies, latest shows, Live TV row)">
+            <i class="lucide-wand-2"></i> Starter Layout
+        </button>
         <button type="button" class="btn btn-primary" onclick="openCreateModal()">
             <i class="lucide-plus"></i> New Layout
         </button>
     </div>
+</div>
+<div class="form-notice" style="margin-bottom:1rem;">
+    <i class="lucide-info"></i>
+    <strong>How layouts are chosen:</strong> each page (Pages &amp; Nav) can link to a published layout. The Home page falls back to the platform <strong>Default</strong> layout, and if there is none the app shows its built-in home. Publishing makes a layout available to pages; <strong>Set Default</strong> makes it the home fallback.
 </div>
 
 <!-- Stats -->
@@ -361,6 +375,11 @@ foreach ($stats['platforms'] as $p) {
                             </button>
                         <?php endif; ?>
                         <?php if ($layout['status'] === 'published'): ?>
+                            <?php if (!$layout['is_default']): ?>
+                                <button class="btn btn-secondary btn-sm" onclick="setDefaultLayout(<?= $layout['id'] ?>)" title="Set as platform default (home fallback)">
+                                    <i class="lucide-star"></i>
+                                </button>
+                            <?php endif; ?>
                             <button class="btn btn-secondary btn-sm" onclick="unpublishLayout(<?= $layout['id'] ?>)" title="Set to Draft" style="color: var(--warning);">
                                 <i class="lucide-archive-restore"></i>
                             </button>
@@ -498,8 +517,32 @@ async function duplicateLayout(id) {
     }
 }
 
+async function setDefaultLayout(id) {
+    if (!confirm('Use this layout as the platform default (the home screen when the Home page has no layout of its own)?')) return;
+    const form = new FormData();
+    form.append('_token', csrfToken);
+    try {
+        const res = await fetch('/admin/app-layout/' + id + '/set-default', { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.success) window.location.reload(); else alert(data.message || 'Failed');
+    } catch (e) { alert('Network error'); }
+}
+
+async function createStarterLayout() {
+    const platform = document.getElementById('starterPlatform').value;
+    const form = new FormData();
+    form.append('_token', csrfToken);
+    form.append('platform', platform);
+    try {
+        const res = await fetch('/admin/app-layout/create-starter', { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.success) window.location.href = '/admin/app-layout/' + data.layout_id + '/builder';
+        else alert(data.message || 'Failed');
+    } catch (e) { alert('Network error'); }
+}
+
 async function publishLayout(id) {
-    if (!confirm('Publish this layout and set it as the default for its platform?')) return;
+    if (!confirm('Publish this layout so pages can use it?')) return;
 
     const form = new FormData();
     form.append('_token', csrfToken);

@@ -1,9 +1,14 @@
 // Tab pages: thin wrappers so the router never has to change.
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../models/layout.dart';
 import '../../content/ui/list_screens.dart';
 import '../../content/ui/misc_screens.dart';
+import '../../layout/state/layout_providers.dart';
 import '../../layout/ui/home_screen.dart';
+import '../../layout/ui/section_widgets.dart';
+import 'app_shell.dart';
 import '../../library/ui/library_screens.dart';
 import '../../live/ui/live_screen.dart';
 import '../../profile/ui/profile_screens.dart';
@@ -18,13 +23,37 @@ class HomeTab extends StatelessWidget {
 class MoviesTab extends StatelessWidget {
   const MoviesTab({super.key});
   @override
-  Widget build(BuildContext context) => const MediaListScreen(kind: 'movie');
+  Widget build(BuildContext context) => const _PageWithLayout(pageType: 'movies', title: 'Movies', fallback: MediaListScreen(kind: 'movie'));
 }
 
 class SeriesTab extends StatelessWidget {
   const SeriesTab({super.key});
   @override
-  Widget build(BuildContext context) => const MediaListScreen(kind: 'series');
+  Widget build(BuildContext context) => const _PageWithLayout(pageType: 'series', title: 'TV Shows', fallback: MediaListScreen(kind: 'series'));
+}
+
+/// A system page that renders the layout linked to it in Pages & Nav when
+/// there is one (the web player's rule), and its built-in screen otherwise.
+class _PageWithLayout extends ConsumerWidget {
+  const _PageWithLayout({required this.pageType, required this.title, required this.fallback});
+  final String pageType;
+  final String title;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layout = ref.watch(pageLayoutProvider(pageType));
+    // While pages load, or when there is no linked layout, show the built-in screen.
+    final AppLayout? linked = layout.value;
+    if (linked == null) return fallback;
+    return Scaffold(
+      appBar: TabAppBar(title: title),
+      body: LayoutView(layout: linked, onRefresh: () async {
+        ref.invalidate(pageLayoutProvider(pageType));
+        await ref.read(pageLayoutProvider(pageType).future);
+      }),
+    );
+  }
 }
 
 class LiveTab extends StatelessWidget {

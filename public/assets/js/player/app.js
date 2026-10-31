@@ -464,8 +464,8 @@ const CariApp = (function() {
             } else if (type === 'content_row') {
                 const cardStyle = settings.card_style || 'poster';
                 appendContentRow(el, title, items, cardStyle);
-            } else if (type === 'channel_grid') {
-                appendContentRow(el, title, items, 'channel');
+            } else if (type === 'channel_grid' || type === 'channel_row') {
+                appendContentRow(el, title, items, 'channel', 'channel');
             } else if (type === 'banner') {
                 const banner = CariUI.renderBanner(settings);
                 if (banner) el.appendChild(banner);

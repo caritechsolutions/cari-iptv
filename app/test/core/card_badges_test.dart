@@ -107,12 +107,13 @@ void main() {
         buildSection(section('hero_slideshow', [lockedMovie])),
         buildSection(section('content_row', [lockedSeries, lockedChannel])),
         buildSection(section('channel_grid', [lockedChannel, openChannel])),
+        buildSection(section('channel_row', [lockedChannel, openChannel])),
         buildSection(section('spotlight', [lockedMovie])),
       ])));
       await settle(tester);
       expect(lock(lockedMovie), findsNWidgets(2), reason: 'hero and spotlight');
       expect(lock(lockedSeries), findsOneWidget, reason: 'content_row');
-      expect(lock(lockedChannel), findsNWidgets(2), reason: 'content_row and channel_grid');
+      expect(lock(lockedChannel), findsNWidgets(3), reason: 'content_row, channel_grid and channel_row');
       expect(lock(openChannel), findsNothing);
     });
 

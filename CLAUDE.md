@@ -677,13 +677,14 @@ Defined in `AppLayoutService::getSectionTypes()`:
 | `continue_watching` | Continue Watching | personalized | NO (auto) | 1 | User's resume-watching row |
 | `live_now` | Live Now | live | NO (auto/EPG) | 2 | Currently airing programmes |
 | `epg_schedule` | TV Guide | live | NO (auto/EPG) | 1 | Mini programme guide grid |
+| `channel_row` | Channel Row | live | YES | 5 | Horizontal rail of channels (logo + name) — the "Live TV" row of the built-in home |
 | `channel_grid` | Channel Grid | live | YES | 3 | Featured channels grid |
 | `category_grid` | Category Grid | navigation | NO (auto) | 2 | Browse-by-genre grid |
 | `banner` | Promo Banner | promotional | NO (settings) | 5 | Promotional image with link |
 | `spotlight` | Spotlight | featured | YES | 3 | Single featured item with details |
 | `text_divider` | Section Divider | utility | NO | 10 | Heading text or separator |
 
-**Sections that accept manual content items:** `hero_slideshow`, `content_row`, `channel_grid`, `spotlight`
+**Sections that accept manual content items:** `hero_slideshow`, `content_row`, `channel_row`, `channel_grid`, `spotlight`
 
 **Auto-populated sections:** `continue_watching` (per user), `live_now` (from EPG), `epg_schedule` (from EPG), `category_grid` (from categories table)
 
@@ -695,7 +696,9 @@ Each section type has configurable settings stored as JSON. Key ones:
 
 **content_row**: `source` (curated/latest/popular/top_rated/featured/category), `content_type` (movie/series/mixed), `card_style` (poster/backdrop/square), `max_items`, `category_id`, `sort_by`
 
-**channel_grid**: `source` (curated/popular/category), `columns`, `max_items`, `show_now_playing`, `category_id`
+**channel_row / channel_grid**: `source` (all/curated/popular/category), `max_items`, `category_id` (grid also `columns`, `show_now_playing`). `popular` ranks by `trending_content` 7-day views.
+
+**Which layout a page shows (web and mobile apply the same rule):** the layout linked to the page in Pages & Nav → for Home only, the platform default (`is_default`) → the player's built-in screen. `Publish` makes a layout available to pages (it becomes default only if the platform has none); `Set Default` switches the home fallback. Only published layouts are served by id. "Starter Layout" on the App Layout page creates a draft reproducing the built-in home.
 
 **banner**: `image_url`, `link_url`, `link_type` (url/movie/series/channel), `aspect_ratio` (21:9/16:9/3:1)
 

@@ -27,6 +27,8 @@ Widget buildSection(LayoutSection section) {
       return ContentRowSection(section: section);
     case 'channel_grid':
       return ChannelGridSection(section: section);
+    case 'channel_row':
+      return ChannelRowSection(section: section);
     case 'continue_watching':
       return ContinueWatchingSection(section: section);
     case 'category_grid':
@@ -166,6 +168,20 @@ class ContentRowSection extends StatelessWidget {
     final cards = section.cards;
     if (cards.isEmpty) return const SizedBox.shrink();
     return ContentRail(title: section.title, cards: cards, style: style);
+  }
+}
+
+/// Horizontal rail of channels (logo + name), the layout equivalent of the
+/// built-in home's "Live TV" row. "See all" opens the Live TV tab.
+class ChannelRowSection extends ConsumerWidget {
+  const ChannelRowSection({super.key, required this.section});
+  final LayoutSection section;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = section.cards;
+    if (cards.isEmpty) return const SizedBox.shrink();
+    return ContentRail(title: section.title ?? 'Live TV', cards: cards, style: 'backdrop', onSeeAll: () => openTopLevel(context, ref, '/live'));
   }
 }
 

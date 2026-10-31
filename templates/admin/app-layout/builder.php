@@ -1,6 +1,8 @@
 <?php
 $platformLabels = ['web' => 'Web', 'mobile' => 'Mobile', 'tv' => 'Smart TV', 'stb' => 'Set-Top Box'];
 $statusColors = ['draft' => 'badge-warning', 'published' => 'badge-success', 'archived' => 'badge-secondary'];
+
+$GLOBALS['layoutCategories'] = $categories ?? [];
 ?>
 
 <style>
@@ -949,6 +951,8 @@ async function saveSection(sectionId) {
             settings[key] = el.checked;
         } else if (el.type === 'number') {
             settings[key] = parseInt(el.value) || 0;
+        } else if (key === 'category_id') {
+            settings[key] = el.value ? parseInt(el.value) : null;
         } else {
             settings[key] = el.value;
         }
@@ -1001,7 +1005,7 @@ function openContentPicker(sectionId, sectionType) {
     currentPickerSource = 'library';
 
     // Default content type based on section type
-    if (sectionType === 'channel_grid') {
+    if (sectionType === 'channel_grid' || sectionType === 'channel_row') {
         currentContentType = 'channel';
         tmdbSearchType = 'movie';
     } else {
@@ -1436,8 +1440,18 @@ function renderSectionSettings(array $section, ?array $typeDef): string
             $html .= settingSelect('card_style', 'Card Style', $settings, $defaults, [
                 'poster' => 'Poster (2:3)', 'backdrop' => 'Backdrop (16:9)', 'square' => 'Square (1:1)'
             ]);
+            $html .= settingCategory($settings, $defaults);
             $html .= settingNumber('max_items', 'Max Items', $settings, $defaults, 1, 50);
             $html .= settingCheckbox('auto_scroll', 'Auto-scroll', $settings, $defaults);
+            break;
+
+        case 'channel_row':
+            $html .= settingSelect('source', 'Source', $settings, $defaults, [
+                'all' => 'All channels (by number)', 'curated' => 'Curated (manual)', 'popular' => 'Most Watched', 'category' => 'By Category'
+            ]);
+            $html .= settingCategory($settings, $defaults, 'live');
+            $html .= settingNumber('max_items', 'Max Channels', $settings, $defaults, 1, 50);
+            $html .= settingCheckbox('show_now_playing', 'Show now playing (needs EPG)', $settings, $defaults);
             break;
 
         case 'live_now':
@@ -1473,8 +1487,9 @@ function renderSectionSettings(array $section, ?array $typeDef): string
 
         case 'channel_grid':
             $html .= settingSelect('source', 'Source', $settings, $defaults, [
-                'curated' => 'Curated (manual)', 'popular' => 'Most Watched', 'category' => 'By Category'
+                'all' => 'All channels (by number)', 'curated' => 'Curated (manual)', 'popular' => 'Most Watched', 'category' => 'By Category'
             ]);
+            $html .= settingCategory($settings, $defaults, 'live');
             $html .= settingNumber('columns', 'Columns', $settings, $defaults, 2, 8);
             $html .= settingNumber('max_items', 'Max Channels', $settings, $defaults, 1, 30);
             $html .= settingCheckbox('show_now_playing', 'Show now playing', $settings, $defaults);
@@ -1517,6 +1532,19 @@ function settingText(string $key, string $label, array $settings, array $default
         <label class=\"form-label\">{$label}</label>
         <input type=\"text\" class=\"form-input\" data-setting=\"{$key}\" value=\"{$value}\">
     </div>";
+}
+
+/** Category dropdown for "By Category" sources; $type limits to live / vod / series categories. */
+function settingCategory(array $settings, array $defaults, ?string $type = null, string $label = 'Category'): string
+{
+    $cats = $GLOBALS['layoutCategories'] ?? [];
+    $options = ['' => '-- choose a category --'];
+    foreach ($cats as $c) {
+        if ($type && ($c['type'] ?? '') !== $type) continue;
+        $options[(string) $c['id']] = $c['name'] . (empty($type) ? ' (' . ($c['type'] ?? '') . ')' : '');
+    }
+    $html = settingSelect('category_id', $label . ' (for "By Category")', $settings, $defaults, $options);
+    return $html;
 }
 
 function settingNumber(string $key, string $label, array $settings, array $defaults, int $min = 0, int $max = 100): string

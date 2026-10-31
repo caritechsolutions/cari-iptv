@@ -1011,7 +1011,7 @@ class ContentApiService
         $layout = $this->safeQuery(fn() => $this->db->fetch(
             "SELECT id, name, platform, status, updated_at
              FROM app_layouts
-             WHERE id = ?
+             WHERE id = ? AND status = 'published'
              LIMIT 1",
             [$id]
         ));
@@ -1072,7 +1072,7 @@ class ContentApiService
             $source = $section['settings']['source'] ?? 'curated';
 
             // For non-curated sources, auto-populate items from the database
-            if ($source !== 'curated' && in_array($section['section_type'], ['content_row', 'channel_grid'])) {
+            if ($source !== 'curated' && in_array($section['section_type'], ['content_row', 'channel_grid', 'channel_row'])) {
                 $section['items'] = $this->getAutoItems($section['section_type'], $section['settings']);
             } else {
                 $section['items'] = $this->db->fetchAll(
@@ -1103,7 +1103,7 @@ class ContentApiService
         $contentType = $settings['content_type'] ?? 'movie';
         $categoryId = !empty($settings['category_id']) ? (int) $settings['category_id'] : null;
 
-        if ($sectionType === 'channel_grid') {
+        if ($sectionType === 'channel_grid' || $sectionType === 'channel_row') {
             return $this->getAutoChannelItems($source, $maxItems, $categoryId);
         }
 
@@ -1185,28 +1185,50 @@ class ContentApiService
         return $items;
     }
 
+    /**
+     * Channels for a channel_grid / channel_row with a non-curated source:
+     *   all      — by channel number
+     *   popular  — most watched (trending_content, 7-day views), then channel number
+     *   category — channels in the chosen category (channel_categories, or the
+     *              channel's primary category_id)
+     */
     private function getAutoChannelItems(string $source, int $limit, ?int $categoryId): array
     {
         $where = "c.is_active = 1";
         $params = [];
         $join = '';
+        $order = 'c.channel_number ASC, c.sort_order ASC, c.name ASC';
 
-        if ($categoryId) {
-            $join = " JOIN channel_categories cc ON c.id = cc.channel_id AND cc.category_id = ?";
+        if ($source === 'category') {
+            if (!$categoryId) return [];
+            $where .= " AND (c.category_id = ? OR EXISTS (SELECT 1 FROM channel_categories cc WHERE cc.channel_id = c.id AND cc.category_id = ?))";
+            $params[] = $categoryId;
+            $params[] = $categoryId;
+        } elseif ($categoryId) {
+            $where .= " AND c.category_id = ?";
             $params[] = $categoryId;
         }
 
-        if ($source === 'category' && !$categoryId) return [];
+        if ($source === 'popular') {
+            $join = " LEFT JOIN trending_content tc ON tc.content_type = 'channel' AND tc.content_id = c.id AND tc.region IS NULL";
+            $order = 'COALESCE(tc.view_count_7d, 0) DESC, COALESCE(tc.trend_score, 0) DESC, ' . $order;
+        }
 
-        $rows = $this->safeQuery(fn() => $this->db->fetchAll(
-            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.is_hd, c.is_adult, c.category_id,
+        $query = fn(string $join, string $order) => $this->db->fetchAll(
+            "SELECT c.id, c.name, c.slug, c.logo_url, c.stream_url, c.is_hd, c.is_adult, c.category_id, c.channel_number,
                     c.available_without_purchase = 1 as is_free,
                     (SELECT 1 FROM content_group_items cgi WHERE cgi.content_type = 'channel' AND cgi.content_id = c.id LIMIT 1) IS NOT NULL as is_restricted
              FROM channels c {$join}
              WHERE {$where}
-             ORDER BY c.channel_number ASC LIMIT {$limit}",
+             ORDER BY {$order} LIMIT {$limit}",
             $params
-        ), []);
+        );
+        $rows = $this->safeQuery(fn() => $query($join, $order));
+        if ($rows === null && $source === 'popular') {
+            // trending_content missing (older install): plain channel order
+            $rows = $this->safeQuery(fn() => $query('', 'c.channel_number ASC, c.sort_order ASC, c.name ASC'), []);
+        }
+        $rows = $rows ?? [];
         $rows = array_map(fn($r) => $this->castAccessFlags($r), $rows);
 
         $items = [];

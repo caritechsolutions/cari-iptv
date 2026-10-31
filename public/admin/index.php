@@ -288,6 +288,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/app-layout/{id}/duplicate', [AppLayoutController::class, 'duplicate']);
     $router->post('/app-layout/{id}/publish', [AppLayoutController::class, 'publish']);
     $router->post('/app-layout/{id}/unpublish', [AppLayoutController::class, 'unpublish']);
+    $router->post('/app-layout/{id}/set-default', [AppLayoutController::class, 'setDefault']);
+    $router->post('/app-layout/create-starter', [AppLayoutController::class, 'createStarter']);
 
     // App Layout Sections
     $router->post('/app-layout/{id}/sections/add', [AppLayoutController::class, 'addSection']);

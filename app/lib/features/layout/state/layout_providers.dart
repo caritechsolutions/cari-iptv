@@ -15,9 +15,22 @@ import '../../billing/billing_provider.dart';
 import '../../navigation/state/navigation_provider.dart';
 import '../../repositories.dart';
 
-/// Default published mobile layout (null → the app renders its built-in home).
+/// Layout linked to the mobile page of [pageType] in Pages & Nav, or null
+/// when the page has none (or isn't published).
+final pageLayoutProvider = FutureProvider.family<AppLayout?, String>((ref, pageType) async {
+  if (ref.watch(currentUserProvider) == null) return null;
+  final pages = await ref.watch(pagesProvider.future);
+  final page = pages.where((p) => p.pageType == pageType && p.layoutId != null).firstOrNull;
+  if (page == null) return null;
+  return ref.watch(layoutRepositoryProvider).layoutById(page.layoutId!);
+});
+
+/// Home: the layout linked to the Home page, else the platform default
+/// (the same rule as the web player); null → the app renders its built-in home.
 final homeLayoutProvider = FutureProvider<AppLayout?>((ref) async {
   if (ref.watch(currentUserProvider) == null) return null;
+  final linked = await ref.watch(pageLayoutProvider('home').future);
+  if (linked != null) return linked;
   return ref.watch(layoutRepositoryProvider).defaultLayout();
 });
 
@@ -118,9 +131,12 @@ class ManifestPoller extends Notifier<DateTime?> with WidgetsBindingObserver {
         case 'layouts':
           ref.invalidate(homeLayoutProvider);
           ref.invalidate(layoutByIdProvider);
+          ref.invalidate(pageLayoutProvider);
         case 'navigation':
           ref.invalidate(navigationProvider);
           ref.invalidate(pagesProvider);
+          ref.invalidate(pageLayoutProvider);
+          ref.invalidate(homeLayoutProvider);
         case 'channels':
           ref.invalidate(channelsProvider);
         case 'categories':

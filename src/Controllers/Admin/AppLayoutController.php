@@ -151,9 +151,46 @@ class AppLayoutController
 
         $result = $this->layoutService->publishLayout($id, $this->auth->id());
         if ($result) {
-            $this->sendJson(['success' => true, 'message' => 'Layout published and set as default']);
+            $this->sendJson(['success' => true, 'message' => 'Layout published']);
         } else {
             $this->sendJson(['success' => false, 'message' => 'Failed to publish layout']);
+        }
+    }
+
+    /**
+     * Make a published layout the platform default (AJAX)
+     */
+    public function setDefault(int $id): void
+    {
+        if (!Session::validateCsrf($_POST['_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+        $ok = $this->layoutService->setDefaultLayout($id, $this->auth->id());
+        $this->sendJson($ok
+            ? ['success' => true, 'message' => 'Layout is now the platform default']
+            : ['success' => false, 'message' => 'Only a published layout can be the default']);
+    }
+
+    /**
+     * Create a starter layout mirroring the built-in home (AJAX)
+     */
+    public function createStarter(): void
+    {
+        if (!Session::validateCsrf($_POST['_token'] ?? '')) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid request']);
+            return;
+        }
+        $platform = $_POST['platform'] ?? '';
+        if (!in_array($platform, ['web', 'mobile', 'tv', 'stb'], true)) {
+            $this->sendJson(['success' => false, 'message' => 'Invalid platform']);
+            return;
+        }
+        try {
+            $id = $this->layoutService->createStarterLayout($platform, $this->auth->id());
+            $this->sendJson(['success' => true, 'layout_id' => $id, 'message' => 'Starter layout created']);
+        } catch (\Throwable $e) {
+            $this->sendJson(['success' => false, 'message' => 'Failed: ' . $e->getMessage()]);
         }
     }
 
@@ -244,6 +281,7 @@ class AppLayoutController
             'appLayout' => $layout,
             'sections' => $sections,
             'sectionTypes' => $sectionTypes,
+            'categories' => $this->db->fetchAll("SELECT id, name, type FROM categories WHERE is_active = 1 ORDER BY type, name"),
             'user' => $this->auth->user(),
             'csrf' => Session::csrf(),
         ], 'admin');

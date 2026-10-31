@@ -115,6 +115,20 @@ class AppLayoutService
                     'show_count' => true,
                 ],
             ],
+            'channel_row' => [
+                'name' => 'Channel Row',
+                'description' => 'Horizontal rail of channels with logo and name (the "Live TV" row of the default home)',
+                'icon' => 'lucide-tv-minimal-play',
+                'category' => 'live',
+                'max_per_layout' => 5,
+                'supports_items' => true,
+                'default_settings' => [
+                    'source' => 'all',
+                    'max_items' => 20,
+                    'category_id' => null,
+                    'show_now_playing' => false,
+                ],
+            ],
             'channel_grid' => [
                 'name' => 'Channel Grid',
                 'description' => 'Featured channels in a grid layout',
@@ -394,34 +408,101 @@ class AppLayoutService
     }
 
     /**
-     * Publish a layout (set default for platform, archive previous)
+     * Publish a layout so pages can use it. It becomes the platform default
+     * only when the platform has none yet; use setDefaultLayout() to switch.
      */
     public function publishLayout(int $id, int $userId): bool
     {
         $layout = $this->getLayout($id);
         if (!$layout) return false;
 
+        $hasDefault = $this->db->fetch(
+            "SELECT id FROM app_layouts WHERE platform = ? AND is_default = 1 AND status = 'published' AND id <> ?",
+            [$layout['platform'], $id]
+        );
+
+        $this->db->update('app_layouts', [
+            'status' => 'published',
+            'is_default' => $hasDefault ? (int) $layout['is_default'] : 1,
+            'updated_by' => $userId,
+        ], 'id = ?', [$id]);
+
+        return true;
+    }
+
+    /**
+     * Make a published layout the platform default (the home layout used when
+     * the Home page has no layout of its own).
+     */
+    public function setDefaultLayout(int $id, int $userId): bool
+    {
+        $layout = $this->getLayout($id);
+        if (!$layout || $layout['status'] !== 'published') return false;
+
         $this->db->beginTransaction();
         try {
-            // Unset current default for this platform
             $this->db->execute(
                 "UPDATE app_layouts SET is_default = 0 WHERE platform = ? AND is_default = 1",
                 [$layout['platform']]
             );
-
-            // Publish this one and set as default
-            $this->db->update('app_layouts', [
-                'status' => 'published',
-                'is_default' => 1,
-                'updated_by' => $userId,
-            ], 'id = ?', [$id]);
-
+            $this->db->update('app_layouts', ['is_default' => 1, 'updated_by' => $userId], 'id = ?', [$id]);
             $this->db->commit();
             return true;
         } catch (\Exception $e) {
             $this->db->rollback();
             return false;
         }
+    }
+
+    /**
+     * Create a draft layout that reproduces the players' built-in home
+     * (hero, continue watching, latest movies, latest shows, live TV row),
+     * so customising starts from what the app already shows.
+     */
+    public function createStarterLayout(string $platform, int $userId): int
+    {
+        $layoutId = $this->createLayout([
+            'name' => ucfirst($platform) . ' Home',
+            'platform' => $platform,
+            'status' => 'draft',
+            'created_by' => $userId,
+            'updated_by' => $userId,
+        ]);
+
+        $heroId = $this->addSection($layoutId, [
+            'section_type' => 'hero_slideshow',
+            'title' => 'Featured',
+            'settings' => ['auto_rotate' => true, 'interval' => 6, 'height' => 'large', 'show_play_button' => true, 'show_info_button' => true],
+            'sort_order' => 0,
+        ]);
+        $featured = $this->db->fetchAll(
+            "SELECT id FROM movies WHERE status = 'published' AND is_featured = 1 ORDER BY updated_at DESC LIMIT 6"
+        );
+        if (!$featured) {
+            $featured = $this->db->fetchAll("SELECT id FROM movies WHERE status = 'published' ORDER BY created_at DESC LIMIT 6");
+        }
+        foreach ($featured as $i => $m) {
+            $this->addItem($heroId, ['content_type' => 'movie', 'content_id' => (int) $m['id'], 'sort_order' => $i]);
+        }
+
+        $this->addSection($layoutId, [
+            'section_type' => 'continue_watching', 'title' => 'Continue Watching',
+            'settings' => ['max_items' => 20, 'card_style' => 'backdrop', 'show_progress' => true], 'sort_order' => 1,
+        ]);
+        $this->addSection($layoutId, [
+            'section_type' => 'content_row', 'title' => 'Latest Movies',
+            'settings' => ['source' => 'latest', 'content_type' => 'movie', 'card_style' => 'poster', 'max_items' => 20], 'sort_order' => 2,
+        ]);
+        $this->addSection($layoutId, [
+            'section_type' => 'content_row', 'title' => 'Latest TV Shows',
+            'settings' => ['source' => 'latest', 'content_type' => 'series', 'card_style' => 'poster', 'max_items' => 20], 'sort_order' => 3,
+        ]);
+        $this->addSection($layoutId, [
+            'section_type' => 'channel_row', 'title' => 'Live TV',
+            'settings' => ['source' => 'all', 'max_items' => 20], 'sort_order' => 4,
+        ]);
+
+        return $layoutId;
     }
 
     /**
