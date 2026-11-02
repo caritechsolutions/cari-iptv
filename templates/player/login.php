@@ -72,6 +72,8 @@
                     </button>
                 </form>
 
+                <?php include __DIR__ . '/_social_signin.php'; ?>
+
                 <div class="login-footer">
                     Don't have an account? <a href="/register" class="form-link">Register</a>
                 </div>

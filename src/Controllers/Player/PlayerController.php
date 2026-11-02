@@ -24,6 +24,7 @@ class PlayerController
             // Use defaults
         }
 
+        $socialAuth = $this->socialAuthConfig();
         include BASE_PATH . '/templates/player/login.php';
     }
 
@@ -43,6 +44,7 @@ class PlayerController
             // Use defaults
         }
 
+        $socialAuth = $this->socialAuthConfig();
         include BASE_PATH . '/templates/player/register.php';
     }
 
@@ -155,5 +157,15 @@ class PlayerController
         header('Pragma: no-cache');
 
         include BASE_PATH . '/templates/player/app.php';
+    }
+
+    /** Which sign-in providers the operator enabled (Settings → Sign-in). */
+    private function socialAuthConfig(): array
+    {
+        try {
+            return (new \CariIPTV\Services\SocialAuthService())->publicConfig();
+        } catch (\Throwable $e) {
+            return ['google' => ['enabled' => false], 'apple' => ['enabled' => false]];
+        }
     }
 }

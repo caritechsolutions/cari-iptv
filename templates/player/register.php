@@ -168,6 +168,8 @@
                     </button>
                 </form>
 
+                <?php include __DIR__ . '/_social_signin.php'; ?>
+
                 <div class="login-footer">
                     Already have an account? <a href="/login" class="form-link">Sign in</a>
                 </div>
