@@ -227,7 +227,15 @@ class SubscriberAuthService
             return ['success' => false, 'error' => 'Invalid credentials'];
         }
 
-        if (!$subscriber['password'] || !password_verify($password, $subscriber['password'])) {
+        if (!$subscriber['password']) {
+            // Google / Apple account without a password
+            $providers = $this->db->fetchAll("SELECT provider FROM subscriber_identities WHERE subscriber_id = ?", [$subscriber['id']]);
+            $names = array_map(fn($r) => ucfirst($r['provider']), $providers);
+            return ['success' => false, 'error' => $names
+                ? 'This account signs in with ' . implode(' or ', $names) . '. Use that button, or reset your password to add one.'
+                : 'Invalid credentials'];
+        }
+        if (!password_verify($password, $subscriber['password'])) {
             return ['success' => false, 'error' => 'Invalid credentials'];
         }
 
@@ -241,6 +249,15 @@ class SubscriberAuthService
             ];
         }
 
+        return $this->issueSession($subscriber, $deviceInfo);
+    }
+
+    /**
+     * Create access + refresh tokens for an already-authenticated subscriber
+     * (password login and Google / Apple sign-in share this).
+     */
+    public function issueSession(array $subscriber, array $deviceInfo = []): array
+    {
         // Check max connections
         $activeTokens = $this->countActiveTokens($subscriber['id']);
         if ($activeTokens >= (int) $subscriber['max_connections']) {
@@ -727,6 +744,7 @@ class SubscriberAuthService
             'max_connections' => (int) $subscriber['max_connections'],
             'parental_pin' => $subscriber['parental_pin'],
             'adult_enabled' => (bool) ($subscriber['adult_enabled'] ?? false),
+            'has_password' => !empty($subscriber['password']),
         ];
     }
 
@@ -1017,8 +1035,19 @@ class SubscriberAuthService
             return ['success' => false, 'error' => 'Account not found', 'code' => 'NOT_FOUND'];
         }
 
-        if (empty($password) || empty($subscriber['password']) || !password_verify($password, $subscriber['password'])) {
-            return ['success' => false, 'error' => 'Incorrect password', 'code' => 'AUTH_FAILED'];
+        if (!empty($subscriber['password'])) {
+            if (empty($password) || !password_verify($password, $subscriber['password'])) {
+                return ['success' => false, 'error' => 'Incorrect password', 'code' => 'AUTH_FAILED'];
+            }
+        }
+        // No password on the account (Google / Apple only): the valid access
+        // token that reached this point is the proof of identity.
+
+        // Apple requires the sign-in to be revoked when the account is deleted
+        try {
+            (new SocialAuthService($this))->revokeAll($subscriberId);
+        } catch (\Throwable $e) {
+            error_log('[SubscriberAuth] social revoke failed: ' . $e->getMessage());
         }
 
         // Content the subscriber rated (recalculate community ratings afterwards)
@@ -1029,6 +1058,7 @@ class SubscriberAuthService
 
         $hardDeleteTables = [
             'subscriber_tokens',
+            'subscriber_identities',
             'subscriber_password_resets',
             'subscriber_watch_history',
             'subscriber_watchlist',

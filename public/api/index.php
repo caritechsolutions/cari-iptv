@@ -95,6 +95,7 @@ $router->group(['prefix' => 'api/v1'], function ($router) {
     $router->get('/auth/verify-email/{token}', [AuthController::class, 'verifyEmail']);
     $router->post('/auth/resend-verification', [AuthController::class, 'resendVerification']);
     $router->post('/auth/login', [AuthController::class, 'login']);
+    $router->post('/auth/social', [AuthController::class, 'social']);
     $router->post('/auth/refresh', [AuthController::class, 'refresh']);
     $router->post('/auth/logout', [AuthController::class, 'logout']);
     $router->post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);

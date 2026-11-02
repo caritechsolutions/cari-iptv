@@ -146,6 +146,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['auth']], function ($route
     $router->post('/settings/subtitles', [SettingsController::class, 'updateSubtitles']);
     $router->post('/settings/ads', [SettingsController::class, 'updateAds']);
     $router->post('/settings/app', [SettingsController::class, 'updateApp']);
+    $router->post('/settings/signin', [SettingsController::class, 'updateSignin']);
     $router->post('/settings/test-opensubtitles', [SettingsController::class, 'testOpenSubtitles']);
 
     // Channel Management

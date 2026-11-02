@@ -271,3 +271,16 @@ No migration. Part of the IPTV backend (root `update.sh`). Not deployed. Until a
 **Verified.** `php -l` on all touched files; ImageService run on a 1200×1800 JPEG produced the three variants at the expected sizes; the controller was driven through the real Session/Response classes for success (episode, new season, movie backdrop), bad CSRF, missing file, wrong type and unknown entity.
 
 **Deploy.** Standard `update.sh --backup --branch=...`; no migration, nothing to configure.
+
+## 12. Google / Apple sign-in (Nov 2026)
+
+- `POST /api/v1/auth/social` — body `{provider: "google"|"apple", id_token, authorization_code?, first_name?, last_name?, device_name?, device_type?}`.
+  Verifies the token server-side (JWKS, RS256), finds the subscriber by provider id, else links by verified email, else creates
+  an account (no password, email verified). Returns the same payload as `/auth/login`. Errors: `SOCIAL_AUTH_FAILED` (401),
+  `SOCIAL_NO_EMAIL` (401), `ACCOUNT_INACTIVE` (403).
+- `GET /api/v1/app/config/{platform}` now carries `auth: {google: {enabled, client_id}, apple: {enabled, services_id}}`.
+  The app passes `client_id` as the Google `serverClientId`; buttons show only when `enabled`.
+- `user.has_password` (login, social, me): false for social-only accounts — the app skips the password prompt on
+  account deletion and password login tells such users to use their provider button.
+- Settings group `auth` (Admin → Settings → Sign-in). Table `subscriber_identities` (migration 040).
+- Apple: with `authorization_code` the backend exchanges it for a refresh token and revokes it on account deletion.

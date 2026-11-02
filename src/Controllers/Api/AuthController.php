@@ -129,6 +129,50 @@ class AuthController extends BaseApiController
     }
 
     /**
+     * POST /api/v1/auth/social
+     * Body: { provider: google|apple, id_token, authorization_code?, first_name?, last_name?, device_name?, device_type? }
+     * Verifies the provider token server-side and returns the same session as /auth/login.
+     */
+    public function social(): void
+    {
+        $input = $this->getJsonInput();
+        $provider = strtolower(trim($input['provider'] ?? ''));
+        $idToken = trim($input['id_token'] ?? '');
+
+        if (!in_array($provider, ['google', 'apple'], true) || $idToken === '') {
+            $this->error('provider (google|apple) and id_token are required', 400, 'VALIDATION_ERROR');
+            return;
+        }
+
+        $social = new \CariIPTV\Services\SocialAuthService($this->auth);
+        $result = $social->signIn($provider, $idToken, [
+            'authorization_code' => $input['authorization_code'] ?? null,
+            'first_name' => $input['first_name'] ?? null,
+            'last_name' => $input['last_name'] ?? null,
+        ], [
+            'device_name' => $input['device_name'] ?? null,
+            'device_type' => $input['device_type'] ?? 'web',
+        ]);
+
+        if (!$result['success']) {
+            $code = $result['code'] ?? 'AUTH_FAILED';
+            $this->error($result['error'], $code === 'ACCOUNT_INACTIVE' ? 403 : 401, $code);
+            return;
+        }
+
+        header('Cache-Control: no-store');
+        $this->json([
+            'data' => [
+                'access_token' => $result['access_token'],
+                'refresh_token' => $result['refresh_token'],
+                'expires_in' => $result['expires_in'],
+                'token_type' => $result['token_type'],
+                'user' => $result['user'],
+            ],
+        ], 200);
+    }
+
+    /**
      * POST /api/v1/auth/refresh
      * Body: { refresh_token }
      */
@@ -612,12 +656,9 @@ class AuthController extends BaseApiController
         $input = $this->getJsonInput();
         $password = $input['password'] ?? '';
 
-        if (empty($password)) {
-            $this->error('Password is required to delete your account', 400, 'VALIDATION_ERROR');
-            return;
-        }
-
-        $result = $this->auth->deleteAccount($subscriberId, $password);
+        // Accounts created with Google / Apple have no password; the service
+        // accepts the authenticated session as proof for those.
+        $result = $this->auth->deleteAccount($subscriberId, (string) $password);
 
         if (!$result['success']) {
             $code = $result['code'] ?? 'DELETE_FAILED';

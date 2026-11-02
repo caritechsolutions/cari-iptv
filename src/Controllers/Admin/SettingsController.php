@@ -629,6 +629,36 @@ class SettingsController
      * Update Mobile App settings (feature switches read by the app via
      * GET /api/v1/app/config/{platform} → features)
      */
+    /**
+     * Sign-in providers (Google / Apple). Read by SocialAuthService and
+     * exposed (public parts only) in GET /api/v1/app/config/{platform} → auth.
+     */
+    public function updateSignin(): void
+    {
+        if (!Session::validateCsrf($_POST['_token'] ?? '')) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        $this->settings->setMany([
+            'google_enabled' => isset($_POST['google_enabled']) ? '1' : '0',
+            'google_web_client_id' => trim($_POST['google_web_client_id'] ?? ''),
+            'google_extra_client_ids' => trim($_POST['google_extra_client_ids'] ?? ''),
+            'apple_enabled' => isset($_POST['apple_enabled']) ? '1' : '0',
+            'apple_team_id' => trim($_POST['apple_team_id'] ?? ''),
+            'apple_key_id' => trim($_POST['apple_key_id'] ?? ''),
+            'apple_services_id' => trim($_POST['apple_services_id'] ?? ''),
+            'apple_bundle_id' => trim($_POST['apple_bundle_id'] ?? ''),
+            'apple_private_key' => trim(str_replace("\r", '', $_POST['apple_private_key'] ?? '')),
+        ], 'auth');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'auth']);
+
+        Session::flash('success', 'Sign-in settings updated successfully.');
+        Response::redirect('/admin/settings');
+    }
+
     public function updateApp(): void
     {
         $token = $_POST['_token'] ?? '';

@@ -130,6 +130,8 @@ class AppController extends BaseApiController
             'features' => [
                 'billing' => (bool) (int) $settings->get('mobile_billing_enabled', 0, 'app'),
             ],
+            // Sign-in providers this operator has configured (Settings → Sign-in)
+            'auth' => (new \CariIPTV\Services\SocialAuthService())->publicConfig(),
         ];
 
         header('Cache-Control: public, max-age=300, stale-while-revalidate=600');

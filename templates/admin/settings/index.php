@@ -26,6 +26,9 @@
     <button class="settings-tab" data-tab="app">
         <i class="lucide-smartphone"></i> Mobile App
     </button>
+    <button class="settings-tab" data-tab="signin">
+        <i class="lucide-key-round"></i> Sign-in
+    </button>
 </div>
 
 <!-- General Tab -->
@@ -866,6 +869,77 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="lucide-save"></i> Save Mobile App Settings
                     </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php $authS = $settings['auth'] ?? []; ?>
+<div class="settings-tab-content" id="tab-signin">
+    <div class="settings-grid">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="lucide-key-round"></i> Google &amp; Apple sign-in</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">Lets viewers create an account and sign in with Google or Apple in the app and the web player. Tokens are verified on this server against the provider; accounts are matched by verified email, so an existing email/password account simply gains a second way in. Each operator uses their own Google Cloud project and Apple Developer account &mdash; nothing is shared between installations.</p>
+
+                <form action="/admin/settings/signin" method="POST">
+                    <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+                    <h4 style="margin:1rem 0 .5rem;">Google</h4>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="google_enabled" value="1" <?= !empty($authS['google_enabled']) ? 'checked' : '' ?>>
+                            <span class="checkbox-text"><strong>Enable Sign in with Google</strong><small>Shows the Google button in the app and web player once a Web client ID is saved.</small></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="google_web_client_id">Web client ID</label>
+                        <input type="text" id="google_web_client_id" name="google_web_client_id" class="form-input" value="<?= htmlspecialchars($authS['google_web_client_id'] ?? '') ?>" placeholder="1234567890-abc.apps.googleusercontent.com">
+                        <small class="form-hint">Google Cloud Console &rarr; APIs &amp; Services &rarr; Credentials &rarr; OAuth client ID, type <strong>Web application</strong>. Add the web player address under Authorised JavaScript origins. The Android app also uses this ID as its server client ID; for Android to work, create a second OAuth client of type <strong>Android</strong> in the same project with the app's package name and signing SHA-1 (no value to paste here).</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="google_extra_client_ids">Additional accepted client IDs (optional)</label>
+                        <input type="text" id="google_extra_client_ids" name="google_extra_client_ids" class="form-input" value="<?= htmlspecialchars($authS['google_extra_client_ids'] ?? '') ?>" placeholder="iOS client ID, comma separated">
+                        <small class="form-hint">Only needed when a client signs in with a different client ID (e.g. the iOS OAuth client).</small>
+                    </div>
+
+                    <h4 style="margin:1.5rem 0 .5rem;">Apple</h4>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="apple_enabled" value="1" <?= !empty($authS['apple_enabled']) ? 'checked' : '' ?>>
+                            <span class="checkbox-text"><strong>Enable Sign in with Apple</strong><small>Requires an Apple Developer account. Apple requires this whenever the iOS app offers any other third-party sign-in.</small></span>
+                        </label>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="apple_team_id">Team ID</label>
+                            <input type="text" id="apple_team_id" name="apple_team_id" class="form-input" value="<?= htmlspecialchars($authS['apple_team_id'] ?? '') ?>" placeholder="ABCDE12345">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="apple_key_id">Key ID</label>
+                            <input type="text" id="apple_key_id" name="apple_key_id" class="form-input" value="<?= htmlspecialchars($authS['apple_key_id'] ?? '') ?>" placeholder="XYZ987654">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="apple_services_id">Services ID (web)</label>
+                            <input type="text" id="apple_services_id" name="apple_services_id" class="form-input" value="<?= htmlspecialchars($authS['apple_services_id'] ?? '') ?>" placeholder="com.example.web">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="apple_bundle_id">App bundle ID (iOS)</label>
+                            <input type="text" id="apple_bundle_id" name="apple_bundle_id" class="form-input" value="<?= htmlspecialchars($authS['apple_bundle_id'] ?? '') ?>" placeholder="com.example.app">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="apple_private_key">Private key (.p8 contents)</label>
+                        <textarea id="apple_private_key" name="apple_private_key" class="form-input" rows="5" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"><?= htmlspecialchars($authS['apple_private_key'] ?? '') ?></textarea>
+                        <small class="form-hint">Apple Developer &rarr; Certificates, Identifiers &amp; Profiles &rarr; Keys &rarr; key with "Sign in with Apple" enabled. Used to revoke sign-ins when a viewer deletes their account, as Apple requires.</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary"><i class="lucide-save"></i> Save Sign-in Settings</button>
                 </form>
             </div>
         </div>
