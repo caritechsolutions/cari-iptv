@@ -82,7 +82,17 @@ jobs:
       - name: Analyze and test
         run: |
           flutter analyze
-          flutter test
+          # Failures are surfaced as a check annotation too, so they can be read
+          # through the API without the raw job log.
+          set +e
+          flutter test --reporter expanded 2>&1 | tee test.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" != "0" ]; then
+            excerpt=$(grep -nE "\[E\]|Expected:|Actual:|Which:|Exception|Error|══╡|test/.*\.dart" test.log | grep -v "^.*00:.*All tests passed" | head -60 | cut -c1-300)
+            echo "::error title=flutter test failed::$(printf '%s' "$excerpt" | sed ':a;N;$!ba;s/\n/%0A/g' | cut -c1-3900)"
+            exit "$rc"
+          fi
 
       - name: Build dev debug APK
         run: ./tool/build_brand.sh "$BRAND" apk dev --debug
