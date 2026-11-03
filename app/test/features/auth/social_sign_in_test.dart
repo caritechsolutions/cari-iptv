@@ -36,6 +36,14 @@ class FakeSocial implements SocialSignIn {
 
 class FakeCred extends Fake implements SocialCredential {}
 
+/// Explicit pumps: the auth screens keep indefinite animations alive, so
+/// pumpAndSettle never returns (same convention as the other widget tests).
+Future<void> settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
 void main() {
   setUpAll(() => registerFallbackValue(FakeCred()));
 
@@ -53,7 +61,7 @@ void main() {
     final repos = TestRepos();
     when(() => repos.auth.providers()).thenAnswer((_) async => SignInProviders.none);
     await tester.pumpWidget(harness(repos, FakeSocial()));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.byKey(const Key('google-sign-in')), findsNothing);
     expect(find.text('or continue with'), findsNothing);
   });
@@ -68,11 +76,11 @@ void main() {
         ));
 
     await tester.pumpWidget(harness(repos, social));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.byKey(const Key('google-sign-in')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('google-sign-in')));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(social.askedClientId, 'web-id.apps');
     final sent = verify(() => repos.auth.social(captureAny(), deviceName: any(named: 'deviceName'))).captured.single as SocialCredential;
@@ -84,9 +92,9 @@ void main() {
     final repos = TestRepos();
     when(() => repos.auth.providers()).thenAnswer((_) async => googleOn);
     await tester.pumpWidget(harness(repos, FakeSocial(cancel: true)));
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.byKey(const Key('google-sign-in')));
-    await tester.pumpAndSettle();
+    await settle(tester);
     verifyNever(() => repos.auth.social(any(), deviceName: any(named: 'deviceName')));
     expect(find.byKey(const Key('google-sign-in')), findsOneWidget, reason: 'still on the login screen, button re-enabled');
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('google-sign-in'))).enabled, isTrue);
