@@ -89,9 +89,16 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" != "0" ]; then
-            # Drop stack-frame lines; keep the test names, expectations and messages.
-            excerpt=$(grep -vE "^\s*(package:|dart:|file:|#[0-9]+ |\(elided)" test.log | grep -vE "^\s*$" | head -80 | cut -c1-240)
-            echo "::error title=flutter test failed::$(printf '%s' "$excerpt" | sed ':a;N;$!ba;s/\n/%0A/g' | cut -c1-3900)"
+            # Keep failed tests and their assertion text; drop stack frames,
+            # hit-test warnings and widget dumps. Several annotations, 3800 chars each.
+            grep -vE "^\s*(package:|dart:|file:|#[0-9]+ |\(elided|<asynchronous)" test.log \
+              | grep -vE "Warning: A call to tap|derived an Offset|Maybe the widget|The finder corresponds|The hit test result|To silence this|To make this warning|^\s*[A-Za-z_]+\(state:|^\s*\]\"|CARI_SMOKE|Play update check|^\s*$" \
+              | grep -E "\[E\]|TestFailure|Expected|Actual|Which:|Exception|Error|No matching|description was|Test failed|thrown|══" \
+              | cut -c1-240 > failures.txt
+            split -b 3800 -d failures.txt chunk_
+            for f in $(ls chunk_* | head -8); do
+              echo "::error title=flutter test failed ($f)::$(sed ':a;N;$!ba;s/\n/%0A/g' "$f")"
+            done
             exit "$rc"
           fi
 
