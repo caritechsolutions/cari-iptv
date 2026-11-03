@@ -2,7 +2,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/util/json.dart';
 import '../../../models/auth_tokens.dart';
 import '../../../models/entitlements.dart';
+import '../../../models/sign_in_providers.dart';
 import '../../../models/user.dart';
+import 'social_sign_in.dart';
 
 class LoginResult {
   const LoginResult(this.tokens, this.user);
@@ -19,6 +21,30 @@ class AuthRepository {
     final env = await _api.post('/auth/login', auth: false, body: {
       'identity': identity,
       'password': password,
+      'device_type': 'mobile',
+      'device_name': ?deviceName,
+    });
+    final data = env.dataAsJson;
+    final tokens = AuthTokens.fromLogin(data);
+    await _api.tokenStore.write(tokens);
+    return LoginResult(tokens, User.fromJson(asJson(data['user'])));
+  }
+
+  /// Sign-in buttons the operator enabled; public, read before sign-in.
+  Future<SignInProviders> providers() async {
+    final env = await _api.get('/auth/providers', auth: false, cacheScope: 'navigation');
+    return SignInProviders.fromJson(env.envelope.dataAsJson);
+  }
+
+  /// Google / Apple: the backend verifies the token and returns the same
+  /// session as [login], creating or linking the account as needed.
+  Future<LoginResult> social(SocialCredential cred, {String? deviceName}) async {
+    final env = await _api.post('/auth/social', auth: false, body: {
+      'provider': cred.provider,
+      'id_token': cred.idToken,
+      'authorization_code': ?cred.authorizationCode,
+      'first_name': ?cred.firstName,
+      'last_name': ?cred.lastName,
       'device_type': 'mobile',
       'device_name': ?deviceName,
     });
@@ -87,8 +113,8 @@ class AuthRepository {
     });
   }
 
-  Future<void> deleteAccount(String password) async {
-    await _api.post('/auth/delete-account', body: {'password': password});
+  Future<void> deleteAccount(String? password) async {
+    await _api.post('/auth/delete-account', body: {'password': password ?? ''});
     await _api.tokenStore.clear();
   }
 

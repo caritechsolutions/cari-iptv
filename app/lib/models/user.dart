@@ -12,6 +12,7 @@ class User {
     required this.maxConnections,
     required this.parentalPin,
     required this.adultEnabled,
+    this.hasPassword = true,
   });
 
   final int id;
@@ -25,6 +26,10 @@ class User {
   /// Account-level PIN (4 digits). The API returns it in cleartext.
   final String? parentalPin;
   final bool adultEnabled;
+
+  /// False for accounts created with Google / Apple that never set a
+  /// password (`has_password`); such accounts delete without a password prompt.
+  final bool hasPassword;
 
   String get displayName {
     final full = '$firstName $lastName'.trim();
@@ -41,6 +46,7 @@ class User {
         maxConnections: asInt(j['max_connections'], 1),
         parentalPin: asStringOrNull(j['parental_pin']),
         adultEnabled: asBool(j['adult_enabled']),
+        hasPassword: j['has_password'] == null ? true : asBool(j['has_password']),
       );
 
   Json toJson() => {
@@ -53,6 +59,7 @@ class User {
         'max_connections': maxConnections,
         'parental_pin': parentalPin,
         'adult_enabled': adultEnabled,
+        'has_password': hasPassword,
       };
 
   User copyWith({bool? adultEnabled, String? parentalPin}) => User(
@@ -65,5 +72,6 @@ class User {
         maxConnections: maxConnections,
         parentalPin: parentalPin ?? this.parentalPin,
         adultEnabled: adultEnabled ?? this.adultEnabled,
+        hasPassword: hasPassword,
       );
 }

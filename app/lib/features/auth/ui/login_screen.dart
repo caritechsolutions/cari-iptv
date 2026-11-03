@@ -8,6 +8,7 @@ import '../../../core/widgets/async_view.dart';
 import '../../repositories.dart';
 import '../state/auth_notifier.dart';
 import 'auth_scaffold.dart';
+import 'social_buttons.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -149,6 +150,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: _busy
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Text('Sign In'),
+              ),
+              SocialSignInButtons(
+                onBusy: (b) => setState(() => _busy = b),
+                onError: (m) => setState(() => _error = m),
               ),
               const SizedBox(height: 16),
               // Wrap, not Row: survives large system fonts and narrow phones.

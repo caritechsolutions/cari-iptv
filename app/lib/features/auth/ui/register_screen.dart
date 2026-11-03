@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/widgets/async_view.dart';
 import '../../repositories.dart';
 import 'auth_scaffold.dart';
+import 'social_buttons.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -173,6 +174,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               child: _busy
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Text('Create Account'),
+            ),
+            SocialSignInButtons(
+              onBusy: (b) => setState(() => _busy = b),
+              onError: (m) => setState(() => _error = m),
             ),
           ],
         ),

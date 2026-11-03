@@ -129,6 +129,16 @@ class AuthController extends BaseApiController
     }
 
     /**
+     * GET /api/v1/auth/providers — which sign-in buttons to show (public,
+     * the app reads it before anyone is signed in)
+     */
+    public function providers(): void
+    {
+        header('Cache-Control: public, max-age=300');
+        $this->json(['data' => (new \CariIPTV\Services\SocialAuthService($this->auth))->publicConfig()], 200);
+    }
+
+    /**
      * POST /api/v1/auth/social
      * Body: { provider: google|apple, id_token, authorization_code?, first_name?, last_name?, device_name?, device_type? }
      * Verifies the provider token server-side and returns the same session as /auth/login.

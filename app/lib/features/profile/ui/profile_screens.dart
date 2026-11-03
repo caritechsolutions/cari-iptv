@@ -292,6 +292,19 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (confirm != true || !context.mounted) return;
 
+    // Accounts created with Google / Apple have no password to confirm with;
+    // the signed-in session is the proof the backend accepts.
+    final auth = ref.read(authProvider);
+    final needsPassword = auth is! AuthSignedIn || auth.user.hasPassword;
+    if (!needsPassword) {
+      try {
+        await ref.read(authProvider.notifier).deleteAccount(null);
+      } catch (e) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(describeError(e))));
+      }
+      return;
+    }
+
     final controller = TextEditingController();
     final password = await showDialog<String>(
       context: context,

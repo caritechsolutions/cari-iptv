@@ -7,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/providers.dart';
 import '../../../models/entitlements.dart';
+import '../../../models/sign_in_providers.dart';
 import '../../../models/user.dart';
 import '../../repositories.dart';
+import '../data/social_sign_in.dart';
 
 /// Session state. `restoring` while the stored session is checked at start.
 sealed class AuthState {
@@ -100,6 +102,21 @@ class AuthNotifier extends Notifier<AuthState> {
     ref.invalidate(entitlementsProvider);
   }
 
+  /// Google: the plugin picks the account, the backend verifies the token.
+  Future<void> loginWithGoogle(String serverClientId) async {
+    final cred = await ref.read(socialSignInProvider).google(serverClientId);
+    final result = await ref.read(authRepositoryProvider).social(cred, deviceName: await _deviceName());
+    state = AuthSignedIn(result.user);
+    ref.invalidate(entitlementsProvider);
+  }
+
+  Future<void> loginWithApple() async {
+    final cred = await ref.read(socialSignInProvider).apple();
+    final result = await ref.read(authRepositoryProvider).social(cred, deviceName: await _deviceName());
+    state = AuthSignedIn(result.user);
+    ref.invalidate(entitlementsProvider);
+  }
+
   Future<void> logout() async {
     await ref.read(authRepositoryProvider).logout();
     await ref.read(cacheStoreProvider).invalidateScope('user');
@@ -123,7 +140,7 @@ class AuthNotifier extends Notifier<AuthState> {
     ref.invalidate(entitlementsProvider);
   }
 
-  Future<void> deleteAccount(String password) async {
+  Future<void> deleteAccount(String? password) async {
     await ref.read(authRepositoryProvider).deleteAccount(password);
     await ref.read(cacheStoreProvider).clearAll();
     state = const AuthSignedOut(message: 'Your account has been deleted.');
@@ -161,5 +178,15 @@ final entitlementsProvider = FutureProvider<Entitlements>((ref) async {
   } on ApiException catch (e) {
     if (e.isNetwork) return Entitlements.empty;
     rethrow;
+  }
+});
+
+/// Sign-in buttons to offer (public endpoint; none on any failure so the
+/// password form always works).
+final signInProvidersProvider = FutureProvider<SignInProviders>((ref) async {
+  try {
+    return await ref.watch(authRepositoryProvider).providers();
+  } catch (_) {
+    return SignInProviders.none;
   }
 });

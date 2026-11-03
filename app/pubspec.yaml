@@ -38,6 +38,10 @@ dependencies:
   shimmer: ^4.0.0
   in_app_update: ^5.0.0
 
+  # Google / Apple sign-in (buttons appear only when the backend enables them)
+  google_sign_in: ^7.2.0
+  sign_in_with_apple: ^7.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
