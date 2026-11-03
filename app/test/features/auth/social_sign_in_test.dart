@@ -11,6 +11,7 @@ import 'package:cari_tv/models/user.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../support/test_harness.dart';
@@ -54,7 +55,8 @@ void main() {
           ...testOverrides(auth: const AuthSignedOut(), repos: repos),
           socialSignInProvider.overrideWithValue(social),
         ],
-        child: const MaterialApp(home: LoginScreen()),
+        // AuthScaffold asks the router whether it can pop, so a GoRouter is required.
+        child: MaterialApp.router(routerConfig: GoRouter(routes: [GoRoute(path: '/', builder: (_, _) => const LoginScreen())])),
       );
 
   testWidgets('no providers enabled → no social buttons', (tester) async {
