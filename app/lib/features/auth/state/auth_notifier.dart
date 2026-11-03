@@ -146,7 +146,12 @@ class AuthNotifier extends Notifier<AuthState> {
     state = const AuthSignedOut(message: 'Your account has been deleted.');
   }
 
-  Future<String?> _deviceName() async {
+  /// Device label for the sessions list. Time-boxed: on a platform where the
+  /// device_info channel never answers (tests, some TV boxes) sign-in must
+  /// not stall behind it.
+  Future<String?> _deviceName() => _lookupDeviceName().timeout(const Duration(seconds: 1), onTimeout: () => 'Mobile app');
+
+  Future<String?> _lookupDeviceName() async {
     try {
       final info = DeviceInfoPlugin();
       if (defaultTargetPlatform == TargetPlatform.android) {
