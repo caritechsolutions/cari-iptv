@@ -86,8 +86,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('google-sign-in')));
     await settle(tester);
+    await tester.pump(const Duration(seconds: 1));
 
     expect(social.askedClientId, 'web-id.apps');
+    // Any error the screen rendered explains a missing /auth/social call.
+    final shown = tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).whereType<String>().join(' | ');
+    expect(shown.toLowerCase().contains('error') || shown.contains('Exception'), isFalse, reason: 'screen showed an error: $shown');
     final sent = verify(() => repos.auth.social(captureAny(), deviceName: any(named: 'deviceName'))).captured.single as SocialCredential;
     expect(sent.idToken, 'tok-123');
     expect(sent.provider, 'google');
