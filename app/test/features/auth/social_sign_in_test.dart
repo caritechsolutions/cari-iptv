@@ -81,6 +81,9 @@ void main() {
     await settle(tester);
     expect(find.byKey(const Key('google-sign-in')), findsOneWidget);
 
+    // The button sits below the form, past the 600 px test viewport.
+    await tester.ensureVisible(find.byKey(const Key('google-sign-in')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('google-sign-in')));
     await settle(tester);
 
@@ -95,6 +98,8 @@ void main() {
     when(() => repos.auth.providers()).thenAnswer((_) async => googleOn);
     await tester.pumpWidget(harness(repos, FakeSocial(cancel: true)));
     await settle(tester);
+    await tester.ensureVisible(find.byKey(const Key('google-sign-in')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('google-sign-in')));
     await settle(tester);
     verifyNever(() => repos.auth.social(any(), deviceName: any(named: 'deviceName')));
