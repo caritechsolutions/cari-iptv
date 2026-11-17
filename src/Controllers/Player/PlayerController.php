@@ -97,10 +97,19 @@ class PlayerController
     /**
      * Serve the public privacy policy page
      */
-    public function privacy(): void
+    public function privacy(string $which = 'privacy'): void
     {
         [$siteName, $siteLogo] = $this->siteBranding();
+        $legal = new \CariIPTV\Services\LegalService();
+        $legalVars = $legal->variables();
+        $legalHtml = $legal->html($which);
         include BASE_PATH . '/templates/player/privacy.php';
+    }
+
+    /** Serve the public terms of service page */
+    public function terms(): void
+    {
+        $this->privacy('terms');
     }
 
     /**

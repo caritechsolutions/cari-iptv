@@ -11,7 +11,7 @@
   "BACKGROUND_COLOR": "#101014",
   "SURFACE_COLOR": "#1C1C22",
   "PRIVACY_URL": "https://freetvapp.freetv.ng/privacy",
-  "TERMS_URL": "https://freetvapp.freetv.ng/privacy#terms",
+  "TERMS_URL": "https://freetvapp.freetv.ng/terms",
   "DELETE_ACCOUNT_URL": "https://freetvapp.freetv.ng/delete-account",
   "PLATFORM_TAG_PROD": "mobile",
   "CLEARTEXT_HOSTS": "",

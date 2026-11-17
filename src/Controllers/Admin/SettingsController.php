@@ -659,6 +659,33 @@ class SettingsController
         Response::redirect('/admin/settings');
     }
 
+    /**
+     * Privacy Policy / Terms text and the operator details used in them.
+     * Served at /privacy and /terms on the web player (LegalService).
+     */
+    public function updateLegal(): void
+    {
+        if (!Session::validateCsrf($_POST['_token'] ?? '')) {
+            Session::flash('error', 'Invalid request. Please try again.');
+            Response::redirect('/admin/settings');
+            return;
+        }
+
+        $this->settings->setMany([
+            'company_name' => trim($_POST['company_name'] ?? ''),
+            'contact_email' => trim($_POST['contact_email'] ?? ''),
+            'country' => trim($_POST['country'] ?? ''),
+            'updated_at' => trim($_POST['updated_at'] ?? ''),
+            'privacy_text' => trim(str_replace("\r", '', $_POST['privacy_text'] ?? '')),
+            'terms_text' => trim(str_replace("\r", '', $_POST['terms_text'] ?? '')),
+        ], 'legal');
+
+        $this->auth->logActivity($this->auth->id(), 'settings_update', 'settings', null, null, null, ['group' => 'legal']);
+
+        Session::flash('success', 'Legal pages updated.');
+        Response::redirect('/admin/settings');
+    }
+
     public function updateApp(): void
     {
         $token = $_POST['_token'] ?? '';

@@ -29,6 +29,9 @@
     <button class="settings-tab" data-tab="signin">
         <i class="lucide-key-round"></i> Sign-in
     </button>
+    <button class="settings-tab" data-tab="legal">
+        <i class="lucide-scale"></i> Legal
+    </button>
 </div>
 
 <!-- General Tab -->
@@ -870,6 +873,80 @@
                         <i class="lucide-save"></i> Save Mobile App Settings
                     </button>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php
+$legalS = $settings['legal'] ?? [];
+$legalSvc = new \CariIPTV\Services\LegalService();
+$legalVars = $legalSvc->variables();
+$siteUrl = rtrim((string) ($settings['general']['site_url'] ?? ''), '/');
+?>
+<div class="settings-tab-content" id="tab-legal">
+    <div class="settings-grid">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="lucide-scale"></i> Privacy Policy &amp; Terms of Service</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">Published on the web player at
+                    <a href="<?= htmlspecialchars($siteUrl) ?>/privacy" target="_blank"><?= htmlspecialchars($siteUrl ?: '') ?>/privacy</a> and
+                    <a href="<?= htmlspecialchars($siteUrl) ?>/terms" target="_blank"><?= htmlspecialchars($siteUrl ?: '') ?>/terms</a>.
+                    The mobile apps, the Google sign-in consent screen and the app-store listings all link to these pages. Changes are live as soon as you save &mdash; no app update needed.
+                    Leave a box empty to publish the built-in default text (shown greyed below).</p>
+
+                <form action="/admin/settings/legal" method="POST">
+                    <input type="hidden" name="_token" value="<?= $csrf ?>">
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="legal_company_name">Legal company name</label>
+                            <input type="text" id="legal_company_name" name="company_name" class="form-input" value="<?= htmlspecialchars($legalS['company_name'] ?? '') ?>" placeholder="<?= htmlspecialchars($legalVars['site']) ?> Ltd">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="legal_contact_email">Privacy contact email</label>
+                            <input type="email" id="legal_contact_email" name="contact_email" class="form-input" value="<?= htmlspecialchars($legalS['contact_email'] ?? '') ?>" placeholder="<?= htmlspecialchars($legalVars['email']) ?>">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="legal_country">Country / governing law</label>
+                            <input type="text" id="legal_country" name="country" class="form-input" value="<?= htmlspecialchars($legalS['country'] ?? '') ?>" placeholder="Barbados">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label class="form-label" for="legal_updated_at">"Last updated" date shown on the pages</label>
+                            <input type="text" id="legal_updated_at" name="updated_at" class="form-input" value="<?= htmlspecialchars($legalS['updated_at'] ?? '') ?>" placeholder="<?= htmlspecialchars(date('j F Y')) ?>">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="privacy_text">Privacy Policy</label>
+                        <textarea id="privacy_text" name="privacy_text" class="form-input" rows="18" style="font-family: Consolas, monospace; font-size: 0.85rem;" placeholder="<?= htmlspecialchars(\CariIPTV\Services\LegalService::DEFAULT_PRIVACY) ?>"><?= htmlspecialchars($legalS['privacy_text'] ?? '') ?></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="terms_text">Terms of Service</label>
+                        <textarea id="terms_text" name="terms_text" class="form-input" rows="18" style="font-family: Consolas, monospace; font-size: 0.85rem;" placeholder="<?= htmlspecialchars(\CariIPTV\Services\LegalService::DEFAULT_TERMS) ?>"><?= htmlspecialchars($legalS['terms_text'] ?? '') ?></textarea>
+                    </div>
+                    <small class="form-hint" style="display:block; margin-bottom: 1rem;">
+                        Formatting: a line starting with <code>#</code> is a heading, a blank line starts a new paragraph, lines starting with <code>-</code> make a list, <code>**bold**</code> for bold.
+                        Placeholders <code>[[company]]</code>, <code>[[site]]</code>, <code>[[email]]</code>, <code>[[country]]</code> and <code>[[date]]</code> are filled from the fields above. HTML lines are passed through unchanged.
+                        Click <strong>Load default</strong> to copy the built-in text into the box and edit from there.
+                    </small>
+                    <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+                        <button type="submit" class="btn btn-primary"><i class="lucide-save"></i> Save Legal Pages</button>
+                        <button type="button" class="btn btn-secondary" onclick="loadLegalDefault('privacy_text')">Load default privacy text</button>
+                        <button type="button" class="btn btn-secondary" onclick="loadLegalDefault('terms_text')">Load default terms text</button>
+                    </div>
+                </form>
+                <script>
+                function loadLegalDefault(id) {
+                    const el = document.getElementById(id);
+                    if (el.value.trim() !== '' && !confirm('Replace the current text with the default?')) return;
+                    el.value = el.placeholder;
+                }
+                </script>
             </div>
         </div>
     </div>

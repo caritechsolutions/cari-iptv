@@ -9,7 +9,7 @@
   "BACKGROUND_COLOR": "#08131A",
   "SURFACE_COLOR": "#12222B",
   "PRIVACY_URL": "https://tv.islandtv.example/privacy",
-  "TERMS_URL": "https://tv.islandtv.example/privacy#terms",
+  "TERMS_URL": "https://tv.islandtv.example/terms",
   "DELETE_ACCOUNT_URL": "https://tv.islandtv.example/delete-account",
   "PLATFORM_TAG_PROD": "mobile",
   "CLEARTEXT_HOSTS": "legacy-headend.islandtv.example",

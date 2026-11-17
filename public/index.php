@@ -108,9 +108,14 @@ if ($uri === '/delete-account') {
     exit;
 }
 
-// Public privacy policy (placeholder text — replace in templates/player/privacy.php)
+// Public privacy policy (text edited in Admin → Settings → Legal)
 if ($uri === '/privacy' || $uri === '/privacy-policy') {
     $controller->privacy();
+    exit;
+}
+// Public terms of service (text edited in Admin → Settings → Legal)
+if ($uri === '/terms' || $uri === '/terms-of-service') {
+    $controller->terms();
     exit;
 }
 
