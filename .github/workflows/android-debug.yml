@@ -81,10 +81,16 @@ jobs:
 
       - name: Analyze and test
         run: |
-          flutter analyze
-          # Failures are surfaced as a check annotation too, so they can be read
+          # Failures are surfaced as check annotations too, so they can be read
           # through the API without the raw job log.
           set +e
+          flutter analyze 2>&1 | tee analyze.log
+          arc=${PIPESTATUS[0]}
+          if [ "$arc" != "0" ]; then
+            excerpt=$(grep -E "^\s*(error|warning|info) " analyze.log | head -40 | cut -c1-240)
+            echo "::error title=flutter analyze failed::$(printf '%s' "$excerpt" | sed ':a;N;$!ba;s/\n/%0A/g' | cut -c1-3900)"
+            exit "$arc"
+          fi
           flutter test --reporter failures-only 2>&1 | tee test.log
           rc=${PIPESTATUS[0]}
           set -e
