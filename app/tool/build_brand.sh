@@ -27,7 +27,7 @@ done
 [[ -f "brands/$BRAND/brand.json" ]] || { echo "no such brand: brands/$BRAND/brand.json" >&2; exit 1; }
 [[ "$ENV" == "dev" || "$ENV" == "prod" ]] || { echo "env must be dev or prod" >&2; exit 2; }
 
-dart run tool/apply_brand.dart "$BRAND" "${EXTRA[@]}"
+dart run tool/apply_brand.dart "$BRAND" ${EXTRA[@]+"${EXTRA[@]}"}  # bash 3.2 (macOS) + set -u safe
 
 DEFINES="--dart-define-from-file=brands/$BRAND/brand.json"
 # Optional dark-background logo: its presence is a build fact, not a brand.json key.
