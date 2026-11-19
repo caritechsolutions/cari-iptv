@@ -80,8 +80,14 @@ jobs:
           restore-keys: |
             pods-${{ runner.os }}-
 
-      - name: Xcode version
-        run: xcodebuild -version && flutter --version
+      # connectivity_plus 7.x needs the iOS 26 SDK (Xcode 26.1+), and Apple
+      # requires the iOS 26 SDK for App Store uploads from April 2026 anyway.
+      - name: Select Xcode 26
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$X" ]; then echo "::error::No Xcode 26 on this runner:"; ls -d /Applications/Xcode*.app; exit 1; fi
+          sudo xcode-select -s "$X" && echo "Using $X"
+          xcodebuild -version && flutter --version
 
       - run: flutter pub get
 
