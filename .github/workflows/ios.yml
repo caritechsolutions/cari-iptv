@@ -109,11 +109,7 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" != "0" ]; then
-            # Surface the failure through a check annotation (readable via the API)
-            excerpt=$(grep -nE "error|Error|FAILED|failed|\*\*\*|Exception|not found|No such|xcodebuild" build.log | head -60 | cut -c1-240)
-            echo "::error title=iOS build failed::$(printf '%s' "$excerpt" | sed ':a;N;$!ba;s/\n/%0A/g' | cut -c1-3900)"
-            tail -c 3800 build.log > tail.log
-            echo "::error title=iOS build log tail::$(sed ':a;N;$!ba;s/\n/%0A/g' tail.log)"
+            ./tool/ci_annotate.sh "iOS build failed" build.log
             exit "$rc"
           fi
           cd build/ios/iphoneos && zip -qr "../../../${BRAND}-ios-unsigned.zip" Runner.app
@@ -130,10 +126,7 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" != "0" ]; then
-            excerpt=$(grep -nE "error|Error|FAILED|failed|\*\*\*|Exception|not found|No such|xcodebuild" build.log | head -60 | cut -c1-240)
-            echo "::error title=iOS build failed::$(printf '%s' "$excerpt" | sed ':a;N;$!ba;s/\n/%0A/g' | cut -c1-3900)"
-            tail -c 3800 build.log > tail.log
-            echo "::error title=iOS build log tail::$(sed ':a;N;$!ba;s/\n/%0A/g' tail.log)"
+            ./tool/ci_annotate.sh "iOS build failed" build.log
             exit "$rc"
           fi
           ls -la build/ios/ipa
