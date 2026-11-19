@@ -16,5 +16,6 @@
   "PLATFORM_TAG_PROD": "mobile",
   "CLEARTEXT_HOSTS": "",
   "BILLING_UI": "auto",
-  "LOGO_HAS_NAME": "true"
+  "LOGO_HAS_NAME": "true",
+  "IOS_GOOGLE_CLIENT_ID": ""
 }

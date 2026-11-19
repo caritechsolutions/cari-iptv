@@ -44,6 +44,7 @@ class AppConfig {
     this.logoHasName = true,
     this.hasDarkLogo = false,
     this.playUpdates = false,
+    this.iosGoogleClientId,
   });
 
   final AppFlavor flavor;
@@ -100,6 +101,12 @@ class AppConfig {
   /// in-app update. False = never call Play Core (sideloaded / other stores).
   final bool playUpdates;
 
+  /// `IOS_GOOGLE_CLIENT_ID` (optional): the brand's Google OAuth client of
+  /// type iOS. Needed on iOS only; Android matches by package + SHA-1 and
+  /// needs nothing here. The matching URL scheme is written to Info.plist by
+  /// tool/apply_brand.dart.
+  final String? iosGoogleClientId;
+
   String get apiV1 => '$apiBaseUrl/api/v1';
   bool get isDev => flavor == AppFlavor.dev;
 
@@ -124,6 +131,7 @@ class AppConfig {
   static const _logoHasName = String.fromEnvironment('LOGO_HAS_NAME', defaultValue: 'true');
   static const _hasDarkLogo = bool.fromEnvironment('BRAND_LOGO_DARK', defaultValue: false);
   static const _playUpdates = String.fromEnvironment('PLAY_UPDATES', defaultValue: 'false');
+  static const _iosGoogleClientId = String.fromEnvironment('IOS_GOOGLE_CLIENT_ID', defaultValue: '');
 
   /// Builds the config for [flavor] from the build-time defines.
   factory AppConfig.forFlavor(AppFlavor flavor) {
@@ -148,6 +156,7 @@ class AppConfig {
       logoHasName: parseFlag(_logoHasName, true),
       hasDarkLogo: _hasDarkLogo,
       playUpdates: parseFlag(_playUpdates, false),
+      iosGoogleClientId: _iosGoogleClientId.isEmpty ? null : _iosGoogleClientId,
     );
   }
 

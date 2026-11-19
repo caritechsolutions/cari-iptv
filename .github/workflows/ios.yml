@@ -1,0 +1,129 @@
+# iOS build for one brand.
+#
+# Runs on demand (Actions → iOS → Run workflow, pick the brand) or on a push
+# whose commit message contains "[ios]". macOS minutes are billed at 10× Linux,
+# so it is not run on every push.
+#
+# Two modes, decided by whether the brand's App Store Connect secrets exist:
+#   <BRAND>_APPLE_TEAM_ID, <BRAND>_ASC_KEY_ID, <BRAND>_ASC_ISSUER_ID, <BRAND>_ASC_KEY_P8
+#   - present → signed archive (Xcode automatic signing, cloud-managed
+#     certificate, authenticated by the API key) uploaded to App Store Connect,
+#     where it appears in TestFlight within a few minutes.
+#   - absent  → unsigned build only: proves the iOS target compiles; the
+#     Runner.app is attached as a workflow artifact.
+name: iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: Brand to build (folder under app/brands)
+        default: freetv
+        required: true
+      upload:
+        description: Upload to App Store Connect / TestFlight when secrets exist
+        type: boolean
+        default: true
+  push:
+    branches:
+      - claude/intelligent-knuth-xzkkd7
+    paths:
+      - "app/**"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}-${{ inputs.brand || 'freetv' }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.5"
+
+jobs:
+  ios:
+    name: iOS (${{ inputs.brand || 'freetv' }})
+    # On push, only when the commit message asks for it
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ios]')
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    env:
+      BRAND: ${{ inputs.brand || 'freetv' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flutter ${{ env.FLUTTER_VERSION }} (stable, pinned)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          cache-key: "flutter-:os:-:channel:-:version:-:arch:"
+
+      - name: Pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: app/ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('app/ios/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - name: Xcode version
+        run: xcodebuild -version && flutter --version
+
+      - run: flutter pub get
+
+      - name: Resolve signing secrets for ${{ env.BRAND }}
+        id: signing
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          U=$(echo "$BRAND" | tr '[:lower:]' '[:upper:]')
+          for k in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            v=$(echo "$SECRETS_JSON" | jq -r --arg k "${U}_${k}" '.[$k] // empty')
+            if [ -n "$v" ]; then echo "::add-mask::$v"; echo "$k<<EOF" >> "$GITHUB_ENV"; echo "$v" >> "$GITHUB_ENV"; echo "EOF" >> "$GITHUB_ENV"; else MISSING="$MISSING ${U}_${k}"; fi
+          done
+          if [ -z "${MISSING:-}" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"; echo "Signing: ${U} App Store Connect secrets found"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"; echo "Signing: unsigned build (missing:${MISSING})"
+          fi
+
+      - name: Build (unsigned)
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          ./tool/build_brand.sh "$BRAND" ios prod
+          cd build/ios/iphoneos && zip -qr "../../../${BRAND}-ios-unsigned.zip" Runner.app
+          ls -la "../../../${BRAND}-ios-unsigned.zip"
+
+      - name: Build, sign and upload to App Store Connect
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          IOS_UPLOAD: ${{ (github.event_name != 'workflow_dispatch' || inputs.upload) && '1' || '0' }}
+        run: |
+          export APPLE_TEAM_ID
+          ./tool/build_brand.sh "$BRAND" ipa prod
+          ls -la build/ios/ipa
+
+      - name: Attach build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ env.BRAND }}-${{ github.sha }}
+          path: |
+            app/${{ env.BRAND }}-ios-unsigned.zip
+            app/build/ios/ipa/*.ipa
+            app/build/ios/ipa/ExportOptions.plist
+          if-no-files-found: ignore
+          retention-days: 14

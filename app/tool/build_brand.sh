@@ -23,7 +23,7 @@ for a in "${@:4}"; do
     *) echo "unknown option: $a" >&2; exit 2 ;;
   esac
 done
-[[ -z "$BRAND" ]] && { echo "usage: $0 <brand> <apk|appbundle|run> [dev|prod] [--debug] [--no-icons]" >&2; exit 2; }
+[[ -z "$BRAND" ]] && { echo "usage: $0 <brand> <apk|appbundle|run|ios|ipa> [dev|prod] [--debug] [--no-icons]" >&2; exit 2; }
 [[ -f "brands/$BRAND/brand.json" ]] || { echo "no such brand: brands/$BRAND/brand.json" >&2; exit 1; }
 [[ "$ENV" == "dev" || "$ENV" == "prod" ]] || { echo "env must be dev or prod" >&2; exit 2; }
 
@@ -37,7 +37,12 @@ case "$TARGET" in
   apk)       flutter build apk       $MODE --flavor "$ENV" -t "$ENTRY" $DEFINES ;;
   appbundle) flutter build appbundle $MODE --flavor "$ENV" -t "$ENTRY" $DEFINES ;;
   run)       flutter run             $MODE --flavor "$ENV" -t "$ENTRY" $DEFINES ;;
-  *) echo "target must be apk, appbundle or run" >&2; exit 2 ;;
+  # iOS has no flavours (one scheme); the entry point still selects dev/prod.
+  # "ios" = unsigned .app (compile check, no Apple account); "ipa" = signed
+  # archive + App Store Connect upload via tool/ios_archive.sh.
+  ios)       flutter build ios --release --no-codesign -t "$ENTRY" $DEFINES ;;
+  ipa)       flutter build ios --release --no-codesign -t "$ENTRY" $DEFINES && ./tool/ios_archive.sh "$BRAND" ;;
+  *) echo "target must be apk, appbundle, run, ios or ipa" >&2; exit 2 ;;
 esac
 
 if [[ "$TARGET" == "apk" ]]; then

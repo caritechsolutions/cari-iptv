@@ -17,5 +17,6 @@
   "CLEARTEXT_HOSTS": "",
   "BILLING_UI": "auto",
   "LOGO_HAS_NAME": "true",
-  "PLAY_UPDATES": "true"
+  "PLAY_UPDATES": "true",
+  "IOS_GOOGLE_CLIENT_ID": ""
 }

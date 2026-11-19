@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
+import '../../../core/providers.dart';
+
 /// What a provider hands back after the user picks an account. The backend
 /// verifies [idToken]; the rest is only sent along on first sign-in.
 class SocialCredential {
@@ -32,6 +34,10 @@ abstract class SocialSignIn {
 }
 
 class PluginSocialSignIn implements SocialSignIn {
+  PluginSocialSignIn({this.iosClientId});
+
+  /// Brand's Google iOS OAuth client (AppConfig.iosGoogleClientId); unused on Android.
+  final String? iosClientId;
   String? _initialisedFor;
 
   @override
@@ -41,7 +47,10 @@ class PluginSocialSignIn implements SocialSignIn {
   Future<SocialCredential> google(String serverClientId) async {
     final signIn = GoogleSignIn.instance;
     if (_initialisedFor != serverClientId) {
-      await signIn.initialize(serverClientId: serverClientId);
+      await signIn.initialize(
+        serverClientId: serverClientId,
+        clientId: !kIsWeb && Platform.isIOS ? iosClientId : null,
+      );
       _initialisedFor = serverClientId;
     }
     final GoogleSignInAccount account;
@@ -88,4 +97,4 @@ class PluginSocialSignIn implements SocialSignIn {
   }
 }
 
-final socialSignInProvider = Provider<SocialSignIn>((ref) => PluginSocialSignIn());
+final socialSignInProvider = Provider<SocialSignIn>((ref) => PluginSocialSignIn(iosClientId: ref.watch(appConfigProvider).iosGoogleClientId));
