@@ -267,7 +267,9 @@ String _stripPlistKey(String plist, String key) {
   }
   // Also eat the line's leading tabs and trailing newline
   var lineStart = start;
-  while (lineStart > 0 && plist[lineStart - 1] == '\t') lineStart--;
+  while (lineStart > 0 && plist[lineStart - 1] == '\t') {
+    lineStart--;
+  }
   if (end < plist.length && plist[end] == '\n') end++;
   return plist.substring(0, lineStart) + plist.substring(end);
 }
